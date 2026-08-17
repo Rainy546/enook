@@ -1714,7 +1714,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-17t';
+const EENOK_BUILD = '2026-08-17u';
 function checkAppUpdate() {
   try {
     const prev = localStorage.getItem('eenook_build');
@@ -17834,6 +17834,21 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     if (!state.home.hiddenApps) state.home.hiddenApps = [];
     if (!state.home.appIcons) state.home.appIcons = {};
     // 强制重置为照片墙（用户要求清空已上传组件）
+    
+  // 纠正被旧 gridTop 顶到底部的 app 坐标
+  if (!state.home._fixAppY17u && state.home.layout) {
+    state.home._fixAppY17u = 1;
+    var fixed = false;
+    Object.keys(state.home.layout).forEach(function(k){
+      var L = state.home.layout[k];
+      if (L && L._user && typeof L.y === 'number' && L.y > 480) {
+        delete state.home.layout[k];
+        fixed = true;
+      }
+    });
+    if (fixed) { try { save(); } catch(e) {} }
+  }
+
     if (!state.home._uiClean17t) {
       state.home._uiClean17t = true;
       state.home._widInit = true;
@@ -17889,12 +17904,9 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
 
     // 网格：每行4个，从小组件下方开始
     var widgets = (state.home.pageWidgets[page] || []).slice();
-    var gridTop = 200;
-    widgets.forEach(function(w) {
-      var bottom = (w.y || 0) + (w.h || 100);
-      if (bottom + 8 > gridTop) gridTop = bottom + 12;
-    });
-
+    // App 网格与小组件解耦：不再被 widget 高度整体下推
+    // 默认从偏上区域排布，用户拖过的坐标优先
+    var gridTop = 168;
     var appHtml = pageApps.map(function(a, i) {
       var col = i % 4;
       var row = Math.floor(i / 4);
