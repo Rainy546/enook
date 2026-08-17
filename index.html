@@ -1682,7 +1682,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-17r';
+const EENOK_BUILD = '2026-08-17s';
 function checkAppUpdate() {
   try {
     const prev = localStorage.getItem('eenook_build');
@@ -2461,6 +2461,7 @@ function openSubPage(title, bodyHtml, rightHtml, opts) {
   if (opts.replace || opts.fromHome || state._openFromHome) {
     state._subStack = [];
     state._openFromHome = false;
+    armClickGuard(480);
   } else if (sub.classList.contains('active')) {
     state._subStack.push({
       title: document.getElementById('subTitle').textContent,
@@ -2519,6 +2520,15 @@ function openSubPage(title, bodyHtml, rightHtml, opts) {
   }
 }
 /** 从主屏幕打开 App 时调用：清空子页栈，避免退出连环跳 */
+
+/** 打开 App 后短时间忽略子页点击，防止手指穿透点到第一张卡片 */
+function armClickGuard(ms) {
+  state._clickGuardUntil = Date.now() + (ms || 450);
+}
+function clickGuarded() {
+  return state._clickGuardUntil && Date.now() < state._clickGuardUntil;
+}
+
 function resetHomeNav(kind) {
   state._subStack = [];
   state._subBackFn = null;
@@ -4815,24 +4825,37 @@ function onFileSelected(e) {
       }
     } else if (state.fileTarget && state.fileTarget.startsWith('dockIcon_')) {
       const key = state.fileTarget.replace('dockIcon_','');
-      if (!state.theme.dockIcons) state.theme.dockIcons = {};
-      // 保留透明底：用 png 输出
-      const img = new Image();
-      img.onload = () => {
-        const cv = document.createElement('canvas');
-        cv.width = 96; cv.height = 96;
-        const ctx = cv.getContext('2d');
-        ctx.clearRect(0,0,96,96);
-        const scale = Math.min(96/img.width, 96/img.height);
-        const w = img.width*scale, h = img.height*scale;
-        ctx.drawImage(img, (96-w)/2, (96-h)/2, w, h);
-        state.theme.dockIcons[key] = cv.toDataURL('image/png');
-        save(); applyTheme();
-        try { closeAllModals(); } catch(e) {}
-        setTimeout(() => openBeautifyCenter(), 80);
-      };
-      img.onerror = () => alert('图标加载失败');
-      img.src = data;
+      const wxDockKeys = ['chats','moments','contacts','mine'];
+      // 非微信底栏图标 → 当作主屏 App 图标
+      if (wxDockKeys.indexOf(key) < 0) {
+        ensureHomeState();
+        if (!state.home.appIcons) state.home.appIcons = {};
+        state.home.appIcons[key] = data;
+        save();
+        showToast('图标已更新');
+        try {
+          if (state._homeRoot === 'beauty') openHomeBeauty(state._beautyTab||'wallpaper');
+          else renderHome();
+        } catch(e) { renderHome(); }
+      } else {
+        if (!state.theme.dockIcons) state.theme.dockIcons = {};
+        const img = new Image();
+        img.onload = () => {
+          const cv = document.createElement('canvas');
+          cv.width = 96; cv.height = 96;
+          const ctx = cv.getContext('2d');
+          ctx.clearRect(0,0,96,96);
+          const scale = Math.min(96/img.width, 96/img.height);
+          const w = img.width*scale, h = img.height*scale;
+          ctx.drawImage(img, (96-w)/2, (96-h)/2, w, h);
+          state.theme.dockIcons[key] = cv.toDataURL('image/png');
+          save(); applyTheme();
+          try { closeAllModals(); } catch(e) {}
+          setTimeout(() => openBeautifyCenter(), 80);
+        };
+        img.onerror = () => alert('图标加载失败');
+        img.src = data;
+      }
     } else if (state.fileTarget === 'charAvatar') {
       const img = document.getElementById('formCharAvatar');
       if (img) img.src = data;
@@ -5000,15 +5023,16 @@ function onFileSelected(e) {
     } else if (String(state.fileTarget||'').indexOf('homeAppIcon:')===0) {
       ensureHomeState();
       const id = String(state.fileTarget).slice(12);
+      if (!state.home.appIcons) state.home.appIcons = {};
       state.home.appIcons[id] = data; save();
+      showToast('图标已更新');
       try {
-        if (state._homeRoot === 'beauty' || (state._subKind==='homeApp' && state._homeRoot!=='home')) {
-          const scrollEl = document.getElementById('subBody');
-          const sp = scrollEl ? scrollEl.scrollTop : 0;
-          openHomeBeauty();
-          setTimeout(function(){ const s2=document.getElementById('subBody'); if(s2) s2.scrollTop=sp; }, 50);
-        } else renderHome();
-      } catch(e) { renderHome(); }
+        state._homeRoot = 'beauty';
+        const scrollEl = document.getElementById('subBody');
+        const sp = scrollEl ? scrollEl.scrollTop : 0;
+        openHomeBeauty(state._beautyTab || 'wallpaper');
+        setTimeout(function(){ const s2=document.getElementById('subBody'); if(s2) s2.scrollTop=sp; }, 50);
+      } catch(e) { try { renderHome(); } catch(e2) {} }
     } else if (String(state.fileTarget||'').indexOf('homeWidgetImg:')===0) {
       ensureHomeState();
       const wid = String(state.fileTarget).slice('homeWidgetImg:'.length);
@@ -6290,6 +6314,7 @@ function openWorldBook(tab) {
   if (state._openFromHome || tab == null || tab === 'edit') tab = 'all';
   tab = tab || 'all';
   state._wbTab = tab;
+  armClickGuard(500);
   try { closeAllModals(); } catch(e) {}
   const isNight = state.theme && state.theme.mode === 'dark';
   const bg = isNight ? '#0d0d0f' : 'var(--bg)';
@@ -12095,7 +12120,7 @@ function openOfflineApp() {
         ${cards}
       </div>
     </div>
-  `);
+  `, '', { replace: true, fromHome: true });
 }
 const DEFAULT_STATUS_BAR_CSS = `.status-phone{max-width:280px;margin:0 auto;background:#1c1c1e;border-radius:28px;padding:10px 10px 16px;box-shadow:0 12px 40px rgba(0,0,0,.25)}
 .status-phone-notch{width:96px;height:22px;background:#000;border-radius:0 0 14px 14px;margin:0 auto 10px}
@@ -12130,6 +12155,7 @@ function ensureOfflineSession(charId) {
   return state.offline.sessions[charId];
 }
 function openOfflineScene(charId) {
+  if (clickGuarded()) return;
   const c = state.chars.find(x => x.id === charId);
   if (!c) return;
   const sess = ensureOfflineSession(charId);
@@ -13889,9 +13915,10 @@ function openGalApp(tab) {
         ${dock('targets','攻略对象')}${dock('saves','保存进度')}${dock('achievements','达成成就')}${dock('mine','我的')}
       </div>
     </div>
-  `, tab==='targets' ? `<button type="button" class="nav-btn" onclick="galAddCustom()"><span style="font-size:22px">＋</span></button>` : '', { replace: true });
-  state._subKind = 'homeApp';
+  `, tab==='targets' ? `<button type="button" class="nav-btn" onclick="galAddCustom()"><span style="font-size:22px">＋</span></button>` : '', { replace: true, fromHome: true });
+  state._subKind = 'gal';
   state._homeDepth = 0;
+  armClickGuard(500);
 }
 function editGalPrefOnly() {
   ensureHomeState();
@@ -13973,6 +14000,7 @@ async function aiGalPrologue(id) {
   } catch(e) { alert(e.message||e); }
 }
 function openGalTarget(id) {
+  if (clickGuarded()) return;
   ensureHomeState();
   state._homeRoot = 'gal';
   state._homeDepth = 1;
@@ -15139,6 +15167,7 @@ function openDivination(tab) {
   if (!tab || tab === 'tool' || ['tarot','dice','natal','synastry','zhuge','ziwei','bazi','xingxiu'].indexOf(tab)>=0) tab = 'east';
   tab = tab || 'east';
   state._divTab = tab;
+  armClickGuard(500);
   state._subKind = 'divination';
   state._subReturnPage = 'home';
   state._subStack = [];
@@ -15391,6 +15420,7 @@ function saveDivProfile() {
   alert('已保存，各占卜工具将自动读取');
 }
 function openDivTool(id) {
+  if (clickGuarded()) return;
   state._subKind = 'divtool';
   const map = { zhuge:openZhuge, ziwei:openZiwei, bazi:openBazi, xingxiu:openXingxiu, tarot:openTarot, dice:openAstroDice, natal:openNatal, synastry:openSynastry };
   if (map[id]) map[id]();
@@ -18173,15 +18203,24 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   };
   window.addHomeWidget = function(w) {
     ensureDesk();
+    if (typeof w === 'number') return; // ignore index-only
     var page = w.page != null ? w.page : (state.home.page || 0);
     if (!state.home.pageWidgets[page]) state.home.pageWidgets[page] = [];
-    state.home.pageWidgets[page].push({
+    var item = {
       id: (w.id||'w') + '_' + Date.now(),
+      type: w.type || 'photo',
       img: w.img || '',
-      x: 16, y: 40,
+      content: w.content || (w.type==='text_banner' ? '横屏文案' : ''),
+      x: 16, y: 40 + (state.home.pageWidgets[page].length % 5) * 12,
       w: w.w || 150, h: w.h || 100
-    });
-    save(); showToast('已添加到第'+(page+1)+'页');
+    };
+    state.home.pageWidgets[page].push(item);
+    // 同步到 extraWidgets 供旧编辑器使用
+    if (!state.home.extraWidgets) state.home.extraWidgets = [];
+    if (w.type && w.type !== 'photo' && w.type !== 'clock_sm') {
+      state.home.extraWidgets.push(Object.assign({}, item));
+    }
+    save(); showToast('已添加：'+(w.name||w.id||'组件'));
   };
 
   // 保留美化入口（若已有则覆盖为更稳版本侧栏）
@@ -18216,12 +18255,11 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
         + '</div></div>';
     } else if (tab === 'widgets') {
       var catalog = [
-        {id:'w_ice_lg',name:'冰透大卡',size:'大型',img:'https://nos.netease.com/ysf/cae6074f49b4ad6d13fc8c1be54c8448.png',w:300,h:150,page:0},
-        {id:'w_ice_md',name:'冰透中卡',size:'中型',img:'https://nos.netease.com/ysf/b2bc722de1d7d5ff9cf4ffada990c50b.png',w:150,h:100,page:0},
-        {id:'w_p2_lg',name:'星轨大卡',size:'大型',img:'https://nos.netease.com/ysf/5b102046d6a036b580ebcd569a73b6ff.png',w:300,h:150,page:1},
-        {id:'w_p2_md1',name:'音符中卡',size:'中型',img:'https://nos.netease.com/ysf/d7fdd0aa70c112e053f33d3800c93623.png',w:150,h:100,page:1},
-        {id:'w_p2_md2',name:'清透中卡',size:'中型',img:'https://nos.netease.com/ysf/b62582fbd28301ad212180a86416297e.png',w:150,h:100,page:1},
-        {id:'w_blank',name:'空白卡片',size:'中型',img:'',w:150,h:100,page:0}
+        {id:'polaroid_l',name:'大拍立得',size:'大型',img:'',w:160,h:200,page:0,type:'polaroid_l'},
+        {id:'polaroid_m',name:'小拍立得',size:'中型',img:'',w:120,h:150,page:0,type:'polaroid_m'},
+        {id:'badge3d',name:'大号吧唧',size:'中型',img:'',w:120,h:120,page:0,type:'badge3d'},
+        {id:'text_banner',name:'横屏文案',size:'横幅',img:'',w:280,h:56,page:0,type:'text_banner'},
+        {id:'clock_sm',name:'时间小型组件',size:'小型',img:'',w:150,h:80,page:0,type:'clock_sm'}
       ];
       main = '<div style="padding:16px"><div style="font-size:12px;color:#8e8e93;margin-bottom:12px">添加后可在桌面拖动；点空白卡片可上传图片</div>'
         + catalog.map(function(w,wi){
@@ -18256,18 +18294,20 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
       var range = document.getElementById('iconRadiusRange');
       if (range) range.oninput = function(){ state.home.iconRadius=+range.value; save(); };
       document.querySelectorAll('[data-iconapp]').forEach(function(el){
-        el.onclick = function(){ state.fileTarget='dockIcon_'+el.getAttribute('data-iconapp'); var fi=document.getElementById('fileInput'); fi.accept='image/*'; fi.value=''; fi.click(); };
+        el.onclick = function(){ state.fileTarget='homeAppIcon:'+el.getAttribute('data-iconapp'); var fi=document.getElementById('fileInput'); fi.accept='image/*'; fi.value=''; fi.click(); };
       });
       var catalog = [
-        {id:'w_ice_lg',img:'https://nos.netease.com/ysf/cae6074f49b4ad6d13fc8c1be54c8448.png',w:300,h:150,page:0},
-        {id:'w_ice_md',img:'https://nos.netease.com/ysf/b2bc722de1d7d5ff9cf4ffada990c50b.png',w:150,h:100,page:0},
-        {id:'w_p2_lg',img:'https://nos.netease.com/ysf/5b102046d6a036b580ebcd569a73b6ff.png',w:300,h:150,page:1},
-        {id:'w_p2_md1',img:'https://nos.netease.com/ysf/d7fdd0aa70c112e053f33d3800c93623.png',w:150,h:100,page:1},
-        {id:'w_p2_md2',img:'https://nos.netease.com/ysf/b62582fbd28301ad212180a86416297e.png',w:150,h:100,page:1},
-        {id:'w_blank',img:'',w:150,h:100,page:0}
+        {id:'polaroid_l',name:'大拍立得',size:'大型',img:'',w:160,h:200,page:0,type:'polaroid_l'},
+        {id:'polaroid_m',name:'小拍立得',size:'中型',img:'',w:120,h:150,page:0,type:'polaroid_m'},
+        {id:'badge3d',name:'大号吧唧',size:'中型',img:'',w:120,h:120,page:0,type:'badge3d'},
+        {id:'text_banner',name:'横屏文案',size:'横幅',img:'',w:280,h:56,page:0,type:'text_banner'},
+        {id:'clock_sm',name:'时间小型组件',size:'小型',img:'',w:150,h:80,page:0,type:'clock_sm'}
       ];
       document.querySelectorAll('[data-wadd]').forEach(function(btn){
-        btn.onclick = function(){ addHomeWidget(catalog[+btn.getAttribute('data-wadd')]); showToast('已添加'); };
+        btn.onclick = function(){
+          var item = catalog[+btn.getAttribute('data-wadd')];
+          if (item) addHomeWidget(item);
+        };
       });
       document.querySelectorAll('[data-openfn]').forEach(function(el){
         el.onclick = function(){ var fn=el.getAttribute('data-openfn'); if(typeof window[fn]==='function') window[fn](); };
