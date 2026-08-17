@@ -1682,7 +1682,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-17p';
+const EENOK_BUILD = '2026-08-17r';
 function checkAppUpdate() {
   try {
     const prev = localStorage.getItem('eenook_build');
@@ -2456,8 +2456,12 @@ function openSubPage(title, bodyHtml, rightHtml, opts) {
   if (!state._subStack) state._subStack = [];
   const sub = document.getElementById('page-sub');
   if (!sub) { console.error('page-sub missing'); return; }
-  // 压入当前内容
-  if (sub.classList.contains('active') && !(opts && opts.replace)) {
+  opts = opts || {};
+  // 从主屏进 App / replace：清空栈，避免退出时一层层弹旧页面
+  if (opts.replace || opts.fromHome || state._openFromHome) {
+    state._subStack = [];
+    state._openFromHome = false;
+  } else if (sub.classList.contains('active')) {
     state._subStack.push({
       title: document.getElementById('subTitle').textContent,
       body: document.getElementById('subBody').innerHTML,
@@ -2466,7 +2470,7 @@ function openSubPage(title, bodyHtml, rightHtml, opts) {
       kind: state._subKind || null
     });
   }
-  state._subBackFn = (opts && opts.backFn) || null;
+  state._subBackFn = opts.backFn || null;
   document.getElementById('subTitle').textContent = title || '';
   document.getElementById('subBody').innerHTML = bodyHtml || '';
   document.getElementById('subRight').innerHTML = rightHtml || '';
@@ -2513,6 +2517,14 @@ function openSubPage(title, bodyHtml, rightHtml, opts) {
   if (backBtn) {
     backBtn.onclick = function() { closeSubPage(); };
   }
+}
+/** 从主屏幕打开 App 时调用：清空子页栈，避免退出连环跳 */
+function resetHomeNav(kind) {
+  state._subStack = [];
+  state._subBackFn = null;
+  state._homeRoot = kind || null;
+  state._subKind = kind || null;
+  state._homeDepth = 0;
 }
 function closeSubPage() {
   const sub = document.getElementById('page-sub');
@@ -6274,11 +6286,9 @@ function confirmWbCategory() {
   save(); openWorldBook();
 }
 function openWorldBook(tab) {
-  state._homeRoot = 'worldbook';
-  state._subKind = 'worldbook';
-  state._subKind = 'worldbook';
-
-  tab = tab || state._wbTab || 'all';
+  resetHomeNav('worldbook');
+  if (state._openFromHome || tab == null || tab === 'edit') tab = 'all';
+  tab = tab || 'all';
   state._wbTab = tab;
   try { closeAllModals(); } catch(e) {}
   const isNight = state.theme && state.theme.mode === 'dark';
@@ -6311,7 +6321,7 @@ function openWorldBook(tab) {
   `).join('') : '<div class="empty" style="padding:40px 0;color:var(--sub)">暂无世界书</div>';
   const tabBtn = (id, label) => `<button type="button" onclick="openWorldBook('${id}')" style="flex:1;border:none;padding:10px;background:${tab===id?(isNight?'#3a3a3c':'#5a5a5a'):'transparent'};color:${tab===id?'#fff':fg};border-radius:10px;font-size:13px;cursor:pointer">${label}</button>`;
   state._subKind = 'worldbook';
-  state._subReturnPage = 'mine';
+  state._subReturnPage = null;
   state._subStack = [];
   openSubPage('世界书', `
     <div style="display:flex;flex-direction:column;height:100%;background:${bg};color:${fg}">
@@ -11103,6 +11113,8 @@ function openWechatApp() {
   state.currentIsGroup = false;
   state._official = null;
   state._homeRoot = null;
+  state._subStack = [];
+  state._openFromHome = true;
   // 微信底栏固定在屏幕底部
   var dock = document.getElementById('dock');
   if (dock) {
@@ -11634,46 +11646,11 @@ function renderHomeExtras() {
       layer.appendChild(d);
     }
   } else if (layer) layer.remove();
-  // squish
-  let sq = document.getElementById('homeSquish');
-  ensureHomeState();
-  if (!state.home.layout) state.home.layout = {};
-  const sqPos = state.home.layout.squish || null;
-  if (!sq) {
-    sq = document.createElement('div');
-    sq.id = 'homeSquish';
-    sq.className = 'home-squish home-widget';
-    sq.style.position = 'absolute';
-    sq.style.zIndex = '6';
-    if (sqPos) {
-      sq.style.left = (sqPos.x||20) + 'px';
-      sq.style.top = (sqPos.y||120) + 'px';
-      sq.style.right = 'auto';
-      sq.style.bottom = 'auto';
-    } else {
-      sq.style.right = '18px';
-      sq.style.bottom = '110px';
-    }
-    sq.innerHTML = '<div class="home-squish-bag" id="squishPreview"></div>';
-    root.appendChild(sq);
-    try { bindHomeDrag(sq, 'squish'); } catch(e) {}
-    sq.addEventListener('click', function(e){
-      if (sq.dataset.dragged === '1') return;
-      e.stopPropagation();
-      pokeSquish(sq);
-    });
-    sq.addEventListener('dblclick', function(e){ e.stopPropagation(); openSquishEdit(); });
-  } else {
-    if (sqPos) {
-      sq.style.left = (sqPos.x||20) + 'px';
-      sq.style.top = (sqPos.y||120) + 'px';
-      sq.style.right = 'auto';
-      sq.style.bottom = 'auto';
-    }
-  }
-  const bag = document.getElementById('squishPreview');
-  const img = (state.home.squish && state.home.squish.img) || '';
-  if (bag) bag.innerHTML = img ? `<img src="${img}" style="width:86%;height:86%;object-fit:contain;pointer-events:none">` : '<span style="font-size:11px;color:#aaa">捏捏</span>';
+  // 捏捏已移除
+  try {
+    const oldSq = document.getElementById('homeSquish');
+    if (oldSq) oldSq.remove();
+  } catch(e) {}
 }
 function openClockStylePicker() {
   ensureHomeState();
@@ -11763,7 +11740,7 @@ function pokeSquish(el) {
 }
 function openHomeBeauty() {
   ensureHomeState();
-  state._homeRoot = 'beauty';
+  resetHomeNav('beauty');
   state._homeDepth = 0;
   if (state.home.iconRadius == null) state.home.iconRadius = 16;
   if (!state.home.extraWidgets) state.home.extraWidgets = [];
@@ -12092,12 +12069,14 @@ function openMemoryApp(filterCharId) {
 }
 
 function openOfflineApp() {
+  resetHomeNav('offline');
+  state._offlineCharId = null;
   ensureHomeState();
   if (!state.offline) state.offline = { meets: [], settings: {} };
   if (!state.offline.settings) state.offline.settings = {};
   state._homeRoot = 'offline';
   state._homeDepth = 0;
-  state._subKind = 'homeApp';
+  state._subKind = 'offline';
   const chars = state.chars || [];
   const cards = chars.map(c => {
     const av = c.avatar || defaultAvatar(c.nick || c.realName || '?');
@@ -12850,8 +12829,10 @@ function ensureIG() {
   return f;
 }
 function openForumIG(tab) {
+  resetHomeNav('forum');
   const f = ensureIG();
-  tab = tab || state._igTab || 'home';
+  if (tab == null || state._openFromHome) tab = 'home';
+  tab = tab || 'home';
   state._igTab = tab;
   state._homeRoot = 'forum';
   state._homeDepth = 0;
@@ -13812,14 +13793,13 @@ function addCountdown() {
 /* —— galgame 瀑布流 —— */
 
 function openGalApp(tab) {
-  state._homeRoot = 'gal';
-  state._subKind = 'gal';
-  // 默认进列表，不自动进某个角色攻略
-  if (tab == null) tab = 'targets';
+  resetHomeNav('gal');
   state._galPlayId = null;
   state._galTarget = null;
   ensureHomeState();
-  tab = tab || state._galTab || 'targets';
+  // 从主屏进入强制列表；仅内部切 tab 时保留
+  if (tab == null || state._openFromHome) tab = 'targets';
+  tab = tab || 'targets';
   state._galTab = tab;
   state._homeRoot = 'gal';
   state._homeDepth = 0;
@@ -15153,9 +15133,11 @@ function divHash(str) {
   return Math.abs(h);
 }
 function openDivination(tab) {
-  state._homeRoot = 'divination';
-  state._subKind = 'divination';
-  tab = tab || state._divTab || 'east';
+  resetHomeNav('divination');
+  // 禁止直接进工具页；主屏进入永远东玄主界面
+  if (state._openFromHome) tab = 'east';
+  if (!tab || tab === 'tool' || ['tarot','dice','natal','synastry','zhuge','ziwei','bazi','xingxiu'].indexOf(tab)>=0) tab = 'east';
+  tab = tab || 'east';
   state._divTab = tab;
   state._subKind = 'divination';
   state._subReturnPage = 'home';
@@ -17855,19 +17837,12 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
         + (editMode ? '<span class="dock-del" data-del="'+id+'" style="position:absolute;top:-6px;right:0;width:18px;height:18px;border-radius:50%;background:#ff3b30;color:#fff;font-size:12px;line-height:18px;text-align:center">−</span>' : '')
         + '</div>';
     }).join('');
-
-    // 捏捏（透明袋 + 内图）
-    var squish = state.home.squish || {};
-    var sqPos = (state.home.layout && state.home.layout.squish) || { x: 240, y: 420 };
-    var sqHtml = '<div id="homeSquish" style="position:absolute;left:'+(sqPos.x||240)+'px;top:'+(sqPos.y||420)+'px;width:88px;height:100px;z-index:4;display:flex;align-items:center;justify-content:center">'
-      + '<div style="position:relative;width:80px;height:92px;border-radius:14px;border:1.5px solid rgba(255,255,255,.75);background:linear-gradient(165deg,rgba(255,255,255,.35),rgba(255,255,255,.12));backdrop-filter:blur(6px);box-shadow:0 4px 16px rgba(80,140,160,.12),inset 0 0 0 1px rgba(255,255,255,.4);display:flex;align-items:center;justify-content:center;overflow:hidden">'
-      + (squish.img ? '<img src="'+squish.img+'" style="width:78%;height:78%;object-fit:contain;pointer-events:none">' : '<span style="font-size:11px;color:#99a">捏捏</span>')
-      + '</div></div>';
+    var sqHtml = ''; // 捏捏已移除
 
     inner.innerHTML =
       '<div id="homePageStage" style="position:absolute;inset:0;overflow:hidden">'
       + '<div id="homePageCanvas" style="position:absolute;inset:0;overflow:hidden">'
-      + widgetHtml + appHtml + sqHtml
+      + widgetHtml + appHtml + '' /*sq removed*/
       + '</div></div>'
       + '<div style="position:absolute;left:0;right:0;bottom:96px;text-align:center;z-index:5;pointer-events:none">'+dots+'</div>'
       + (editMode ? '<div style="position:absolute;top:10px;left:0;right:0;text-align:center;z-index:20"><button type="button" id="homeEditDone" style="border:none;background:rgba(0,0,0,.55);color:#fff;border-radius:16px;padding:8px 18px;font-size:13px">完成</button> <button type="button" id="homeEditAdd" style="border:none;background:rgba(255,255,255,.9);border-radius:16px;padding:8px 14px;font-size:13px">＋App</button></div>' : '')
@@ -17888,6 +17863,10 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     function launch(openStr) {
       if (!openStr) return;
       try {
+        // 从主屏点 App：先清子页栈，防止退出连环跳
+        state._subStack = [];
+        state._subBackFn = null;
+        state._openFromHome = true;
         var fn = openStr.replace(/\(\)$/, '');
         if (typeof window[fn] === 'function') { window[fn](); return; }
       } catch(e) {}
@@ -18065,13 +18044,7 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     var dadd = document.getElementById('homeDockAdd');
     if (dadd) dadd.onclick = function(){ openHomeDockPick(); };
 
-    var sq = document.getElementById('homeSquish');
-    if (sq) {
-      sq.addEventListener('click', function() {
-        if (editMode) return;
-        try { openSquishEdit(); } catch(e) { try { pokeSquish(sq); } catch(e2) {} }
-      });
-    }
+    /* 捏捏已移除 */
 
     // 翻页
     
@@ -18215,7 +18188,8 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   var _beauty = window.openHomeBeauty;
   window.openHomeBeauty = function(tab) {
     ensureDesk();
-    state._homeRoot = 'beauty'; state._subKind = 'homeApp';
+    resetHomeNav('beauty');
+    state._subKind = 'homeApp';
     tab = tab || state._beautyTab || 'wallpaper'; state._beautyTab = tab;
     var all = homeAllApps();
     var icons = state.home.appIcons || {};
@@ -18265,7 +18239,12 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
         + '<div class="setting-item" id="resetHomeLay">重置桌面布局</div>'
         + '<div class="setting-item" id="enterEditMode">进入编辑模式</div></div>';
     }
-    openSubPage('美化', '<div style="display:flex;height:100%;background:linear-gradient(180deg,#f3f9fb,#eef6f5)">'+side+'<div style="flex:1;overflow-y:auto" id="beautyMain">'+main+'</div></div>');
+    try {
+      openSubPage('美化', '<div style="display:flex;height:100%;background:linear-gradient(180deg,#f3f9fb,#eef6f5)">'+side+'<div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch" id="beautyMain">'+main+'</div></div>', '', {replace:true, fromHome:true});
+    } catch(err) {
+      console.error('beauty open fail', err);
+      openSubPage('美化', '<div style="padding:20px">美化加载失败，请重试<br><button class="btn btn-primary" onclick="goHome()">返回</button></div>', '', {replace:true});
+    }
     setTimeout(function(){
       document.querySelectorAll('[data-btab]').forEach(function(el){
         el.onclick = function(){ openHomeBeauty(el.getAttribute('data-btab')); };
