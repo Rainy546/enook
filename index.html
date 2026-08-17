@@ -1714,7 +1714,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-17u';
+const EENOK_BUILD = '2026-08-17v';
 function checkAppUpdate() {
   try {
     const prev = localStorage.getItem('eenook_build');
@@ -2474,7 +2474,7 @@ function renderChatList() {
     const pinned = chat.pinned ? '<span class="pinned-tag">置顶</span>' : '';
     const groupTag = it.type === 'group' ? '<span class="group-tag">群</span>' : '';
     const name = it.type === 'group' ? d.name : (d.nick || d.realName);
-    return `<div class="chat-item" onclick="openChat('${d.id}', ${it.type === 'group'})">
+    return `<div class="chat-item" onclick="if(window.clickGuarded&&clickGuarded())return;openChat('${d.id}', ${it.type === 'group'})">
         <img class="chat-avatar" src="${avatarUrl(d)}">
         <div class="chat-info">
           <div class="chat-name-row">
@@ -2775,6 +2775,8 @@ function bindChatKeyboardFix() {
   return;
 }
 function openChat(id, isGroup) {
+  if (typeof clickGuarded === 'function' && clickGuarded()) return;
+  if (state._blockChatOpen && Date.now() < state._blockChatOpen) return;
   try { bindChatKeyboardFix(); } catch(e) {}
   state.currentChatId = id;
   state.currentIsGroup = !!isGroup;
@@ -5012,13 +5014,35 @@ function onFileSelected(e) {
       state.icity.profile.bg = data; save();
     } else if (state.fileTarget === 'homeWallpaper' || state.fileTarget === 'homeWp') {
       ensureHomeState();
-      state.home.wallpaper = data;
-      try { save(); } catch(e) {}
-      try { if (typeof saveAsync==='function') saveAsync(); } catch(e) {}
-      try { sessionStorage.setItem('eenook_home_wp', data); } catch(e) {}
-      renderHome();
-      try { closeModal(); } catch(e) {}
-      showToast('主界面壁纸已更新');
+      // 压缩避免超配额
+      var applyHomeWp = async function(url) {
+        try {
+          if (url && url.length > 400000 && typeof compressDataUrl === 'function') {
+            url = await compressDataUrl(url, 1280, 0.72);
+          }
+        } catch(e) {}
+        state.home.wallpaper = url;
+        try { sessionStorage.setItem('eenook_home_wp', url); } catch(e) {}
+        try {
+          if (window.indexedDB) {
+            var req = indexedDB.open('eenook_idb', 1);
+            req.onupgradeneeded = function(){ try{ req.result.createObjectStore('kv'); }catch(e){} };
+            req.onsuccess = function(){
+              try {
+                var db = req.result;
+                if (!db.objectStoreNames.contains('kv')) return;
+                db.transaction('kv','readwrite').objectStore('kv').put(url, 'homeWp');
+              } catch(e) {}
+            };
+          }
+        } catch(e) {}
+        try { save(); } catch(e) {}
+        try { if (typeof saveAsync==='function') saveAsync(); } catch(e) {}
+        renderHome();
+        try { closeModal(); } catch(e) {}
+        showToast('主界面壁纸已更新');
+      };
+      applyHomeWp(data);
     } else if (state.fileTarget && String(state.fileTarget).startsWith('homeWidget_')) {
       // homeWidget_{page}_{index}
       const parts = String(state.fileTarget).split('_');
@@ -11195,11 +11219,16 @@ function openWechatApp() {
   state._homeRoot = null;
   state._subStack = [];
   state._openFromHome = true;
-  armClickGuard(500);
+  state._blockChatOpen = Date.now() + 900;
+  armClickGuard(900);
   // 强制微信列表，不进某个角色聊天
   try {
     const chatPage = document.getElementById('page-chat');
-    if (chatPage) { chatPage.classList.remove('active'); chatPage.style.display = 'none'; }
+    if (chatPage) {
+      chatPage.classList.remove('active');
+      chatPage.style.display = 'none';
+      chatPage.style.visibility = 'hidden';
+    }
   } catch(e) {}
   // 微信底栏固定在屏幕底部
   var dock = document.getElementById('dock');
@@ -11407,7 +11436,13 @@ function renderHome() {
   if (!inner) return;
   const homePage = document.getElementById('page-home');
   if (homePage) {
-    homePage.style.background = state.home.wallpaper ? '#0a0a0c' : 'linear-gradient(165deg,#e8f4f8 0%,#d4ebea 50%,#c5e0e8 100%)';
+    if (state.home.wallpaper) {
+      homePage.style.background = 'transparent';
+    } else if (state.home.themeColor) {
+      homePage.style.background = 'linear-gradient(165deg,'+state.home.themeColor+'44 0%,#e8f4f8 50%,#d4ebea 100%)';
+    } else {
+      homePage.style.background = 'linear-gradient(165deg,#e8f4f8 0%,#d4ebea 50%,#c5e0e8 100%)';
+    }
   }
   if (bg) {
     let wp = state.home.wallpaper || '';
@@ -11894,23 +11929,43 @@ function toggleDockApp(id, name, open, on) {
   if (!on && i >= 0) state.home.dockApps.splice(i, 1);
   save();
 }
-function addHomeWidget(type) {
+function addHomeWidget(itemOrType) {
   ensureHomeState();
-  if (!state.home.extraWidgets) state.home.extraWidgets = [];
-  const id = 'w' + Date.now();
+  if (!state.home.pageWidgets) state.home.pageWidgets = { 0: [], 1: [] };
+  var page = (state.home.page != null ? state.home.page : 0) | 0;
+  // 允许指定页：item.page 或当前桌面页
+  var item = (itemOrType && typeof itemOrType === 'object') ? itemOrType : null;
+  var type = item ? (item.type || item.id) : itemOrType;
+  if (item && item.page != null) page = item.page | 0;
+  if (!state.home.pageWidgets[page]) state.home.pageWidgets[page] = [];
+  const id = 'w' + Date.now() + '_' + Math.floor(Math.random()*999);
   const defaults = {
-    polaroid_l: { type, id, w: 150, h: 180, text: '大拍立得', cap: '' },
-    polaroid_m: { type, id, w: 100, h: 120, text: '中拍立得', cap: '' },
-    photowall: { type, id, w: 200, h: 80, imgs: [] },
-    ins_card: { type, id, w: 160, h: 140, nick: state.user.nick||'我', content: '写点什么…' },
-    text_banner: { type, id, w: 200, h: 56, content: '横屏文案' },
-    badge3d: { type, id, w: 120, h: 120, style: 'gloss', img: '' }
+    polaroid_l: { type: 'polaroid_l', w: 160, h: 200, caption: '', content: '' },
+    polaroid_m: { type: 'polaroid_m', w: 120, h: 150, caption: '', content: '' },
+    polaroid: { type: 'polaroid_m', w: 120, h: 150, caption: '', content: '' },
+    badge3d: { type: 'badge3d', w: 110, h: 110, img: '', rot: 0 },
+    clock_sm: { type: 'clock_sm', w: 150, h: 80 },
+    photowall3: { type: 'photowall3', w: 200, h: 140, imgs: [] },
+    pw_blank: { type: 'pw_blank', w: 100, h: 100, img: '' },
+    pw_s: { type: 'pw_blank', w: 100, h: 100, img: '' },
+    pw_v: { type: 'pw_blank', w: 110, h: 160, img: '' },
+    pw_l: { type: 'pw_blank', w: 220, h: 160, img: '' },
+    text_banner: { type: 'text_banner', w: 280, h: 56, content: '点这里写文案' },
+    photowall: { type: 'pw_blank', w: 200, h: 120, img: '' }
   };
-  const w = defaults[type] || defaults.text_banner;
-  w.x = 20; w.y = 40 + state.home.extraWidgets.length * 20;
-  state.home.extraWidgets.push(w);
+  var base = defaults[type] || defaults.text_banner;
+  // sizeKey from catalog
+  if (item && item.sizeKey === 'v') { base = Object.assign({}, defaults.pw_v); }
+  if (item && item.sizeKey === 'l') { base = Object.assign({}, defaults.pw_l); }
+  if (item && item.sizeKey === 's') { base = Object.assign({}, defaults.pw_s); }
+  if (item && item.w) base.w = item.w;
+  if (item && item.h) base.h = item.h;
+  var count = state.home.pageWidgets[page].length;
+  var w = Object.assign({ id: id, x: 16 + (count % 2) * 20, y: 24 + count * 18, img: '' }, base);
+  state.home.pageWidgets[page].push(w);
+  state.home.page = page;
   save();
-  showToast('已添加，返回主屏幕查看');
+  showToast('已添加到第' + (page + 1) + '页');
 }
 function editHomeWidget(id) {
   ensureHomeState();
@@ -17870,7 +17925,13 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     if (!inner) return;
     var homePage = document.getElementById('page-home');
     if (homePage) {
-      homePage.style.background = state.home.wallpaper ? '#0a0a0c' : 'linear-gradient(165deg,#e8f4f8 0%,#d4ebea 50%,#c5e0e8 100%)';
+      if (state.home.wallpaper) {
+        homePage.style.background = 'transparent';
+      } else if (state.home.themeColor) {
+        homePage.style.background = 'linear-gradient(165deg,'+state.home.themeColor+'44 0%,#e8f4f8 50%,#d4ebea 100%)';
+      } else {
+        homePage.style.background = 'linear-gradient(165deg,#e8f4f8 0%,#d4ebea 50%,#c5e0e8 100%)';
+      }
     }
     if (bg) {
       var wp = state.home.wallpaper || '';
@@ -18175,18 +18236,33 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
           // 点击上传
           var list = state.home.pageWidgets[page] || [];
           var ww = list[wi];
-          if (ww && ww.type === 'badge3d' && !editMode) {
-            ww.rot = ((ww.rot||0) + 45) % 360;
-            save(); renderHome();
+          if (!ww) return;
+          if (ww.type === 'text_banner') {
+            openModal('横屏文案',
+              '<div class="form-group"><label>文案内容</label><textarea id="bannerTxt" style="min-height:80px">'+escapeHtml(ww.content||'')+'</textarea></div>',
+              '<button class="btn btn-secondary" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="(function(){var L=state.home.pageWidgets['+page+'];if(L&&L['+wi+']){L['+wi+'].content=document.getElementById(\'bannerTxt\').value;}save();closeModal();renderHome();})()">保存</button>');
             return;
           }
-          if (ww && (ww.type === 'polaroid_l' || ww.type === 'polaroid_m' || ww.type === 'polaroid') && !editMode) {
-            // 拍立得：上传或编辑文案
-            openModal('拍立得', '<div class="form-group"><label>备注文字</label><input id="polCap" value="'+escapeHtml(ww.caption||ww.content||'')+'"></div><button class="btn btn-secondary" style="width:100%;margin-top:8px" onclick="state._widgetUploadPage='+page+';state.fileTarget=\'homeWidget_'+page+'_'+wi+'\';document.getElementById(\'fileInput\').accept=\'image/*\';document.getElementById(\'fileInput\').value=\'\';document.getElementById(\'fileInput\').click()">更换照片</button>',
-              '<button class="btn btn-secondary" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="var L=state.home.pageWidgets['+page+'];if(L&&L['+wi+']){L['+wi+'].caption=document.getElementById(\'polCap\').value;L['+wi+'].content=L['+wi+'].caption;}save();closeModal();renderHome()">保存</button>');
+          if (ww.type === 'badge3d') {
+            if (ww.img && !editMode) {
+              ww.rot = ((ww.rot||0) + 45) % 360;
+              save(); renderHome();
+              return;
+            }
+            state._widgetUploadPage = page;
+            state._widgetFixedSize = true;
+            state.fileTarget = 'homeWidget_'+page+'_'+wi;
+            var fiB = document.getElementById('fileInput');
+            if (fiB) { fiB.accept = 'image/*'; fiB.value = ''; fiB.click(); }
             return;
           }
-          // 照片墙等：固定尺寸上传（不改 w/h）
+          if ((ww.type === 'polaroid_l' || ww.type === 'polaroid_m' || ww.type === 'polaroid') && !editMode) {
+            openModal('拍立得',
+              '<div class="form-group"><label>备注文字</label><input id="polCap" value="'+escapeHtml(ww.caption||ww.content||'')+'"></div>'
+              + '<button type="button" class="btn btn-secondary" style="width:100%;margin-top:8px" onclick="state._widgetUploadPage='+page+';state._widgetFixedSize=true;state.fileTarget=\'homeWidget_'+page+'_'+wi+'\';var fi=document.getElementById(\'fileInput\');fi.accept=\'image/*\';fi.value=\'\';fi.click()">更换照片</button>',
+              '<button class="btn btn-secondary" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="(function(){var L=state.home.pageWidgets['+page+'];if(L&&L['+wi+']){L['+wi+'].caption=document.getElementById(\'polCap\').value;L['+wi+'].content=L['+wi+'].caption;}save();closeModal();renderHome();})()">保存</button>');
+            return;
+          }
           state._widgetUploadPage = page;
           state._widgetFixedSize = true;
           state.fileTarget = 'homeWidget_'+page+'_'+wi;
@@ -18468,7 +18544,22 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
       document.querySelectorAll('[data-wadd]').forEach(function(btn){
         btn.onclick = function(){
           var item = catalog[+btn.getAttribute('data-wadd')];
-          if (item) addHomeWidget(item);
+          if (!item) return;
+          // 弹出选页：第1页 / 第2页
+          var pages = state.home.pages || 2;
+          if (pages < 2) { item.page = 0; addHomeWidget(item); return; }
+          openModal('添加到哪一页？',
+            '<div style="display:flex;gap:10px;margin-top:8px">'
+            + '<button class="btn btn-primary" style="flex:1" id="waddP0">第 1 页</button>'
+            + '<button class="btn btn-primary" style="flex:1" id="waddP1">第 2 页</button>'
+            + '</div>',
+            '<button class="btn btn-secondary" onclick="closeModal()">取消</button>');
+          setTimeout(function(){
+            var b0 = document.getElementById('waddP0');
+            var b1 = document.getElementById('waddP1');
+            if (b0) b0.onclick = function(){ var it=Object.assign({}, item, {page:0}); closeModal(); addHomeWidget(it); };
+            if (b1) b1.onclick = function(){ var it=Object.assign({}, item, {page:1}); closeModal(); addHomeWidget(it); };
+          }, 30);
         };
       });
       document.querySelectorAll('[data-openfn]').forEach(function(el){
@@ -18483,11 +18574,22 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
       });
       var tcp = document.getElementById('themeColorPick');
       var applyThemeColor = function(c){
+        if (!c) c = '#7ec8c8';
         state.home.themeColor = c;
-        document.documentElement.style.setProperty('--accent', c);
-        document.documentElement.style.setProperty('--home-accent', c);
-        document.documentElement.style.setProperty('--aqua', c);
-        save(); showToast('主题色已更新');
+        try {
+          document.documentElement.style.setProperty('--accent', c);
+          document.documentElement.style.setProperty('--home-accent', c);
+          document.documentElement.style.setProperty('--aqua', c);
+          document.documentElement.style.setProperty('--primary', c);
+          // 主屏底色随主题微调
+          var homePage = document.getElementById('page-home');
+          if (homePage && !(state.home && state.home.wallpaper)) {
+            homePage.style.background = 'linear-gradient(165deg,'+c+'33 0%,#e8f4f8 45%,#d4ebea 100%)';
+          }
+        } catch(e) {}
+        try { save(); } catch(e) {}
+        try { renderHome(); } catch(e) {}
+        showToast('主题色已更新');
       };
       if (tcp) tcp.oninput = function(){ applyThemeColor(tcp.value); };
       var tca = document.getElementById('themeColorApply');
