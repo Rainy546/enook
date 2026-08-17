@@ -1315,17 +1315,49 @@ body.night .loc-addr { color: #a1a1a6 !important; }
   backdrop-filter: blur(8px);
 }
 #lockScreen .lock-err { height: 20px; font-size: 13px; color: #ff8a80; margin-bottom: 8px; }
+
+/* Dock 水色系细线条图标 */
+.home-bottom-dock .dock-ico,
+.home-bottom-dock svg {
+  stroke-width: 1.4 !important;
+}
+.home-bottom-dock {
+  background: rgba(255,255,255,.55) !important;
+  backdrop-filter: blur(18px) saturate(1.2) !important;
+  border: 0.5px solid rgba(126,200,200,.35) !important;
+}
+.home-bottom-dock .home-dock-item {
+  background: transparent !important;
+}
+.home-bottom-dock .home-dock-item svg {
+  stroke: url(#dockGrad) !important;
+  color: #6bb3b0;
+}
+
 </style>
 </head>
 <body>
 <div id="lockScreen" class="hidden">
-  <div class="lock-time" id="lockTime">00:00</div>
-  <div class="lock-date" id="lockDate"></div>
-  <div style="flex:1"></div>
-  <div class="lock-err" id="lockErr"></div>
-  <div class="lock-dots" id="lockDots"><span></span><span></span><span></span><span></span></div>
-  <div class="lock-pad" id="lockPad"></div>
+  <div id="lockRaise" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;z-index:2">
+    <div class="lock-time" id="lockTime">00:00</div>
+    <div class="lock-date" id="lockDate"></div>
+    <div style="flex:1"></div>
+    <div id="lockSwipeHint" style="margin-bottom:36px;text-align:center;opacity:.85">
+      <div style="font-size:13px;letter-spacing:1px">上滑解锁</div>
+      <div style="margin-top:8px;font-size:22px;animation:lockBounce 1.4s ease-in-out infinite">˄</div>
+    </div>
+  </div>
+  <div id="lockPinPanel" style="position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:flex-end;z-index:3;background:rgba(0,0,0,.25);backdrop-filter:blur(12px)">
+    <div style="flex:1"></div>
+    <div class="lock-err" id="lockErr"></div>
+    <div class="lock-dots" id="lockDots"><span></span><span></span><span></span><span></span></div>
+    <div class="lock-pad" id="lockPad"></div>
+    <button type="button" id="lockPinBack" style="border:none;background:transparent;color:#fff;padding:12px 20px;margin-bottom:20px;font-size:14px;opacity:.85">取消</button>
+  </div>
 </div>
+<style>
+@keyframes lockBounce { 0%,100%{transform:translateY(0);opacity:.5} 50%{transform:translateY(-8px);opacity:1} }
+</style>
 
 
 <style id="page-stack-fix">
@@ -1682,7 +1714,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-17s';
+const EENOK_BUILD = '2026-08-17t';
 function checkAppUpdate() {
   try {
     const prev = localStorage.getItem('eenook_build');
@@ -2345,8 +2377,12 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 function formatTime(ts) {
   if (!ts) return '';
   const d = new Date(ts), now = new Date();
-  if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-  return `${d.getMonth()+1}/${d.getDate()}`;
+  const pad = n => String(n).padStart(2,'0');
+  const hm = pad(d.getHours()) + ':' + pad(d.getMinutes());
+  const md = (d.getMonth()+1) + '月' + d.getDate() + '日';
+  if (d.toDateString() === now.toDateString()) return md + ' ' + hm;
+  if (d.getFullYear() === now.getFullYear()) return md + ' ' + hm;
+  return d.getFullYear() + '年' + md + ' ' + hm;
 }
 function escapeHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -3063,7 +3099,7 @@ function renderMessages(opts) {
     }
     const showFail = (!isMe && chat.blockedByMe);
     const status = showFail ? '<div class="msg-status">！发送失败</div>' : '';
-    const bare = (m.type === 'image' || m.type === 'emoji' || m.type === 'article_card' || m.type === 'location' || m.type === 'shop_card' || m.type === 'paycode' || m.type === 'redpacket' || m.type === 'transfer');
+    const bare = (m.type === 'image' || m.type === 'emoji' || m.type === 'article_card' || m.type === 'location' || m.type === 'shop_card' || m.type === 'paycode' || m.type === 'redpacket' || m.type === 'transfer' || m.type === 'dateInvite');
     const cls = (m.type === 'redpacket' ? 'redpacket' : m.type === 'transfer' ? 'transfer' : '') + (bare ? ' bare' : '');
     const sel = state.multiSelect ? `<div onclick="event.stopPropagation();toggleMsgSelect(${idx})" style="width:22px;height:22px;border-radius:50%;border:2px solid ${(state.selectedMsgs&&state.selectedMsgs.has(idx))?'#07c160':'#ccc'};background:${(state.selectedMsgs&&state.selectedMsgs.has(idx))?'#07c160':'transparent'};margin-right:8px;flex-shrink:0;align-self:center"></div>` : '';
     html += `
@@ -4974,7 +5010,7 @@ function onFileSelected(e) {
       ensureHomeState();
       if (!state.icity.profile) state.icity.profile = {};
       state.icity.profile.bg = data; save();
-    } else if (state.fileTarget === 'homeWallpaper') {
+    } else if (state.fileTarget === 'homeWallpaper' || state.fileTarget === 'homeWp') {
       ensureHomeState();
       state.home.wallpaper = data;
       try { save(); } catch(e) {}
@@ -4995,23 +5031,27 @@ function onFileSelected(e) {
       if (!state.home.pageWidgets[pageIdx]) state.home.pageWidgets[pageIdx] = [];
       if (!state.home.pageWidgets[pageIdx][wIdx]) state.home.pageWidgets[pageIdx][wIdx] = { id:'w'+Date.now(), x:16, y:40, w:150, h:100 };
       state.home.pageWidgets[pageIdx][wIdx].img = data;
-      // 保持在当前页，不要跳回第一页
       state.home.page = pageIdx;
-      try {
-        var im = new Image();
-        im.onload = function() {
-          var maxW = Math.min(300, (window.innerWidth||360) - 24);
-          var ratio = im.naturalHeight / (im.naturalWidth || 1);
-          var nw = Math.min(maxW, im.naturalWidth || maxW);
-          var nh = Math.round(nw * ratio);
-          if (nh > 220) { nh = 220; nw = Math.round(nh / (ratio||1)); }
-          state.home.pageWidgets[pageIdx][wIdx].w = nw;
-          state.home.pageWidgets[pageIdx][wIdx].h = nh;
-          state.home.page = pageIdx;
-          try { save(); renderHome(); } catch(e) {}
-        };
-        im.src = data;
-      } catch(e) {}
+      // 空白照片墙等：尺寸不随图片改变
+      var fixed = state._widgetFixedSize || (state.home.pageWidgets[pageIdx][wIdx].type === 'pw_blank' || state.home.pageWidgets[pageIdx][wIdx].type === 'photowall3');
+      state._widgetFixedSize = false;
+      if (!fixed) {
+        try {
+          var im = new Image();
+          im.onload = function() {
+            var maxW = Math.min(300, (window.innerWidth||360) - 24);
+            var ratio = im.naturalHeight / (im.naturalWidth || 1);
+            var nw = Math.min(maxW, im.naturalWidth || maxW);
+            var nh = Math.round(nw * ratio);
+            if (nh > 220) { nh = 220; nw = Math.round(nh / (ratio||1)); }
+            state.home.pageWidgets[pageIdx][wIdx].w = nw;
+            state.home.pageWidgets[pageIdx][wIdx].h = nh;
+            state.home.page = pageIdx;
+            try { save(); renderHome(); } catch(e) {}
+          };
+          im.src = data;
+        } catch(e) {}
+      }
       try { save(); } catch(e) {}
       showToast('第'+(pageIdx+1)+'页小组件已更新');
       try { renderHome(); } catch(e) {}
@@ -7765,11 +7805,19 @@ const SK_DATA = {
 };
 
 
-function openScriptKill_HOME(){ state._homeRoot='sk'; state._subKind='sk'; return openScriptKill.apply(this, arguments); }
+function openScriptKill_HOME(){
+  state._homeRoot='sk'; state._subKind='sk';
+  state._openFromHome = true;
+  state._skId = null;
+  state._skChatId = null;
+  return openScriptKill('scripts');
+}
 function openScriptKill(tab) {
+  if (state._openFromHome) { tab = 'scripts'; state._skId = null; }
   tab = tab || state._skTab || 'scripts';
   state._skTab = tab;
   state._subKind = 'scriptkill';
+  armClickGuard(500);
   if (!state.scriptKill) state.scriptKill = { records: [], progress: {}, friends: [], posts: [], cats: ['推理','情感','恐怖','阵营'], custom: [], chats: {}, rooms: [] };
   if (!state.scriptKill.cats) state.scriptKill.cats = ['推理','情感','恐怖','阵营'];
   if (!state.scriptKill.posts) state.scriptKill.posts = [];
@@ -11091,6 +11139,13 @@ function viewPhoneNote(i) {
 // ========== 主屏幕 ==========
 function ensureHomeState() {
   if (!state.home || typeof state.home !== 'object') state.home = {};
+  // 清除图一图二类装饰小组件（默认空桌面，只保留用户主动添加的拍立得等）
+  if (!state.home._uiCleanWidgets) {
+    state.home.pageWidgets = { 0: [], 1: [] };
+    state.home.extraWidgets = [];
+    state.home._uiCleanWidgets = 1;
+  }
+
   if (!state.home.widgets) state.home.widgets = {};
   if (!state.home.appIcons) state.home.appIcons = {};
   if (!state.home.layout) state.home.layout = {};
@@ -11140,6 +11195,12 @@ function openWechatApp() {
   state._homeRoot = null;
   state._subStack = [];
   state._openFromHome = true;
+  armClickGuard(500);
+  // 强制微信列表，不进某个角色聊天
+  try {
+    const chatPage = document.getElementById('page-chat');
+    if (chatPage) { chatPage.classList.remove('active'); chatPage.style.display = 'none'; }
+  } catch(e) {}
   // 微信底栏固定在屏幕底部
   var dock = document.getElementById('dock');
   if (dock) {
@@ -11307,17 +11368,10 @@ function homeEnsureDesktop() {
   if (!state.home.dockApps) state.home.dockApps = ['settings','beauty','phone'];
   if (!state.home.pageWidgets) state.home.pageWidgets = {};
   if (!state.home.pageWidgets[0] || !state.home.pageWidgets[0].length) {
-    state.home.pageWidgets[0] = [
-      { id:'w_ice_lg', img:'https://nos.netease.com/ysf/cae6074f49b4ad6d13fc8c1be54c8448.png', x:16, y:20, w:300, h:170 },
-      { id:'w_ice_md', img:'https://nos.netease.com/ysf/b2bc722de1d7d5ff9cf4ffada990c50b.png', x:16, y:210, w:150, h:110 }
-    ];
+    state.home.pageWidgets[0] = [];
   }
   if (!state.home.pageWidgets[1] || !state.home.pageWidgets[1].length) {
-    state.home.pageWidgets[1] = [
-      { id:'w_p2_lg', img:'https://nos.netease.com/ysf/5b102046d6a036b580ebcd569a73b6ff.png', x:16, y:20, w:300, h:170 },
-      { id:'w_p2_md1', img:'https://nos.netease.com/ysf/d7fdd0aa70c112e053f33d3800c93623.png', x:16, y:210, w:150, h:110 },
-      { id:'w_p2_md2', img:'https://nos.netease.com/ysf/b62582fbd28301ad212180a86416297e.png', x:180, y:210, w:150, h:110 }
-    ];
+    state.home.pageWidgets[1] = [];
   }
   if (!state.home.hiddenApps) state.home.hiddenApps = [];
   if (typeof homeAllApps !== 'function') {
@@ -17579,9 +17633,9 @@ function showLockScreen() {
   const el = document.getElementById('lockScreen');
   if (!el) return;
   el.classList.remove('hidden');
-  // 壁纸：优先 state，其次 session 临时缓存
-  let wp = state.lock.wallpaper || '';
-  try { if (!wp) wp = sessionStorage.getItem('eenook_lock_wp') || ''; } catch(e) {}
+  // 壁纸：锁屏壁纸 > 主界面壁纸 > session > 默认渐变
+  let wp = state.lock.wallpaper || (state.home && state.home.wallpaper) || '';
+  try { if (!wp) wp = sessionStorage.getItem('eenook_lock_wp') || sessionStorage.getItem('eenook_home_wp') || ''; } catch(e) {}
   const applyWp = function(url) {
     if (url) {
       el.style.backgroundImage = 'url("' + String(url).replace(/"/g,'') + '")';
@@ -17589,11 +17643,10 @@ function showLockScreen() {
       el.style.backgroundPosition = 'center';
       el.style.backgroundRepeat = 'no-repeat';
     } else {
-      el.style.backgroundImage = 'linear-gradient(160deg,#2c2c34,#1a1a22)';
+      el.style.backgroundImage = 'linear-gradient(165deg,#7ec8c8 0%,#a8d8ea 45%,#5dade2 100%)';
     }
   };
   applyWp(wp);
-  // 异步从 IDB 再补一次
   try {
     if (!wp && window.indexedDB) {
       const req = indexedDB.open('eenook_idb', 1);
@@ -17603,15 +17656,18 @@ function showLockScreen() {
           if (!db.objectStoreNames.contains('kv')) return;
           const g = db.transaction('kv').objectStore('kv').get('lockWp');
           g.onsuccess = function() {
-            if (g.result) {
-              state.lock.wallpaper = g.result;
-              applyWp(g.result);
-            }
+            if (g.result) { state.lock.wallpaper = g.result; applyWp(g.result); }
           };
         } catch(e) {}
       };
     }
   } catch(e) {}
+
+  const raise = document.getElementById('lockRaise');
+  const pinPanel = document.getElementById('lockPinPanel');
+  if (raise) raise.style.display = 'flex';
+  if (pinPanel) pinPanel.style.display = 'none';
+
   let buf = '';
   const dots = () => {
     const ds = el.querySelectorAll('#lockDots span');
@@ -17628,6 +17684,39 @@ function showLockScreen() {
   tick();
   if (window._lockTimer) clearInterval(window._lockTimer);
   window._lockTimer = setInterval(tick, 10000);
+
+  // 上滑解锁 → 显示密码盘
+  const showPin = function() {
+    if (raise) raise.style.display = 'none';
+    if (pinPanel) pinPanel.style.display = 'flex';
+    buf = '';
+    dots();
+  };
+  // 手势
+  let sy = 0, tracking = false;
+  const onStart = function(y) { sy = y; tracking = true; };
+  const onMove = function(y) {
+    if (!tracking) return;
+    if (sy - y > 48) { tracking = false; showPin(); }
+  };
+  const onEnd = function() { tracking = false; };
+  if (raise && !raise.dataset.swipe) {
+    raise.dataset.swipe = '1';
+    raise.addEventListener('touchstart', function(e){ onStart(e.touches[0].clientY); }, {passive:true});
+    raise.addEventListener('touchmove', function(e){ onMove(e.touches[0].clientY); }, {passive:true});
+    raise.addEventListener('touchend', onEnd);
+    raise.addEventListener('mousedown', function(e){ onStart(e.clientY); });
+    raise.addEventListener('mousemove', function(e){ if(e.buttons) onMove(e.clientY); });
+    raise.addEventListener('mouseup', onEnd);
+    raise.addEventListener('click', function(){ showPin(); });
+  }
+  const backBtn = document.getElementById('lockPinBack');
+  if (backBtn) backBtn.onclick = function(){
+    if (pinPanel) pinPanel.style.display = 'none';
+    if (raise) raise.style.display = 'flex';
+    buf = ''; dots();
+  };
+
   const pad = document.getElementById('lockPad');
   if (pad && !pad.dataset.ready) {
     pad.dataset.ready = '1';
@@ -17649,6 +17738,8 @@ function showLockScreen() {
             el.classList.add('hidden');
             buf = '';
             dots();
+            if (raise) raise.style.display = 'flex';
+            if (pinPanel) pinPanel.style.display = 'none';
           } else {
             if (err) err.textContent = '密码错误';
             buf = '';
@@ -17662,6 +17753,7 @@ function showLockScreen() {
   buf = '';
   dots();
 }
+
 function openLockSettings() {
   ensureLockState();
   openModal('锁屏设置', `
@@ -17742,28 +17834,13 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     if (!state.home.hiddenApps) state.home.hiddenApps = [];
     if (!state.home.appIcons) state.home.appIcons = {};
     // 强制重置为照片墙（用户要求清空已上传组件）
-    if (!state.home._widReset17o) {
-      state.home._widReset17o = true;
+    if (!state.home._uiClean17t) {
+      state.home._uiClean17t = true;
       state.home._widInit = true;
-      var maxW = Math.min(320, (window.innerWidth||360)-40);
-      state.home.pageWidgets = {
-        0: [
-          { id:'w0', type:'photowall', img:'https://nos.netease.com/ysf/cae6074f49b4ad6d13fc8c1be54c8448.png', x:12, y:8, w:maxW, h:150 },
-          { id:'w1', type:'photowall', img:'https://nos.netease.com/ysf/b2bc722de1d7d5ff9cf4ffada990c50b.png', x:12, y:170, w:150, h:100 }
-        ],
-        1: [
-          { id:'w2', type:'photowall', img:'https://nos.netease.com/ysf/5b102046d6a036b580ebcd569a73b6ff.png', x:12, y:8, w:maxW, h:150 },
-          { id:'w3', type:'photowall', img:'https://nos.netease.com/ysf/d7fdd0aa70c112e053f33d3800c93623.png', x:12, y:170, w:150, h:100 },
-          { id:'w4', type:'photowall', img:'https://nos.netease.com/ysf/b62582fbd28301ad212180a86416297e.png', x:172, y:170, w:150, h:100 }
-        ]
-      };
-      // 清掉用户上传的 extraWidgets 照片墙类
-      if (state.home.extraWidgets && state.home.extraWidgets.length) {
-        state.home.extraWidgets = state.home.extraWidgets.filter(function(w){
-          return w.type && w.type !== 'photowall' && !w.img;
-        });
-      }
-      // 复位 dock 到屏幕底部
+      state.home._widReset17o = true;
+      // 原始 UI：去掉图一图二装饰小组件，空桌面
+      state.home.pageWidgets = { 0: [], 1: [] };
+      state.home.extraWidgets = [];
       if (state.home.layout) delete state.home.layout.dock;
       try { save(); } catch(e) {}
     }
@@ -17842,12 +17919,47 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     }).join('');
 
     var widgetHtml = widgets.map(function(w, wi) {
-      return '<div class="home-widget" data-widx="'+wi+'" style="left:'+(w.x||12)+'px;top:'+(w.y||8)+'px;width:'+(w.w||150)+'px;height:'+(w.h||100)+'px;position:absolute;z-index:2;border-radius:18px;overflow:hidden;box-shadow:0 4px 18px rgba(80,140,160,.12);background:rgba(255,255,255,.35)">'
-        + (w.img
-          ? '<img src="'+w.img+'" draggable="false" style="width:100%;height:100%;object-fit:cover" onerror="this.parentNode.style.background=\'rgba(200,220,230,.5)\'">'
-          : '<div class="w-empty" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#8aa;font-size:12px">点击上传</div>')
-        + (editMode ? '<span class="home-w-del" data-widx="'+wi+'" style="position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;background:rgba(0,0,0,.45);color:#fff;font-size:14px;line-height:22px;text-align:center;z-index:3">×</span>' : '')
-        + '</div>';
+      var t = w.type || 'photo';
+      var del = editMode ? '<span class="home-w-del" data-widx="'+wi+'" style="position:absolute;top:4px;right:4px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.4);color:#fff;font-size:13px;line-height:20px;text-align:center;z-index:3">×</span>' : '';
+      var base = 'left:'+(w.x||12)+'px;top:'+(w.y||8)+'px;width:'+(w.w||150)+'px;height:'+(w.h||100)+'px;position:absolute;z-index:2;';
+      var inner = '';
+      if (t === 'polaroid_l' || t === 'polaroid_m' || t === 'polaroid') {
+        inner = '<div style="width:100%;height:100%;background:#fff;border-radius:4px;box-shadow:0 6px 20px rgba(0,0,0,.12);padding:8px 8px 28px;box-sizing:border-box;position:relative">'
+          + (w.img ? '<img src="'+w.img+'" style="width:100%;height:calc(100% - 4px);object-fit:cover;border-radius:2px" draggable="false">' : '<div style="width:100%;height:100%;background:#f0f4f5;display:flex;align-items:center;justify-content:center;color:#9ab;font-size:11px">上传照片</div>')
+          + '<div style="position:absolute;left:8px;right:8px;bottom:6px;font-size:11px;color:#666;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">'+(w.caption||w.content||'')+'</div></div>';
+        return '<div class="home-widget" data-widx="'+wi+'" data-wtype="polaroid" style="'+base+'overflow:visible">'+inner+del+'</div>';
+      }
+      if (t === 'badge3d') {
+        inner = '<div class="badge-spin" style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.18),inset 0 0 0 3px rgba(255,255,255,.7);transform:rotate('+(w.rot||0)+'deg);transition:transform .45s ease;background:#e8eef0">'
+          + (w.img ? '<img src="'+w.img+'" style="width:100%;height:100%;object-fit:cover" draggable="false">' : '')
+          + '</div>';
+        return '<div class="home-widget" data-widx="'+wi+'" data-wtype="badge3d" style="'+base+'overflow:visible;background:transparent;box-shadow:none">'+inner+del+'</div>';
+      }
+      if (t === 'clock_sm') {
+        var now = new Date();
+        var hm = String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+        inner = '<div style="width:100%;height:100%;border-radius:18px;background:rgba(255,255,255,.55);backdrop-filter:blur(12px);display:flex;flex-direction:column;align-items:center;justify-content:center;border:0.5px solid rgba(126,200,200,.35)">'
+          + '<div style="font-size:28px;font-weight:300;letter-spacing:2px;color:#3a6a6a">'+hm+'</div>'
+          + '<div style="font-size:11px;color:#7a9;margin-top:2px">'+(now.getMonth()+1)+'月'+now.getDate()+'日</div></div>';
+        return '<div class="home-widget" data-widx="'+wi+'" data-wtype="clock" style="'+base+'overflow:hidden">'+inner+del+'</div>';
+      }
+      if (t === 'photowall3') {
+        var imgs = w.imgs || (w.img ? [w.img] : []);
+        var cells = '';
+        for (var ci=0;ci<3;ci++) {
+          cells += '<div style="flex:1;background:#eef3f4;overflow:hidden;min-width:0">'+(imgs[ci]?'<img src="'+imgs[ci]+'" style="width:100%;height:100%;object-fit:cover" draggable="false">':'')+'</div>';
+        }
+        inner = '<div style="width:100%;height:100%;display:flex;gap:3px;border-radius:14px;overflow:hidden">'+cells+'</div>';
+        return '<div class="home-widget" data-widx="'+wi+'" data-wtype="photowall3" style="'+base+'overflow:hidden">'+inner+del+'</div>';
+      }
+      if (t === 'text_banner') {
+        inner = '<div style="width:100%;height:100%;border-radius:14px;background:rgba(255,255,255,.6);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;padding:8px 12px;box-sizing:border-box;font-size:13px;color:#456;border:0.5px solid rgba(126,200,200,.3)">'+escapeHtml(w.content||'横屏文案')+'</div>';
+        return '<div class="home-widget" data-widx="'+wi+'" data-wtype="text" style="'+base+'overflow:hidden">'+inner+del+'</div>';
+      }
+      inner = (w.img
+        ? '<img src="'+w.img+'" draggable="false" style="width:100%;height:100%;object-fit:cover">'
+        : '<div class="w-empty" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#8aa;font-size:12px">点击上传</div>');
+      return '<div class="home-widget" data-widx="'+wi+'" style="'+base+'border-radius:18px;overflow:hidden;box-shadow:0 4px 18px rgba(80,140,160,.12);background:rgba(255,255,255,.35)">'+inner+del+'</div>';
     }).join('');
 
     var pages = state.home.pages || 2;
@@ -18049,7 +18161,22 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
           }
         } else {
           // 点击上传
+          var list = state.home.pageWidgets[page] || [];
+          var ww = list[wi];
+          if (ww && ww.type === 'badge3d' && !editMode) {
+            ww.rot = ((ww.rot||0) + 45) % 360;
+            save(); renderHome();
+            return;
+          }
+          if (ww && (ww.type === 'polaroid_l' || ww.type === 'polaroid_m' || ww.type === 'polaroid') && !editMode) {
+            // 拍立得：上传或编辑文案
+            openModal('拍立得', '<div class="form-group"><label>备注文字</label><input id="polCap" value="'+escapeHtml(ww.caption||ww.content||'')+'"></div><button class="btn btn-secondary" style="width:100%;margin-top:8px" onclick="state._widgetUploadPage='+page+';state.fileTarget=\'homeWidget_'+page+'_'+wi+'\';document.getElementById(\'fileInput\').accept=\'image/*\';document.getElementById(\'fileInput\').value=\'\';document.getElementById(\'fileInput\').click()">更换照片</button>',
+              '<button class="btn btn-secondary" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="var L=state.home.pageWidgets['+page+'];if(L&&L['+wi+']){L['+wi+'].caption=document.getElementById(\'polCap\').value;L['+wi+'].content=L['+wi+'].caption;}save();closeModal();renderHome()">保存</button>');
+            return;
+          }
+          // 照片墙等：固定尺寸上传（不改 w/h）
           state._widgetUploadPage = page;
+          state._widgetFixedSize = true;
           state.fileTarget = 'homeWidget_'+page+'_'+wi;
           var fi = document.getElementById('fileInput');
           if (fi) { fi.accept = 'image/*'; fi.value = ''; fi.click(); }
@@ -18236,6 +18363,7 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     var side = '<div style="width:72px;flex-shrink:0;background:rgba(232,244,248,.95);border-right:0.5px solid rgba(0,0,0,.06);padding:12px 0;display:flex;flex-direction:column;gap:4px">'
       + '<div data-btab="wallpaper" style="padding:12px 8px;text-align:center;font-size:11px;line-height:1.3;'+(tab==='wallpaper'?'background:#fff;font-weight:600':'')+'">壁纸<br>与图标</div>'
       + '<div data-btab="widgets" style="padding:12px 8px;text-align:center;font-size:11px;line-height:1.3;'+(tab==='widgets'?'background:#fff;font-weight:600':'')+'">小组件</div>'
+      + '<div data-btab="theme" style="padding:12px 8px;text-align:center;font-size:11px;line-height:1.3;'+(tab==='theme'?'background:#fff;font-weight:600':'')+'">颜色</div>'
       + '<div data-btab="other" style="padding:12px 8px;text-align:center;font-size:11px;line-height:1.3;'+(tab==='other'?'background:#fff;font-weight:600':'')+'">其他</div></div>';
     var main = '';
     if (tab === 'wallpaper') {
@@ -18255,11 +18383,15 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
         + '</div></div>';
     } else if (tab === 'widgets') {
       var catalog = [
-        {id:'polaroid_l',name:'大拍立得',size:'大型',img:'',w:160,h:200,page:0,type:'polaroid_l'},
-        {id:'polaroid_m',name:'小拍立得',size:'中型',img:'',w:120,h:150,page:0,type:'polaroid_m'},
-        {id:'badge3d',name:'大号吧唧',size:'中型',img:'',w:120,h:120,page:0,type:'badge3d'},
-        {id:'text_banner',name:'横屏文案',size:'横幅',img:'',w:280,h:56,page:0,type:'text_banner'},
-        {id:'clock_sm',name:'时间小型组件',size:'小型',img:'',w:150,h:80,page:0,type:'clock_sm'}
+        {id:'polaroid_l',name:'大拍立得',size:'大型 · 可换图可编辑',img:'',w:160,h:200,page:0,type:'polaroid_l'},
+        {id:'polaroid_m',name:'小拍立得',size:'中型 · 可换图可编辑',img:'',w:120,h:150,page:0,type:'polaroid_m'},
+        {id:'badge3d',name:'立体吧唧',size:'中型 · 点击旋转',img:'',w:110,h:110,page:0,type:'badge3d'},
+        {id:'clock_sm',name:'时间小组件',size:'小型 · 显示当前时间',img:'',w:150,h:80,page:0,type:'clock_sm'},
+        {id:'photowall3',name:'三宫格照片墙',size:'中型 · 三格',img:'',w:200,h:140,page:0,type:'photowall3'},
+        {id:'pw_s',name:'空白照片墙·小',size:'小型',img:'',w:100,h:100,page:0,type:'pw_blank',sizeKey:'s'},
+        {id:'pw_v',name:'空白照片墙·竖',size:'竖形',img:'',w:110,h:160,page:0,type:'pw_blank',sizeKey:'v'},
+        {id:'pw_l',name:'空白照片墙·大',size:'大型',img:'',w:220,h:160,page:0,type:'pw_blank',sizeKey:'l'},
+        {id:'text_banner',name:'横屏文案',size:'横幅',img:'',w:280,h:56,page:0,type:'text_banner'}
       ];
       main = '<div style="padding:16px"><div style="font-size:12px;color:#8e8e93;margin-bottom:12px">添加后可在桌面拖动；点空白卡片可上传图片</div>'
         + catalog.map(function(w,wi){
@@ -18269,8 +18401,22 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
               + '<button type="button" class="btn btn-primary" style="padding:8px 12px;font-size:12px" data-wadd="'+wi+'">添加</button></div>';
           }).join('')
         + '</div>';
+    } else if (tab === 'theme') {
+      var tc = (state.home.themeColor || '#7ec8c8');
+      main = '<div style="padding:16px">'
+        + '<div style="font-weight:600;margin-bottom:8px">主题色</div>'
+        + '<div class="text-sub" style="font-size:12px;margin-bottom:12px">原始 UI 为青绿色水色系。拖动可实时预览。</div>'
+        + '<input type="color" id="themeColorPick" value="'+tc+'" style="width:100%;height:48px;border:none;border-radius:12px;margin-bottom:12px">'
+        + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">'
+        + ['#7ec8c8','#a8d8ea','#b5e0d8','#89c9c0','#6bb3b0','#9fd4e0','#c5e4eb','#5dade2'].map(function(c){
+            return '<div data-tc="'+c+'" style="width:36px;height:36px;border-radius:50%;background:'+c+';border:2px solid '+(c===tc?'#333':'transparent')+';cursor:pointer"></div>';
+          }).join('')
+        + '</div>'
+        + '<button type="button" class="btn btn-primary" id="themeColorApply" style="width:100%;margin-bottom:8px">应用主题色</button>'
+        + '<button type="button" class="btn btn-secondary" id="themeColorReset" style="width:100%">还原青绿色</button></div>';
     } else {
       main = '<div style="padding:12px">'
+        + '<div class="setting-item" data-btab2="theme">调节主题色</div>'
         + [['占卜','openDivination'],['世界书','openWorldBook'],['书城','openBookStore'],['番茄钟','openPomodoro'],['Melo','openMelo'],['角色库','openCharLib'],['galgame','openGalApp'],['剧本杀','openScriptKill'],['icity','openIcityApp'],['Instagram','openForumIG'],['倒数日','openCountdownApp'],['记忆','openMemoryApp'],['线下','openOfflineApp'],['短信','openSmsApp'],['电话','openPhonePad'],['微信','openWechatApp']].map(function(p){
             return '<div class="setting-item" data-openfn="'+p[1]+'">'+p[0]+'</div>';
           }).join('')
@@ -18297,11 +18443,15 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
         el.onclick = function(){ state.fileTarget='homeAppIcon:'+el.getAttribute('data-iconapp'); var fi=document.getElementById('fileInput'); fi.accept='image/*'; fi.value=''; fi.click(); };
       });
       var catalog = [
-        {id:'polaroid_l',name:'大拍立得',size:'大型',img:'',w:160,h:200,page:0,type:'polaroid_l'},
-        {id:'polaroid_m',name:'小拍立得',size:'中型',img:'',w:120,h:150,page:0,type:'polaroid_m'},
-        {id:'badge3d',name:'大号吧唧',size:'中型',img:'',w:120,h:120,page:0,type:'badge3d'},
-        {id:'text_banner',name:'横屏文案',size:'横幅',img:'',w:280,h:56,page:0,type:'text_banner'},
-        {id:'clock_sm',name:'时间小型组件',size:'小型',img:'',w:150,h:80,page:0,type:'clock_sm'}
+        {id:'polaroid_l',name:'大拍立得',size:'大型 · 可换图可编辑',img:'',w:160,h:200,page:0,type:'polaroid_l'},
+        {id:'polaroid_m',name:'小拍立得',size:'中型 · 可换图可编辑',img:'',w:120,h:150,page:0,type:'polaroid_m'},
+        {id:'badge3d',name:'立体吧唧',size:'中型 · 点击旋转',img:'',w:110,h:110,page:0,type:'badge3d'},
+        {id:'clock_sm',name:'时间小组件',size:'小型 · 显示当前时间',img:'',w:150,h:80,page:0,type:'clock_sm'},
+        {id:'photowall3',name:'三宫格照片墙',size:'中型 · 三格',img:'',w:200,h:140,page:0,type:'photowall3'},
+        {id:'pw_s',name:'空白照片墙·小',size:'小型',img:'',w:100,h:100,page:0,type:'pw_blank',sizeKey:'s'},
+        {id:'pw_v',name:'空白照片墙·竖',size:'竖形',img:'',w:110,h:160,page:0,type:'pw_blank',sizeKey:'v'},
+        {id:'pw_l',name:'空白照片墙·大',size:'大型',img:'',w:220,h:160,page:0,type:'pw_blank',sizeKey:'l'},
+        {id:'text_banner',name:'横屏文案',size:'横幅',img:'',w:280,h:56,page:0,type:'text_banner'}
       ];
       document.querySelectorAll('[data-wadd]').forEach(function(btn){
         btn.onclick = function(){
@@ -18316,6 +18466,25 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
       if (rh) rh.onclick = function(){ state.home.layout={}; state.home.hiddenApps=[]; state.home._widInit=false; save(); showToast('已重置'); goHome(); };
       var ee = document.getElementById('enterEditMode');
       if (ee) ee.onclick = function(){ state.home.editMode=true; save(); goHome(); };
+      document.querySelectorAll('[data-btab2]').forEach(function(el){
+        el.onclick = function(){ openHomeBeauty(el.getAttribute('data-btab2')); };
+      });
+      var tcp = document.getElementById('themeColorPick');
+      var applyThemeColor = function(c){
+        state.home.themeColor = c;
+        document.documentElement.style.setProperty('--accent', c);
+        document.documentElement.style.setProperty('--home-accent', c);
+        document.documentElement.style.setProperty('--aqua', c);
+        save(); showToast('主题色已更新');
+      };
+      if (tcp) tcp.oninput = function(){ applyThemeColor(tcp.value); };
+      var tca = document.getElementById('themeColorApply');
+      if (tca) tca.onclick = function(){ applyThemeColor((document.getElementById('themeColorPick')||{}).value||'#7ec8c8'); };
+      var tcr = document.getElementById('themeColorReset');
+      if (tcr) tcr.onclick = function(){ applyThemeColor('#7ec8c8'); openHomeBeauty('theme'); };
+      document.querySelectorAll('[data-tc]').forEach(function(el){
+        el.onclick = function(){ applyThemeColor(el.getAttribute('data-tc')); openHomeBeauty('theme'); };
+      });
     }, 50);
   };
 })();
