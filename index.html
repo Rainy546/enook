@@ -1714,7 +1714,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-17v';
+const EENOK_BUILD = '2026-08-17w';
 function checkAppUpdate() {
   try {
     const prev = localStorage.getItem('eenook_build');
@@ -10810,10 +10810,101 @@ function exitPhone() {
   showPage('contacts');
   renderContacts();
 }
+
+// ========== 小手机公共引擎（角色数据主体 + App 注册表）==========
+// 对齐「小手机系统通用逻辑」：先选角色 → 统一上下文 → AI → 写入 phoneData[roleId][appId]
+const PHONE_APPS = {
+  wechat:  { id:'wechat',  name:'微信',   description:'聊天记录', icon:'💬' },
+  browser: { id:'browser', name:'浏览器', description:'浏览记录', icon:'🌐' },
+  notes:   { id:'notes',   name:'备忘录', description:'备忘笔记', icon:'📝' },
+  gallery: { id:'gallery', name:'相册',   description:'照片记录', icon:'🖼' },
+  wallet:  { id:'wallet',  name:'钱包',   description:'收支记录', icon:'💰' },
+  maps:    { id:'maps',    name:'地图',   description:'出行足迹', icon:'📍' },
+  settings:{ id:'settings',name:'设置',   description:'App 开关', icon:'⚙️' }
+};
+
+function ensurePhoneData(contactId) {
+  if (!state.phoneData || typeof state.phoneData !== 'object') state.phoneData = {};
+  if (!state.phoneData[contactId]) state.phoneData[contactId] = {};
+  return state.phoneData[contactId];
+}
+
+function buildPhoneRoleContext(contactId, currentAppId) {
+  const ch = (state.chars || []).find(c => c.id === contactId);
+  if (!ch) return '【错误】未找到角色';
+  const persona = [ch.realName, ch.nick, ch.gender, ch.persona, ch.setting].filter(Boolean).join('\n');
+  // 世界书
+  let wb = '';
+  try {
+    const books = (state.worldBooks || []).filter(b => b.enabled !== false);
+    wb = books.map(b => (b.name || '') + '：' + (b.content || '')).join('\n').slice(0, 3000);
+  } catch(e) {}
+  // 长期记忆
+  let mem = '';
+  try {
+    const chat = state.chats[contactId];
+    const long = (chat && chat.longMemory) || ch.longMemory || [];
+    mem = (Array.isArray(long) ? long : [long]).map(x => typeof x === 'string' ? x : (x.text || x.content || JSON.stringify(x))).join('\n').slice(0, 2500);
+  } catch(e) {}
+  // 近期聊天
+  let recent = '';
+  try {
+    const msgs = ((state.chats[contactId] || {}).messages || []).slice(-30);
+    recent = msgs.map(m => {
+      const who = m.from === 'user' ? 'User' : (ch.nick || ch.realName || 'Char');
+      const t = m.type === 'text' ? (m.content || '') : ('[' + (m.type || 'msg') + ']');
+      return who + '：' + t;
+    }).join('\n').slice(0, 3500);
+  } catch(e) {}
+  // 其他 App 快照
+  let snap = '';
+  try {
+    const pd = ensurePhoneData(contactId);
+    Object.keys(PHONE_APPS).forEach(aid => {
+      if (aid === currentAppId) return;
+      const data = pd[aid];
+      if (!data) return;
+      const brief = JSON.stringify(data).slice(0, 400);
+      snap += '【' + (PHONE_APPS[aid].name || aid) + '已有数据】\n' + brief + '\n';
+    });
+  } catch(e) {}
+  const now = new Date();
+  const localTime = now.getFullYear() + '年' + (now.getMonth()+1) + '月' + now.getDate() + '日 ' +
+    String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+  return (
+    '【角色人设】\n' + persona + '\n\n' +
+    '【世界书】\n' + (wb || '无') + '\n\n' +
+    '【长期记忆】\n' + (mem || '无') + '\n\n' +
+    '【近期聊天】\n' + (recent || '无') + '\n\n' +
+    '【其他 App 已有数据】\n' + (snap || '无') + '\n\n' +
+    '【当前设备时间】\n' + localTime
+  );
+}
+
+const PHONE_GLOBAL_RULES = `全局规则：
+1. 必须符合角色人设与世界书。
+2. 必须参考长期记忆与近期聊天。
+3. 不要把用户和角色当成同一个人。
+4. 可合理补全普通日常，不得无故制造重大剧情。
+5. 已明确发生或否定的事不能随意修改。
+6. 生成时间不得明显超出当前时间。
+7. 不同 App 之间尽量保持人物/地点/时间一致。
+8. 只返回合法 JSON，不要解释、不要 Markdown。`;
+
+function getPhoneAppData(contactId, appId) {
+  return ensurePhoneData(contactId)[appId] || null;
+}
+function setPhoneAppData(contactId, appId, data) {
+  ensurePhoneData(contactId)[appId] = data;
+  try { save(); } catch(e) {}
+}
+
 function openCharPhone(cid) {
   const ch = state.chars.find(c=>c.id===cid);
   if (!ch) return;
   state._phoneChar = cid;
+  state.currentPhoneContactId = cid;
+  try { ensurePhoneData(cid); } catch(e) {}
   if (!ch.phone) ch.phone = { notes: [], browser: [], apps: { wechat:true, browser:true, notes:true } };
   if (!ch.phone.apps) ch.phone.apps = { wechat:true, browser:true, notes:true };
   const _pd = state.theme && state.theme.mode === 'dark';
@@ -17885,37 +17976,22 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     if (!state.home.pages) state.home.pages = 2;
     if (state.home.page == null) state.home.page = 0;
     if (!state.home.dockApps) state.home.dockApps = ['settings','beauty','phone'];
-    if (!state.home.pageWidgets) state.home.pageWidgets = {};
+    if (!state.home.pageWidgets || typeof state.home.pageWidgets !== 'object') state.home.pageWidgets = {};
+    if (!Array.isArray(state.home.pageWidgets[0])) state.home.pageWidgets[0] = state.home.pageWidgets[0] || [];
+    if (!Array.isArray(state.home.pageWidgets[1])) state.home.pageWidgets[1] = state.home.pageWidgets[1] || [];
     if (!state.home.hiddenApps) state.home.hiddenApps = [];
     if (!state.home.appIcons) state.home.appIcons = {};
-    // 强制重置为照片墙（用户要求清空已上传组件）
-    
-  // 纠正被旧 gridTop 顶到底部的 app 坐标
-  if (!state.home._fixAppY17u && state.home.layout) {
-    state.home._fixAppY17u = 1;
-    var fixed = false;
+    if (!Array.isArray(state.home.extraWidgets)) state.home.extraWidgets = [];
+    // 固定用户桌面：绝不清空 pageWidgets / layout / appIcons
+    if (!state.home.layout || typeof state.home.layout !== 'object') state.home.layout = {};
+    // 仅钳制极端越界，保留用户拖拽结果
     Object.keys(state.home.layout).forEach(function(k){
       var L = state.home.layout[k];
-      if (L && L._user && typeof L.y === 'number' && L.y > 480) {
-        delete state.home.layout[k];
-        fixed = true;
-      }
+      if (!L || typeof L !== 'object') return;
+      if (typeof L.y === 'number' && L.y > 900) L.y = 420;
+      if (typeof L.x === 'number' && L.x > 420) L.x = 12;
+      if (typeof L.y === 'number' && L.y < -50) L.y = 8;
     });
-    if (fixed) { try { save(); } catch(e) {} }
-  }
-
-    if (!state.home._uiClean17t) {
-      state.home._uiClean17t = true;
-      state.home._widInit = true;
-      state.home._widReset17o = true;
-      // 原始 UI：去掉图一图二装饰小组件，空桌面
-      state.home.pageWidgets = { 0: [], 1: [] };
-      state.home.extraWidgets = [];
-      if (state.home.layout) delete state.home.layout.dock;
-      try { save(); } catch(e) {}
-    }
-    // 清理坏布局坐标
-    if (!state.home.layout || typeof state.home.layout !== 'object') state.home.layout = {};
   }
 
   window.renderHome = function() {
@@ -17979,7 +18055,7 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
       var custom = icons[a.id];
       var iconInner;
       if (custom) {
-        iconInner = '<img src="'+custom+'" draggable="false" onerror="this.style.display=\'none\';this.parentNode.querySelector(\'.fb\').style.display=\'flex\'" style="width:100%;height:100%;object-fit:cover;border-radius:inherit">'
+        iconInner = '<img src="'+custom+'" draggable="false" data-appid="'+a.id+'" onerror="this.style.display=\'none\';var fb=this.parentNode.querySelector(\'.fb\');if(fb)fb.style.display=\'flex\';try{if(state.home&&state.home.appIcons){delete state.home.appIcons[this.getAttribute(\'data-appid\')];}}catch(e){}" style="width:100%;height:100%;object-fit:cover;border-radius:inherit">'
           + '<span class="fb" style="display:none;width:100%;height:100%;align-items:center;justify-content:center">'+(typeof homeAppIconSvg==='function'?homeAppIconSvg(a.id):a.name.slice(0,1))+'</span>';
       } else {
         iconInner = (typeof homeAppIconSvg === 'function' ? homeAppIconSvg(a.id) : a.name.slice(0,2));
