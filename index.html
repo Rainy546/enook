@@ -1327,7 +1327,13 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 <style id="page-stack-fix">
 /* 页面互斥：同一时间只能看见一个 page */
-#phone { position: relative; isolation: isolate; }
+#phone {
+  position: relative !important;
+  isolation: isolate !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
 #phone > .page {
   display: none !important;
   position: absolute !important;
@@ -1335,10 +1341,11 @@ body.night .loc-addr { color: #a1a1a6 !important; }
   width: 100% !important; height: 100% !important;
   max-height: none !important;
   overflow: hidden !important;
-  z-index: 1 !important;
+  z-index: 0 !important;
   visibility: hidden !important;
   pointer-events: none !important;
   opacity: 0 !important;
+  transform: translateX(-120%) !important;
 }
 #phone > .page.active {
   display: flex !important;
@@ -1347,48 +1354,47 @@ body.night .loc-addr { color: #a1a1a6 !important; }
   pointer-events: auto !important;
   opacity: 1 !important;
   z-index: 10 !important;
-  background: #f5f5f7 !important;
+  transform: none !important;
 }
-#phone > #page-home.active {
-  background: transparent !important;
-  z-index: 5 !important;
+#phone > #page-home:not(.active),
+#phone > #page-home:not(.active) #homeInner,
+#phone > #page-home:not(.active) #homeDock,
+#phone > #page-home:not(.active) .home-widget,
+#phone > #page-home:not(.active) .home-app,
+#phone > #page-home:not(.active) .home-bottom-dock {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
 }
 #phone > #page-chat.active {
   z-index: 50 !important;
   background: #ededed !important;
 }
-#phone > #page-chats.active {
-  z-index: 40 !important;
-  background: #ededed !important;
+#phone > #page-chats.active,
+#phone > #page-contacts.active,
+#phone > #page-moments.active,
+#phone > #page-mine.active {
+  z-index: 30 !important;
+  background: #f5f5f7 !important;
 }
 #phone > #page-sub.active {
   z-index: 60 !important;
   background: #f5f5f7 !important;
-  display: flex !important;
-  opacity: 1 !important;
-  visibility: visible !important;
-  pointer-events: auto !important;
 }
-/* 微信底栏固定底部，避免移位 */
-#dock {
-  position: relative !important;
-  flex-shrink: 0 !important;
-  margin: 0 !important;
-  border-radius: 0 !important;
-  height: var(--dock-h, 56px) !important;
-  z-index: 30 !important;
+/* 主屏 dock 默认贴底，编辑拖动才改 top */
+.home-bottom-dock {
+  position: absolute !important;
+  left: 50% !important;
+  bottom: 16px !important;
+  top: auto !important;
+  transform: translateX(-50%) !important;
+  z-index: 12 !important;
 }
-#page-chats.active, #page-contacts.active, #page-moments.active, #page-mine.active {
-  padding-bottom: 0 !important;
+.home-bottom-dock.dock-dragged {
+  left: auto !important;
+  transform: none !important;
 }
-/* 主屏未激活时彻底挖空内部，防止绝对定位子元素“幽灵显示” */
-#page-home:not(.active) #homeInner,
-#page-home:not(.active) #homeBg {
-  display: none !important;
-}
-#page-chat .chat-header { flex-shrink: 0; background: #f7f7f7 !important; }
-#page-chat #msgArea { flex: 1; min-height: 0; background: #ededed !important; }
-#page-chat .input-bar { flex-shrink: 0; background: #f7f7f7 !important; }
 </style>
 
 <div id="phone">
@@ -1679,7 +1685,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-17m';
+const EENOK_BUILD = '2026-08-17n';
 function checkAppUpdate() {
   try {
     const prev = localStorage.getItem('eenook_build');
@@ -2742,7 +2748,7 @@ function openChat(id, isGroup) {
   applyChatStyle(id);
   renderMessages({ forceBottom: true });
   showPage('chat');
-  // 二次强制：防止其它逻辑把主屏又打开
+  // 二次强制：彻底藏主屏
   setTimeout(function() {
     showPage('chat');
     var home = document.getElementById('page-home');
@@ -2751,16 +2757,31 @@ function openChat(id, isGroup) {
       home.style.setProperty('display', 'none', 'important');
       home.style.setProperty('visibility', 'hidden', 'important');
       home.style.setProperty('opacity', '0', 'important');
+      home.style.setProperty('pointer-events', 'none', 'important');
+      home.style.setProperty('z-index', '0', 'important');
+      home.style.setProperty('transform', 'translateX(-120%)', 'important');
     }
+    ['homeInner','homeDock','homeBg'].forEach(function(id){
+      var el = document.getElementById(id);
+      if (el) { el.style.visibility = 'hidden'; el.style.pointerEvents = 'none'; }
+    });
     var page = document.getElementById('page-chat');
     if (page) {
       page.classList.add('active');
       page.style.setProperty('display', 'flex', 'important');
+      page.style.setProperty('flex-direction', 'column', 'important');
       page.style.setProperty('visibility', 'visible', 'important');
       page.style.setProperty('opacity', '1', 'important');
       page.style.setProperty('z-index', '50', 'important');
+      page.style.setProperty('position', 'absolute', 'important');
+      page.style.setProperty('inset', '0', 'important');
+      page.style.setProperty('width', '100%', 'important');
+      page.style.setProperty('height', '100%', 'important');
       page.style.setProperty('background', '#ededed', 'important');
+      page.style.setProperty('transform', 'none', 'important');
     }
+    var wxDock = document.getElementById('dock');
+    if (wxDock) wxDock.style.display = 'none';
     try { scrollMsgBottom(); } catch(e) {}
   }, 0);
   setTimeout(function(){ try { scrollMsgBottom(); } catch(e) {} }, 50);
@@ -7110,10 +7131,26 @@ function showPage(name) {
     if (on) {
       p.classList.add('active');
       p.style.setProperty('display', 'flex', 'important');
+      p.style.setProperty('flex-direction', 'column', 'important');
       p.style.setProperty('visibility', 'visible', 'important');
       p.style.setProperty('opacity', '1', 'important');
       p.style.setProperty('pointer-events', 'auto', 'important');
-      p.style.setProperty('z-index', name === 'chat' ? '50' : (name === 'sub' ? '60' : '10'), 'important');
+      p.style.setProperty('position', 'absolute', 'important');
+      p.style.setProperty('left', '0', 'important');
+      p.style.setProperty('right', '0', 'important');
+      p.style.setProperty('top', '0', 'important');
+      p.style.setProperty('bottom', '0', 'important');
+      p.style.setProperty('width', '100%', 'important');
+      p.style.setProperty('height', '100%', 'important');
+      p.style.setProperty('max-height', 'none', 'important');
+      p.style.setProperty('overflow', 'hidden', 'important');
+      p.style.setProperty('transform', 'none', 'important');
+      var z = 10;
+      if (name === 'chat') z = 50;
+      else if (name === 'sub') z = 60;
+      else if (name === 'home') z = 5;
+      p.style.setProperty('z-index', String(z), 'important');
+      if (name === 'chat') p.style.setProperty('background', '#ededed', 'important');
     } else {
       p.classList.remove('active');
       p.style.setProperty('display', 'none', 'important');
@@ -7121,15 +7158,44 @@ function showPage(name) {
       p.style.setProperty('opacity', '0', 'important');
       p.style.setProperty('pointer-events', 'none', 'important');
       p.style.setProperty('z-index', '0', 'important');
+      p.style.setProperty('transform', 'translateX(-120%)', 'important');
     }
   });
-  // 额外：非 home 时清空主屏交互
+  // 非主屏：彻底藏住主屏内部，防止透出
+  var home = document.getElementById('page-home');
+  var hi = document.getElementById('homeInner');
+  var hd = document.getElementById('homeDock');
   if (name !== 'home') {
-    var hi = document.getElementById('homeInner');
-    if (hi) hi.style.pointerEvents = 'none';
+    if (home) {
+      home.classList.remove('active');
+      home.style.setProperty('display', 'none', 'important');
+      home.style.setProperty('visibility', 'hidden', 'important');
+      home.style.setProperty('opacity', '0', 'important');
+      home.style.setProperty('pointer-events', 'none', 'important');
+      home.style.setProperty('z-index', '0', 'important');
+      home.style.setProperty('transform', 'translateX(-120%)', 'important');
+    }
+    if (hi) { hi.style.pointerEvents = 'none'; hi.style.visibility = 'hidden'; }
+    if (hd) { hd.style.visibility = 'hidden'; hd.style.pointerEvents = 'none'; }
   } else {
-    var hi2 = document.getElementById('homeInner');
-    if (hi2) hi2.style.pointerEvents = '';
+    if (hi) { hi.style.pointerEvents = ''; hi.style.visibility = ''; }
+    if (hd) { hd.style.visibility = ''; hd.style.pointerEvents = ''; }
+  }
+  // 微信底栏仅在微信四页显示
+  var dock = document.getElementById('dock');
+  if (dock) {
+    var wxPages = { chats:1, contacts:1, moments:1, mine:1 };
+    if (wxPages[name]) {
+      dock.style.display = 'flex';
+      dock.style.position = 'relative';
+      dock.style.bottom = '';
+      dock.style.top = '';
+      dock.style.left = '';
+      dock.style.right = '';
+      dock.style.transform = '';
+    } else {
+      dock.style.display = 'none';
+    }
   }
 }
 
@@ -10993,9 +11059,17 @@ function goHome() {
   const dock = document.getElementById('dock');
   if (dock) dock.style.display = 'none';
   const sub = document.getElementById('page-sub');
-  if (sub) { sub.style.display = 'none'; sub.classList.remove('active'); }
+  if (sub) {
+    sub.classList.remove('active');
+    sub.style.setProperty('display', 'none', 'important');
+  }
   state._subKind = null;
+  state._homeRoot = null;
   state._subStack = [];
+  ['homeInner','homeDock','homeBg'].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) { el.style.visibility = ''; el.style.pointerEvents = ''; }
+  });
   showPage('home');
   var hi = document.getElementById('homeInner');
   if (hi) hi.style.pointerEvents = '';
@@ -11321,8 +11395,12 @@ function renderHome() {
     return '<div class="hbd-item" data-dock="'+d.id+'" onclick="'+d.open+'"><div class="hbd-icon">'+dockIcon(d.id, fb)+'</div><div class="hbd-name">'+d.name+'</div></div>';
   }).join('');
 
+  const editModeDock = !!state.home.editMode;
   const dockPos = (state.home.layout && state.home.layout.dock) ? state.home.layout.dock : null;
-  const dockStyle = dockPos ? ('left:'+dockPos.x+'px;bottom:auto;top:'+dockPos.y+'px;transform:none') : '';
+  // 非编辑模式强制贴底，避免 dock 卡在半空
+  const dockStyle = (editModeDock && dockPos)
+    ? ('left:'+dockPos.x+'px;bottom:auto;top:'+dockPos.y+'px;transform:none')
+    : 'left:50%;bottom:16px;top:auto;transform:translateX(-50%)';
 
   inner.innerHTML =
     '<div class="home-time-widget" id="homeTimeWidget">' +
