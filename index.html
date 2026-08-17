@@ -1714,7 +1714,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-17w';
+const EENOK_BUILD = '2026-08-17x';
 function checkAppUpdate() {
   try {
     const prev = localStorage.getItem('eenook_build');
@@ -11721,6 +11721,12 @@ function editHomePolaroid() {
 function openChangelog() {
   const ver = (typeof EENOK_BUILD !== 'undefined') ? EENOK_BUILD : '';
   const logs = [
+    { v: '2026-08-17x', items: [
+      '倒数日：Days Matter 风格（全部 / 分类倒数本 + 悬浮 Dock）',
+      '三宫格照片墙可分别上传三张图',
+      'icity：广场日记卡片；Dock 增加日记；称号勋章装饰不可点',
+      '桌面布局不再自动清空；更新日志同步本版'
+    ]},
     { v: '2026-08-17a', items: [
       '锁屏：四位密码（默认 0000），可改密码与锁屏壁纸',
       'Galgame 图文：立绘透明底去黑框、可拖动；对话框图片自动适配',
@@ -12751,6 +12757,122 @@ function openIcityDiary(i) {
     if (backBtn) backBtn.onclick = function(){ openIcityApp('mine'); };
   } catch(e) {}
 }
+
+function openIcityDiaryList(filter) {
+  state._homeRoot = 'icity';
+  state._subKind = 'icity';
+  state._icityTab = 'diary';
+  ensureHomeState();
+  if (!state.icity.diaries) state.icity.diaries = [];
+  filter = filter || state._icityDiaryFilter || 'all';
+  state._icityDiaryFilter = filter;
+  const p = state.icity.profile || {};
+  const u = state.user || {};
+  const nick = p.nick || u.nick || '我';
+  const handle = p.id || u.id || 'user';
+  const av = p.avatar || u.avatar || (typeof defaultAvatar==='function'?defaultAvatar(nick):'');
+  let list = (state.icity.diaries || []).slice();
+  if (filter === 'public') list = list.filter(d => (d.vis === 'public' || !d.vis) && !d.archived);
+  else if (filter === 'friends') list = list.filter(d => d.vis === 'friends');
+  else if (filter === 'private') list = list.filter(d => d.vis === 'private');
+  else if (filter === 'archived') list = list.filter(d => d.vis === 'archived' || d.archived);
+  else list = list.filter(d => !d.deleted);
+  const weekNames = '日一二三四五六';
+  const rows = list.map((d) => {
+    const realIdx = state.icity.diaries.indexOf(d);
+    const dt = d.ts ? new Date(d.ts) : new Date();
+    const dateLine = (dt.getMonth()+1) + '月' + dt.getDate() + '日 · 星期' + weekNames[dt.getDay()] + ' ' + dt.getFullYear();
+    const timeStr = String(dt.getHours()).padStart(2,'0') + ':' + String(dt.getMinutes()).padStart(2,'0');
+    return '<div onclick="openIcityDiaryDetail(\'diary\','+realIdx+')" style="background:#2a2a2e;margin:0 0 1px;padding:14px 16px;cursor:pointer">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'
+      + '<div style="display:flex;align-items:center;gap:10px">'
+      + '<img src="'+av+'" style="width:36px;height:36px;border-radius:50%;object-fit:cover">'
+      + '<div><div style="font-size:14px;font-weight:600;color:#f0f0f0">'+escapeHtml(nick)+'</div>'
+      + '<div style="font-size:11px;color:#888">@'+escapeHtml(handle)+'</div></div></div>'
+      + '<div style="font-size:11px;color:#888;text-align:right">'+dateLine+'</div></div>'
+      + '<div style="font-size:15px;line-height:1.65;color:#e8e8e8;white-space:pre-wrap">'+escapeHtml(d.content||'')+'</div>'
+      + '<div style="display:flex;gap:16px;margin-top:12px;font-size:12px;color:#777"><span>♡ '+((d.likes||[]).length)+'</span><span>💬 '+((d.comments||[]).length)+'</span><span>'+timeStr+'</span></div></div>';
+  }).join('') || '<div style="padding:48px;text-align:center;color:#888">还没有日记</div>';
+  const tabs = [['all','全部'],['public','公开'],['friends','仅好友'],['private','私密'],['archived','已封存']];
+  const tabBar = tabs.map(function(t){
+    const on = filter===t[0];
+    return '<button type="button" onclick="openIcityDiaryList(\''+t[0]+'\')" style="flex-shrink:0;padding:6px 12px;border:none;border-radius:14px;font-size:12px;cursor:pointer;background:'+(on?'#5b8def':'transparent')+';color:'+(on?'#fff':'#ccc')+'">'+t[1]+'</button>';
+  }).join('') + '<button type="button" onclick="addIcityDiary()" style="flex-shrink:0;padding:6px 12px;border:none;border-radius:14px;font-size:12px;cursor:pointer;background:transparent;color:#ccc">补写</button>';
+  openSubPage('icity',
+    '<div style="display:flex;flex-direction:column;height:100%;background:#1c1c1e">'
+    + '<div style="padding:12px 16px;display:flex;align-items:center;gap:10px;background:#1c1c1e;flex-shrink:0">'
+    + '<span onclick="openIcityApp(\'square\')" style="font-size:20px;color:#fff;cursor:pointer;padding:4px">‹</span>'
+    + '<div style="flex:1;text-align:center;font-size:16px;font-weight:600;color:#f5f5f7">'+escapeHtml(nick)+' · 日记</div><span style="width:28px"></span></div>'
+    + '<div style="display:flex;gap:6px;padding:8px 12px;overflow-x:auto;flex-shrink:0">'+tabBar+'</div>'
+    + '<div style="flex:1;overflow-y:auto;padding-bottom:70px">'+rows+'</div>'
+    + '<div style="position:absolute;left:0;right:0;bottom:0;display:flex;border-top:1px solid #333;background:#1c1c1e;z-index:10">'
+    + '<button type="button" onclick="openIcityApp(\'square\')" style="flex:1;padding:12px;border:none;background:transparent;font-size:13px;color:#888">广场</button>'
+    + '<button type="button" onclick="openIcityDiaryList()" style="flex:1;padding:12px;border:none;background:transparent;font-size:13px;font-weight:700;color:#fff">日记</button>'
+    + '<button type="button" onclick="openIcityApp(\'mine\')" style="flex:1;padding:12px;border:none;background:transparent;font-size:13px;color:#888">我的</button>'
+    + '</div></div>', '', { replace: true });
+  state._homeDepth = 0;
+}
+function addIcityDiary() {
+  openModal('写日记',
+    '<div class="form-group"><label>内容</label><textarea id="idContent" style="min-height:120px" placeholder="今天想写点什么…"></textarea></div>'
+    + '<div class="form-group"><label>可见性</label><select id="idVis"><option value="public">公开</option><option value="friends">仅好友</option><option value="private">私密</option><option value="archived">封存</option></select></div>',
+    '<button class="btn btn-secondary" onclick="closeModal()">取消</button>'
+    + '<button class="btn btn-primary" onclick="(function(){var c=document.getElementById(\'idContent\').value.trim();if(!c){showToast(\'写点内容吧\');return;}if(!state.icity.diaries)state.icity.diaries=[];state.icity.diaries.unshift({content:c,vis:document.getElementById(\'idVis\').value,ts:Date.now(),likes:[],comments:[]});save();closeModal();openIcityDiaryList(state._icityDiaryFilter||\'all\');})()">发布</button>');
+}
+function openIcityDiaryDetail(kind, idx) {
+  var d, nick, handle, av;
+  var p = state.icity.profile || {};
+  var u = state.user || {};
+  if (kind === 'diary') {
+    d = (state.icity.diaries || [])[idx];
+    nick = p.nick || u.nick || '我';
+    handle = p.id || u.id || 'user';
+    av = p.avatar || u.avatar || '';
+  } else {
+    d = (state.icity.posts || [])[idx];
+    if (!d) return;
+    nick = d.nick || '匿名';
+    handle = d.id || d.handle || 'user';
+    av = d.avatar || '';
+  }
+  if (!d) return;
+  var dt = d.ts ? new Date(d.ts) : new Date();
+  var timeStr = dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0')+' '+String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0');
+  var comments = (d.comments || []).map(function(c){
+    return '<div style="padding:10px 0;border-bottom:1px solid #f0f0f0"><b style="font-size:13px">'+escapeHtml(c.nick||'用户')+'</b><div style="font-size:14px;margin-top:4px;color:#333">'+escapeHtml(c.text||c.content||'')+'</div></div>';
+  }).join('') || '<div style="padding:20px;color:#999;text-align:center;font-size:13px">暂无评论</div>';
+  openSubPage(nick + ' · 日记',
+    '<div style="display:flex;flex-direction:column;height:100%;background:#f5f5f5">'
+    + '<div style="flex:1;overflow-y:auto;padding:12px;padding-bottom:70px">'
+    + '<div style="background:#fff;border-radius:12px;padding:16px">'
+    + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><img src="'+av+'" style="width:40px;height:40px;border-radius:50%;object-fit:cover"><div><div style="font-weight:600;font-size:15px">'+escapeHtml(nick)+'</div><div style="font-size:12px;color:#999">@'+escapeHtml(handle)+'</div></div></div>'
+    + '<div style="font-size:15px;line-height:1.7;color:#222;white-space:pre-wrap">'+escapeHtml(d.content||'')+'</div>'
+    + '<div style="margin-top:14px;font-size:12px;color:#aaa">'+timeStr+'</div>'
+    + '<div style="display:flex;gap:20px;margin-top:14px;padding-top:12px;border-top:1px solid #f0f0f0;font-size:13px;color:#666"><span>♡ 喜欢</span><span>小纸条</span><span>存为图片</span></div></div>'
+    + '<div style="background:#fff;border-radius:12px;padding:12px 16px;margin-top:10px"><div style="font-size:13px;color:#999;margin-bottom:8px">评论</div>'+comments+'</div></div>'
+    + '<div style="position:absolute;left:0;right:0;bottom:0;display:flex;gap:8px;padding:10px 12px;background:#fff;border-top:1px solid #eee;z-index:10">'
+    + '<input id="icityDiaryCmt" placeholder="我要评论" style="flex:1;border:1px solid #e5e5e5;border-radius:20px;padding:10px 14px;font-size:14px;outline:none">'
+    + '<button type="button" onclick="sendIcityDiaryComment(\''+kind+'\','+idx+')" style="border:none;background:#4caf50;color:#fff;border-radius:20px;padding:10px 16px;font-size:14px;cursor:pointer">发送</button></div></div>');
+  state._homeDepth = 1;
+}
+function sendIcityDiaryComment(kind, idx) {
+  var input = document.getElementById('icityDiaryCmt');
+  var text = (input && input.value || '').trim();
+  if (!text) return;
+  var p = state.icity.profile || {};
+  var u = state.user || {};
+  var cmt = { nick: p.nick || u.nick || '我', text: text, ts: Date.now() };
+  if (kind === 'diary') {
+    if (!state.icity.diaries[idx].comments) state.icity.diaries[idx].comments = [];
+    state.icity.diaries[idx].comments.push(cmt);
+  } else {
+    if (!state.icity.posts[idx].comments) state.icity.posts[idx].comments = [];
+    state.icity.posts[idx].comments.push(cmt);
+  }
+  save();
+  openIcityDiaryDetail(kind, idx);
+}
+
 function openIcityApp(tab) {
   state._homeRoot = 'icity';
   state._subKind = 'icity';
@@ -12821,6 +12943,7 @@ function openIcityApp(tab) {
         </div>
         <div style="display:flex;border-top:1px solid #eee;background:#fff;flex-shrink:0">
           <button type="button" onclick="openIcityApp('square')" style="flex:1;padding:12px;border:none;background:#fff;font-size:13px">广场</button>
+          <button type="button" onclick="openIcityDiaryList()" style="flex:1;padding:12px;border:none;background:#fff;font-size:13px">日记</button>
           <button type="button" onclick="openIcityApp('mine')" style="flex:1;padding:12px;border:none;background:#fff;font-weight:700;font-size:13px">我的</button>
         </div>
       </div>
@@ -12832,31 +12955,47 @@ function openIcityApp(tab) {
   const posts = state.icity.posts || [];
   const body = posts.map((p,i) => {
     const likes = (p.likes||[]).join('、') || '';
-    return `<div style="margin:10px 12px;padding:14px;border-radius:16px;border:1px solid var(--line);background:var(--card)">
-      <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
-        <img src="${p.avatar||defaultAvatar(p.nick||'?')}" style="width:40px;height:40px;border-radius:50%;object-fit:cover">
-        <div style="flex:1"><b style="font-size:15px">${escapeHtml(p.nick||'匿名')}</b>
-          <div class="text-sub" style="font-size:11px">${p.ts?new Date(p.ts).toLocaleString():''}</div></div>
-      </div>
-      <div style="font-size:15px;line-height:1.55;margin-bottom:8px;white-space:pre-wrap">${escapeHtml(p.content||'')}</div>
-      ${(p.tags&&p.tags.length)?'<div style="margin-bottom:8px">'+p.tags.map(t=>'<span style="display:inline-block;padding:2px 8px;margin:2px;border-radius:10px;background:rgba(0,0,0,.05);font-size:12px">#'+escapeHtml(t)+'</span>').join('')+'</div>':''}
-      <div style="display:flex;gap:16px;font-size:13px;color:var(--sub)">
-        <span onclick="icityLike(0,${i})" style="cursor:pointer">♡ ${(p.likes||[]).length}${likes?(' · '+escapeHtml(likes)):''}</span>
-        <span onclick="icityComment(0,${i})" style="cursor:pointer">💬 ${(p.comments||[]).length}</span>
-        <span onclick="icityForward(0,${i})" style="cursor:pointer">↗ 转发</span>
+    const av = p.avatar || defaultAvatar(p.nick || '?');
+    const dt = p.ts ? new Date(p.ts) : null;
+    const dateStr = dt ? (dt.getFullYear() + '') : '';
+    const timeStr = dt ? (String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0')) : '';
+    const handle = p.id || p.handle || (p.nick || 'user');
+    return `<div onclick="openIcityDiaryDetail('post',${i})" style="margin:0 0 10px;background:#fff;border-radius:0;padding:14px 16px;cursor:pointer">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <img src="${av}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;flex-shrink:0">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+              <div style="font-size:15px;font-weight:600;color:#222">${escapeHtml(p.nick||'匿名')}</div>
+              <div style="font-size:12px;color:#999">@${escapeHtml(handle)}</div>
+            </div>
+            <div style="font-size:12px;color:#bbb;text-align:right">${dateStr}<div style="font-size:11px">${timeStr}</div></div>
+          </div>
+          <div style="font-size:15px;line-height:1.65;margin-top:10px;color:#333;white-space:pre-wrap">${escapeHtml(p.content||'')}</div>
+          <div style="display:flex;gap:18px;margin-top:12px;font-size:13px;color:#999" onclick="event.stopPropagation()">
+            <span onclick="icityLike(0,${i})" style="cursor:pointer">♡ ${(p.likes||[]).length}</span>
+            <span onclick="icityComment(0,${i})" style="cursor:pointer">💬 ${(p.comments||[]).length}</span>
+            <span onclick="icityForward(0,${i})" style="cursor:pointer">↗</span>
+          </div>
+        </div>
       </div>
     </div>`;
   }).join('') || '<div class="empty" style="padding:48px">还没有内容</div>';
   openSubPage('icity', `
-    <div style="display:flex;flex-direction:column;height:100%">
-      <div style="display:flex;border-bottom:1px solid var(--line);background:var(--card);flex-shrink:0">
-        <button type="button" onclick="openIcityApp('square')" style="flex:1;padding:12px;border:none;background:transparent;font-weight:700">广场</button>
-        <button type="button" onclick="openIcityApp('mine')" style="flex:1;padding:12px;border:none;background:transparent">我的</button>
-        <button type="button" onclick="icityGenOrPost('square')" style="padding:12px 16px;border:none;background:transparent;font-size:18px">○</button>
+    <div style="display:flex;flex-direction:column;height:100%;background:#f0f0f0">
+      <div style="padding:14px 16px 8px;background:#f0f0f0;flex-shrink:0">
+        <div style="font-size:22px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px">icity<span style="font-weight:400;color:#888;font-size:16px"> · 广场</span></div>
       </div>
-      <div style="flex:1;overflow-y:auto">${body}</div>
+      <div style="flex:1;overflow-y:auto;padding-bottom:70px">${body}</div>
+      <div style="position:absolute;left:0;right:0;bottom:0;display:flex;border-top:1px solid #e5e5e5;background:#fff;flex-shrink:0;z-index:10">
+        <button type="button" onclick="openIcityApp('square')" style="flex:1;padding:12px;border:none;background:#fff;font-weight:700;font-size:13px;color:#1a1a1a">广场</button>
+        <button type="button" onclick="openIcityDiaryList()" style="flex:1;padding:12px;border:none;background:#fff;font-size:13px;color:#666">日记</button>
+        <button type="button" onclick="openIcityApp('mine')" style="flex:1;padding:12px;border:none;background:#fff;font-size:13px;color:#666">我的</button>
+        <button type="button" onclick="icityGenOrPost('square')" style="padding:12px 14px;border:none;background:#fff;font-size:16px;color:#4a90e2">○</button>
+      </div>
     </div>
   `, '', { replace: true });
+
   state._subKind = 'homeApp';
   state._homeDepth = 0;
 }
@@ -13985,36 +14124,253 @@ function igSwitchAccount() { showToast('当前账号'); }
 function igFilterDm(q) {}
 function igViewStory() { showToast('快拍'); }
 
-function openCountdownApp() {
+function openCountdownApp(tab) {
   state._homeRoot = 'countdown';
   state._subKind = 'countdown';
   ensureHomeState();
+  if (!state.countdown) state.countdown = [];
+  if (!state.countdownBooks) state.countdownBooks = [
+    { id: 'life', name: '生活', color: '#c4a574' },
+    { id: 'work', name: '工作', color: '#5b8def' },
+    { id: 'anni', name: '纪念日', color: '#e85d5d' }
+  ];
+  tab = tab || state._cdTab || 'all';
+  state._cdTab = tab;
   const list = state.countdown || [];
   const now = Date.now();
+  const dayMs = 86400000;
+  const weekNames = '日一二三四五六';
+
+  function calcDays(dateStr) {
+    const t = new Date(dateStr + 'T00:00:00').getTime();
+    if (isNaN(t)) return null;
+    return Math.ceil((t - new Date(new Date().toDateString()).getTime()) / dayMs);
+  }
+  function weekLabel(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00');
+    if (isNaN(d.getTime())) return '';
+    return d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate() + ' 星期' + weekNames[d.getDay()];
+  }
+
+  // 顶栏
+  const topBar = `
+    <div style="background:#4a90e2;color:#fff;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span onclick="goHome()" style="font-size:20px;cursor:pointer;padding:4px 6px">‹</span>
+        <span style="font-size:17px;font-weight:600">${tab==='cat'?'倒数本':'Days Matter · 倒数日'}</span>
+      </div>
+      <div style="display:flex;gap:14px;align-items:center">
+        ${tab==='all'?'<span onclick="state._cdTab=\'cat\';openCountdownApp(\'cat\')" style="font-size:18px;cursor:pointer">▦</span>':''}
+        <span onclick="addCountdown()" style="font-size:22px;cursor:pointer;line-height:1">＋</span>
+      </div>
+    </div>`;
+
+  let body = '';
+  if (tab === 'cat') {
+    // 分类界面：倒数本卡片 + 分类列表
+    const books = state.countdownBooks || [];
+    const bookCards = books.map(b => {
+      const cnt = list.filter(d => (d.book || d.cat || 'life') === b.id && !d.archived).length;
+      return `<div onclick="state._cdFilter='${b.id}';state._cdTab='all';openCountdownApp('all')" style="width:72px;flex-shrink:0;cursor:pointer">
+        <div style="height:90px;border-radius:10px;background:${b.color};color:#fff;padding:10px 8px;display:flex;flex-direction:column;justify-content:flex-end;box-shadow:0 4px 12px rgba(0,0,0,.12);position:relative;overflow:hidden">
+          <div style="font-size:13px;font-weight:600">${escapeHtml(b.name)}</div>
+          <div style="font-size:11px;opacity:.85;margin-top:2px">${cnt}</div>
+        </div>
+      </div>`;
+    }).join('');
+    const cats = [
+      { id: '', name: '全部', icon: '🌐', count: list.filter(d=>!d.archived).length },
+      { id: 'life', name: '生活', icon: '📕', count: list.filter(d=>(d.book||d.cat||'life')==='life'&&!d.archived).length },
+      { id: 'work', name: '工作', icon: '📘', count: list.filter(d=>(d.book||d.cat)==='work'&&!d.archived).length },
+      { id: 'anni', name: '纪念日', icon: '💕', count: list.filter(d=>(d.book||d.cat)==='anni'&&!d.archived).length }
+    ];
+    // 每个分类右侧预览最近一条
+    const catRows = cats.map(c => {
+      const items = list.filter(d => !d.archived && (c.id==='' || (d.book||d.cat||'life')===c.id));
+      let preview = '';
+      if (items.length) {
+        const sorted = items.slice().sort((a,b) => Math.abs(calcDays(a.date)||9999) - Math.abs(calcDays(b.date)||9999));
+        const top = sorted[0];
+        const days = calcDays(top.date);
+        if (days != null) {
+          preview = days >= 0 ? (escapeHtml(top.title||'') + '还有 ' + days + ' 天') : (escapeHtml(top.title||'') + '已过 ' + (-days) + ' 天');
+        }
+      }
+      return `<div onclick="state._cdFilter='${c.id}';state._cdTab='all';openCountdownApp('all')" style="display:flex;align-items:center;padding:14px 16px;border-bottom:1px solid #f0f0f0;background:#fff;cursor:pointer">
+        <span style="font-size:20px;margin-right:12px">${c.icon}</span>
+        <div style="flex:1;font-size:15px;color:#333">${c.name} <span style="color:#999;font-size:13px">${c.count}</span></div>
+        <div style="font-size:12px;color:#999;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${preview}</div>
+      </div>`;
+    }).join('');
+
+    body = `
+      <div style="background:#fff;padding:14px 12px 16px;border-bottom:8px solid #f2f2f2">
+        <div style="display:flex;gap:12px;overflow-x:auto;padding-bottom:4px">
+          <div onclick="addCountdownBook()" style="width:72px;flex-shrink:0;height:90px;border-radius:10px;background:#f5f5f5;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#4a90e2;cursor:pointer;border:1px dashed #ccc">
+            <div style="width:28px;height:28px;border-radius:50%;background:#4caf50;color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;margin-bottom:6px">＋</div>
+            <div style="font-size:11px;color:#666;text-align:center">添加<br>新倒数本</div>
+          </div>
+          ${bookCards}
+        </div>
+      </div>
+      <div style="background:#fff">${catRows}</div>
+      <div style="display:flex;background:#fff;margin-top:8px;border-top:1px solid #eee">
+        <div onclick="openCdCalculator()" style="flex:1;padding:16px;text-align:center;border-right:1px solid #f0f0f0;cursor:pointer">
+          <div style="font-size:20px;margin-bottom:4px">加减</div>
+          <div style="font-size:13px;color:#666">日期计算器</div>
+        </div>
+        <div onclick="openCdMilestones()" style="flex:1;padding:16px;text-align:center;cursor:pointer">
+          <div style="font-size:20px;margin-bottom:4px">★</div>
+          <div style="font-size:13px;color:#666">里程碑</div>
+        </div>
+      </div>`;
+  } else {
+    // 全部列表
+    let filter = state._cdFilter || '';
+    let items = list.filter(d => !d.archived);
+    if (filter) items = items.filter(d => (d.book || d.cat || 'life') === filter);
+    // pin first / sort by abs days
+    items = items.slice().sort((a, b) => {
+      if (a.pinned && !b.pinned) return -1;
+      if (!a.pinned && b.pinned) return 1;
+      return (calcDays(a.date) ?? 99999) - (calcDays(b.date) ?? 99999);
+    });
+    // header feature: first future or pinned
+    const feature = items.find(d => (calcDays(d.date) ?? -1) >= 0) || items[0];
+    let head = '';
+    if (feature) {
+      const days = calcDays(feature.date);
+      const future = days != null && days >= 0;
+      head = `<div style="background:#fff;padding:20px 18px 16px;border-bottom:8px solid #f2f2f2">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div>
+            <div style="font-size:16px;font-weight:600;color:#222">${escapeHtml(feature.title||'')} ${future?'还有':'已经'}</div>
+            <div style="font-size:12px;color:#999;margin-top:6px">目标日: ${weekLabel(feature.date)}</div>
+          </div>
+          <div style="text-align:right">
+            <span style="font-size:42px;font-weight:700;color:#1a1a1a;line-height:1">${days != null ? Math.abs(days) : '—'}</span>
+            <span style="display:inline-block;background:#e85d5d;color:#fff;font-size:10px;padding:2px 6px;border-radius:4px;margin-left:4px;vertical-align:super">Days</span>
+          </div>
+        </div>
+      </div>`;
+    }
+    const rows = items.map((d, idx) => {
+      const days = calcDays(d.date);
+      const future = days != null && days >= 0;
+      const color = future ? '#4a90e2' : '#e89a3c';
+      const realIdx = list.indexOf(d);
+      return `<div onclick="editCountdown(${realIdx})" style="display:flex;align-items:center;background:#fff;border-bottom:1px solid #f0f0f0;cursor:pointer">
+        <div style="flex:1;padding:14px 16px;font-size:15px;color:#333">${escapeHtml(d.title||'')} ${future?'还有':'已经'}</div>
+        <div style="display:flex;align-items:stretch">
+          <div style="background:${color};color:#fff;min-width:56px;padding:12px 10px;text-align:center;font-size:20px;font-weight:600">${days != null ? Math.abs(days) : '—'}</div>
+          <div style="background:${color};color:#fff;padding:12px 8px;font-size:12px;display:flex;align-items:center;opacity:.95">天</div>
+        </div>
+      </div>`;
+    }).join('') || '<div class="empty" style="padding:40px;text-align:center;color:#999">还没有倒数日<br>点右上角 ＋ 添加</div>';
+    body = head + `<div>${rows}</div>`;
+  }
+
+  const dock = `
+    <div style="position:absolute;left:16px;right:16px;bottom:16px;height:52px;border-radius:26px;background:rgba(255,255,255,.92);backdrop-filter:blur(12px);box-shadow:0 4px 20px rgba(0,0,0,.1);display:flex;z-index:20;overflow:hidden">
+      <button type="button" onclick="state._cdFilter='';openCountdownApp('all')" style="flex:1;border:none;background:${tab==='all'?'rgba(74,144,226,.12)':'transparent'};color:${tab==='all'?'#4a90e2':'#666'};font-size:14px;font-weight:${tab==='all'?'600':'400'};cursor:pointer">全部</button>
+      <button type="button" onclick="openCountdownApp('cat')" style="flex:1;border:none;background:${tab==='cat'?'rgba(74,144,226,.12)':'transparent'};color:${tab==='cat'?'#4a90e2':'#666'};font-size:14px;font-weight:${tab==='cat'?'600':'400'};cursor:pointer">分类</button>
+    </div>`;
+
   openSubPage('倒数日', `
-    <div style="padding:12px">
-      <button class="btn btn-primary" style="width:100%;margin-bottom:12px" onclick="addCountdown()">＋ 添加</button>
-      ${list.map((d,i)=>{
-        const t = new Date(d.date).getTime();
-        const days = Math.ceil((t-now)/86400000);
-        const label = days>0?('还有 '+days+' 天'):(days===0?'就是今天':'已过 '+(-days)+' 天');
-        return `<div style="padding:14px;border-radius:14px;border:1px solid var(--line);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
-          <div><div style="font-weight:600">${escapeHtml(d.title||'')}</div><div class="text-sub">${d.date}</div></div>
-          <div style="text-align:right"><div style="font-size:18px;font-weight:600;color:#e89">${label}</div>
-          <span onclick="state.countdown.splice(${i},1);save();openCountdownApp()" style="font-size:12px;color:var(--danger);cursor:pointer">删除</span></div>
-        </div>`;
-      }).join('') || '<div class="empty">添加重要日子吧</div>'}
+    <div style="display:flex;flex-direction:column;height:100%;background:#f2f2f2;position:relative">
+      ${topBar}
+      <div style="flex:1;overflow-y:auto;padding-bottom:80px">${body}</div>
+      ${dock}
     </div>
-  `);
-  state._subKind = 'homeApp';
+  `, '', { replace: true });
+  state._subKind = 'countdown';
+  state._homeDepth = 0;
 }
+
 function addCountdown() {
+  const books = state.countdownBooks || [];
+  const opts = books.map(b => `<option value="${b.id}">${escapeHtml(b.name)}</option>`).join('');
   openModal('添加倒数日', `
-    <div class="form-group"><label>标题</label><input id="cdTitle"></div>
-    <div class="form-group"><label>日期</label><input id="cdDate" type="date"></div>
+    <div class="form-group"><label>标题</label><input id="cdTitle" placeholder="例如：高考倒计时"></div>
+    <div class="form-group"><label>目标日期</label><input id="cdDate" type="date"></div>
+    <div class="form-group"><label>倒数本</label><select id="cdBook">${opts}</select></div>
   `, `<button class="btn btn-secondary" onclick="closeModal()">取消</button>
-      <button class="btn btn-primary" onclick="state.countdown=state.countdown||[];state.countdown.push({title:document.getElementById('cdTitle').value,date:document.getElementById('cdDate').value});save();closeModal();openCountdownApp()">保存</button>`);
+      <button class="btn btn-primary" onclick="(function(){
+        var t=document.getElementById('cdTitle').value.trim();
+        var d=document.getElementById('cdDate').value;
+        var b=document.getElementById('cdBook').value;
+        if(!t||!d){showToast('请填写标题和日期');return;}
+        state.countdown=state.countdown||[];
+        state.countdown.push({title:t,date:d,book:b,pinned:false,archived:false});
+        save();closeModal();openCountdownApp(state._cdTab||'all');
+      })()">保存</button>`);
 }
+
+function editCountdown(i) {
+  const d = (state.countdown || [])[i];
+  if (!d) return;
+  const books = state.countdownBooks || [];
+  const opts = books.map(b => `<option value="${b.id}" ${(d.book||d.cat||'life')===b.id?'selected':''}>${escapeHtml(b.name)}</option>`).join('');
+  openModal('编辑倒数日', `
+    <div class="form-group"><label>标题</label><input id="cdTitle" value="${escapeHtml(d.title||'')}"></div>
+    <div class="form-group"><label>目标日期</label><input id="cdDate" type="date" value="${d.date||''}"></div>
+    <div class="form-group"><label>倒数本</label><select id="cdBook">${opts}</select></div>
+    <label style="display:flex;gap:8px;align-items:center;margin:8px 0"><input type="checkbox" id="cdPin" ${d.pinned?'checked':''}> 置顶</label>
+  `, `<button class="btn btn-danger" onclick="state.countdown.splice(${i},1);save();closeModal();openCountdownApp(state._cdTab||'all')">删除</button>
+      <button class="btn btn-secondary" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" onclick="(function(){
+        var x=state.countdown[${i}];if(!x)return;
+        x.title=document.getElementById('cdTitle').value.trim();
+        x.date=document.getElementById('cdDate').value;
+        x.book=document.getElementById('cdBook').value;
+        x.pinned=document.getElementById('cdPin').checked;
+        save();closeModal();openCountdownApp(state._cdTab||'all');
+      })()">保存</button>`);
+}
+
+function addCountdownBook() {
+  openModal('新建倒数本', `
+    <div class="form-group"><label>名称</label><input id="cdbName" placeholder="例如：学习"></div>
+    <div class="form-group"><label>颜色</label><input id="cdbColor" type="color" value="#7ec8c8"></div>
+  `, `<button class="btn btn-secondary" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" onclick="(function(){
+        var n=document.getElementById('cdbName').value.trim();if(!n){showToast('请输入名称');return;}
+        state.countdownBooks=state.countdownBooks||[];
+        state.countdownBooks.push({id:'b'+Date.now(),name:n,color:document.getElementById('cdbColor').value||'#7ec8c8'});
+        save();closeModal();openCountdownApp('cat');
+      })()">保存</button>`);
+}
+
+function openCdCalculator() {
+  openModal('日期计算器', `
+    <div class="form-group"><label>起始日期</label><input id="cdcA" type="date"></div>
+    <div class="form-group"><label>结束日期</label><input id="cdcB" type="date"></div>
+    <div id="cdcRes" style="margin-top:12px;font-size:15px;color:#4a90e2;text-align:center"></div>
+  `, `<button class="btn btn-secondary" onclick="closeModal()">关闭</button>
+      <button class="btn btn-primary" onclick="(function(){
+        var a=new Date(document.getElementById('cdcA').value+'T00:00:00');
+        var b=new Date(document.getElementById('cdcB').value+'T00:00:00');
+        if(isNaN(a)||isNaN(b)){showToast('请选择日期');return;}
+        var days=Math.round((b-a)/86400000);
+        document.getElementById('cdcRes').textContent = days>=0 ? ('相隔 '+days+' 天') : ('相差 '+(-days)+' 天');
+      })()">计算</button>`);
+}
+
+function openCdMilestones() {
+  const list = (state.countdown || []).filter(d => !d.archived);
+  const now = new Date(new Date().toDateString()).getTime();
+  const html = list.map(d => {
+    const t = new Date(d.date + 'T00:00:00').getTime();
+    const days = Math.ceil((t - now) / 86400000);
+    if (days > 0) return '';
+    const passed = -days;
+    const marks = [100, 200, 365, 500, 1000, 2000].filter(m => passed >= m);
+    if (!marks.length) return '';
+    return `<div style="padding:12px;border-bottom:1px solid #eee"><b>${escapeHtml(d.title||'')}</b><div class="text-sub">已过 ${passed} 天 · 里程碑: ${marks.join('、')} 天</div></div>`;
+  }).filter(Boolean).join('') || '<div class="empty">暂无里程碑</div>';
+  openModal('里程碑', html, `<button class="btn btn-primary" onclick="closeModal()">关闭</button>`);
+}
+
 
 /* —— galgame 瀑布流 —— */
 
@@ -18096,7 +18452,7 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
         var imgs = w.imgs || (w.img ? [w.img] : []);
         var cells = '';
         for (var ci=0;ci<3;ci++) {
-          cells += '<div style="flex:1;background:#eef3f4;overflow:hidden;min-width:0">'+(imgs[ci]?'<img src="'+imgs[ci]+'" style="width:100%;height:100%;object-fit:cover" draggable="false">':'')+'</div>';
+          cells += '<div class="pw3-cell" data-widx="'+wi+'" data-cell="'+ci+'" style="flex:1;background:#eef3f4;overflow:hidden;min-width:0;cursor:pointer">'+(imgs[ci]?'<img src="'+imgs[ci]+'" style="width:100%;height:100%;object-fit:cover;pointer-events:none" draggable="false">':'<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#9ab;font-size:14px;pointer-events:none">+</div>')+'</div>';
         }
         inner = '<div style="width:100%;height:100%;display:flex;gap:3px;border-radius:14px;overflow:hidden">'+cells+'</div>';
         return '<div class="home-widget" data-widx="'+wi+'" data-wtype="photowall3" style="'+base+'overflow:hidden">'+inner+del+'</div>';
@@ -18355,6 +18711,20 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
         list.splice(wi, 1);
         state.home.pageWidgets[page] = list;
         save(); renderHome();
+      };
+    });
+
+    inner.querySelectorAll('.pw3-cell').forEach(function(el) {
+      el.onclick = function(e) {
+        e.stopPropagation();
+        var wi = +el.dataset.widx;
+        var ci = +el.dataset.cell;
+        state._widgetUploadPage = page;
+        state._widgetFixedSize = true;
+        state._pw3Cell = ci;
+        state.fileTarget = 'homeWidget_'+page+'_'+wi;
+        var fi = document.getElementById('fileInput');
+        if (fi) { fi.accept = 'image/*'; fi.value = ''; fi.click(); }
       };
     });
 
