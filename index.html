@@ -1324,6 +1324,61 @@ body.night .loc-addr { color: #a1a1a6 !important; }
   <div class="lock-pad" id="lockPad"></div>
 </div>
 
+
+<style id="page-stack-fix">
+/* 页面互斥：同一时间只能看见一个 page */
+#phone { position: relative; isolation: isolate; }
+#phone > .page {
+  display: none !important;
+  position: absolute !important;
+  left: 0 !important; right: 0 !important; top: 0 !important; bottom: 0 !important;
+  width: 100% !important; height: 100% !important;
+  max-height: none !important;
+  overflow: hidden !important;
+  z-index: 1 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+}
+#phone > .page.active {
+  display: flex !important;
+  flex-direction: column !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  opacity: 1 !important;
+  z-index: 10 !important;
+  background: #f5f5f7 !important;
+}
+#phone > #page-home.active {
+  background: transparent !important;
+  z-index: 5 !important;
+}
+#phone > #page-chat.active {
+  z-index: 50 !important;
+  background: #ededed !important;
+}
+#phone > #page-chats.active {
+  z-index: 40 !important;
+  background: #ededed !important;
+}
+#phone > #page-sub.active {
+  z-index: 60 !important;
+  background: #f5f5f7 !important;
+  display: flex !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
+/* 主屏未激活时彻底挖空内部，防止绝对定位子元素“幽灵显示” */
+#page-home:not(.active) #homeInner,
+#page-home:not(.active) #homeBg {
+  display: none !important;
+}
+#page-chat .chat-header { flex-shrink: 0; background: #f7f7f7 !important; }
+#page-chat #msgArea { flex: 1; min-height: 0; background: #ededed !important; }
+#page-chat .input-bar { flex-shrink: 0; background: #f7f7f7 !important; }
+</style>
+
 <div id="phone">
   <button class="fs-btn" style="display:none" onclick="toggleFullscreen()" title="全屏">
     <span class="icon" id="fsIcon">
@@ -1612,7 +1667,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-17i';
+const EENOK_BUILD = '2026-08-17j';
 function checkAppUpdate() {
   try {
     const prev = localStorage.getItem('eenook_build');
@@ -2585,30 +2640,8 @@ function closeSubPage() {
 }
 
 function bindChatKeyboardFix() {
-  if (window._vvChatBound) return;
-  window._vvChatBound = true;
-  const vv = window.visualViewport;
-  if (!vv) return;
-  const fullH = window.innerHeight;
-  const apply = function() {
-    const page = document.getElementById('page-chat');
-    if (!page || !page.classList.contains('active')) return;
-    const h = vv.height;
-    // 仅当键盘明显顶起（高度少 120px+）时才收缩，否则保持全屏，避免半屏露主屏
-    if (h < fullH - 120) {
-      page.style.height = h + 'px';
-      page.style.maxHeight = h + 'px';
-      page.style.top = (vv.offsetTop || 0) + 'px';
-    } else {
-      page.style.height = '';
-      page.style.maxHeight = '';
-      page.style.top = '0';
-    }
-    const area = document.getElementById('msgArea');
-    if (area) try { scrollMsgBottom(); } catch(e) {}
-  };
-  vv.addEventListener('resize', apply);
-  vv.addEventListener('scroll', apply);
+  // 已禁用：修改 page 高度会导致半屏、主屏透出
+  return;
 }
 function openChat(id, isGroup) {
   try { bindChatKeyboardFix(); } catch(e) {}
@@ -2657,28 +2690,34 @@ function openChat(id, isGroup) {
   applyChatStyle(id);
   renderMessages({ forceBottom: true });
   showPage('chat');
-  // 确保聊天页盖住一切
-  try {
-    const page = document.getElementById('page-chat');
-    if (page) {
-      page.style.display = 'flex';
-      page.style.visibility = 'visible';
-      page.style.position = 'absolute';
-      page.style.inset = '0';
-      page.style.height = '';
-      page.style.maxHeight = '';
-      page.style.zIndex = '40';
-      page.style.background = '#ededed';
+  // 二次强制：防止其它逻辑把主屏又打开
+  setTimeout(function() {
+    showPage('chat');
+    var home = document.getElementById('page-home');
+    if (home) {
+      home.classList.remove('active');
+      home.style.setProperty('display', 'none', 'important');
+      home.style.setProperty('visibility', 'hidden', 'important');
+      home.style.setProperty('opacity', '0', 'important');
     }
-    const home = document.getElementById('page-home');
-    if (home) { home.classList.remove('active'); home.style.display = 'none'; }
-  } catch(e) {}
-  setTimeout(function(){ try { scrollMsgBottom(); } catch(e) {} }, 30);
-  setTimeout(function(){ try { scrollMsgBottom(); } catch(e) {} }, 120);
-  document.getElementById('dock').style.display = 'none';
-  document.getElementById('funcPanel').classList.remove('show');
-  document.getElementById('emojiPanel').classList.remove('show');
-  const sub = document.getElementById('page-sub');
+    var page = document.getElementById('page-chat');
+    if (page) {
+      page.classList.add('active');
+      page.style.setProperty('display', 'flex', 'important');
+      page.style.setProperty('visibility', 'visible', 'important');
+      page.style.setProperty('opacity', '1', 'important');
+      page.style.setProperty('z-index', '50', 'important');
+      page.style.setProperty('background', '#ededed', 'important');
+    }
+    try { scrollMsgBottom(); } catch(e) {}
+  }, 0);
+  setTimeout(function(){ try { scrollMsgBottom(); } catch(e) {} }, 50);
+  setTimeout(function(){ try { scrollMsgBottom(); } catch(e) {} }, 150);
+  var dock = document.getElementById('dock');
+  if (dock) dock.style.display = 'none';
+  var fp = document.getElementById('funcPanel'); if (fp) fp.classList.remove('show');
+  var ep = document.getElementById('emojiPanel'); if (ep) ep.classList.remove('show');
+  var sub = document.getElementById('page-sub');
   if (sub) { sub.style.display = 'none'; sub.classList.remove('active'); }
 }
 
@@ -6985,46 +7024,32 @@ function closeAllModals() {
   document.getElementById('modalMask').classList.remove('show');
 }
 function showPage(name) {
-  document.querySelectorAll('.page').forEach(function(p) {
-    p.classList.remove('active');
-    // 硬隐藏，避免透明叠层
-    if (p.id !== 'page-' + name) {
-      p.style.display = 'none';
-      p.style.visibility = 'hidden';
-      p.style.pointerEvents = 'none';
-      p.style.height = '';
-      p.style.maxHeight = '';
+  var target = 'page-' + name;
+  document.querySelectorAll('#phone > .page').forEach(function(p) {
+    var on = (p.id === target);
+    if (on) {
+      p.classList.add('active');
+      p.style.setProperty('display', 'flex', 'important');
+      p.style.setProperty('visibility', 'visible', 'important');
+      p.style.setProperty('opacity', '1', 'important');
+      p.style.setProperty('pointer-events', 'auto', 'important');
+      p.style.setProperty('z-index', name === 'chat' ? '50' : (name === 'sub' ? '60' : '10'), 'important');
+    } else {
+      p.classList.remove('active');
+      p.style.setProperty('display', 'none', 'important');
+      p.style.setProperty('visibility', 'hidden', 'important');
+      p.style.setProperty('opacity', '0', 'important');
+      p.style.setProperty('pointer-events', 'none', 'important');
+      p.style.setProperty('z-index', '0', 'important');
     }
   });
-  const sub = document.getElementById('page-sub');
-  if (sub && name !== 'sub') {
-    sub.classList.remove('active');
-    sub.style.display = 'none';
-  }
-  const el = document.getElementById('page-' + name);
-  if (el) {
-    el.classList.add('active');
-    el.style.display = 'flex';
-    el.style.visibility = 'visible';
-    el.style.pointerEvents = 'auto';
-    if (name === 'chat' || name === 'chats' || name === 'home') {
-      el.style.height = '';
-      el.style.maxHeight = '';
-      el.style.position = (name === 'home') ? 'relative' : 'absolute';
-      if (name !== 'home') {
-        el.style.left = '0'; el.style.right = '0'; el.style.top = '0'; el.style.bottom = '0';
-        el.style.width = '100%';
-      }
-    }
-  }
-  // 主屏绝对不能透出来
+  // 额外：非 home 时清空主屏交互
   if (name !== 'home') {
-    const home = document.getElementById('page-home');
-    if (home) {
-      home.classList.remove('active');
-      home.style.display = 'none';
-      home.style.visibility = 'hidden';
-    }
+    var hi = document.getElementById('homeInner');
+    if (hi) hi.style.pointerEvents = 'none';
+  } else {
+    var hi2 = document.getElementById('homeInner');
+    if (hi2) hi2.style.pointerEvents = '';
   }
 }
 
@@ -10879,6 +10904,7 @@ function ensureHomeState() {
 function goHome() {
   ensureHomeState();
   state.inWechat = false;
+  state.currentChatId = null;
   const dock = document.getElementById('dock');
   if (dock) dock.style.display = 'none';
   const sub = document.getElementById('page-sub');
@@ -10886,13 +10912,16 @@ function goHome() {
   state._subKind = null;
   state._subStack = [];
   showPage('home');
-  renderHome();
+  var hi = document.getElementById('homeInner');
+  if (hi) hi.style.pointerEvents = '';
+  try { renderHome(); } catch(e) {}
 }
 function openWechatApp() {
   state.inWechat = true;
   const dock = document.getElementById('dock');
   if (dock) dock.style.display = 'flex';
   showPage('chats');
+  setTimeout(function(){ showPage('chats'); }, 0);
   try { renderChatList(); } catch(e) {}
 }
 function homeDefaultLayout() {
