@@ -1565,7 +1565,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-17e';
+const EENOK_BUILD = '2026-08-17f';
 function checkAppUpdate() {
   try {
     const prev = localStorage.getItem('eenook_build');
@@ -2581,8 +2581,10 @@ function openChat(id, isGroup) {
     }
   }
   applyChatStyle(id);
-  renderMessages();
+  renderMessages({ forceBottom: true });
   showPage('chat');
+  setTimeout(function(){ try { scrollMsgBottom(); } catch(e) {} }, 30);
+  setTimeout(function(){ try { scrollMsgBottom(); } catch(e) {} }, 120);
   document.getElementById('dock').style.display = 'none';
   document.getElementById('funcPanel').classList.remove('show');
   document.getElementById('emojiPanel').classList.remove('show');
@@ -2748,11 +2750,15 @@ function renderMessages(opts) {
       </div>`;
     } else if (m.type === 'dateInvite') {
       const st = m.status === 'accepted' ? '已接受' : (m.status === 'declined' ? '已拒绝' : '待回应');
-      html = '<div class="msg-card date-invite" style="max-width:240px;padding:12px 14px;border-radius:12px;background:#fff;border:0.5px solid #e5e5ea">'
+      const canAct = m.status === 'pending' && m.from !== 'user';
+      const canAcceptOffline = m.status === 'accepted';
+      content = '<div class="msg-card date-invite" style="max-width:260px;padding:12px 14px;border-radius:12px;background:#fff;border:0.5px solid #e5e5ea;box-shadow:0 1px 3px rgba(0,0,0,.04)">'
         + '<div style="font-size:12px;color:#8e8e93;margin-bottom:6px">约会邀请</div>'
-        + '<div style="font-size:15px;font-weight:600">'+escapeHtml(m.place||'')+'</div>'
-        + (m.note ? '<div style="font-size:13px;color:#555;margin-top:6px">'+escapeHtml(m.note)+'</div>' : '')
-        + '<div style="font-size:11px;color:#aaa;margin-top:8px">'+st+'</div></div>';
+        + '<div style="font-size:15px;font-weight:600;color:#1c1c1e">'+escapeHtml(m.place||'')+'</div>'
+        + (m.note ? '<div style="font-size:13px;color:#555;margin-top:6px;line-height:1.4">'+escapeHtml(m.note)+'</div>' : '')
+        + '<div style="font-size:11px;color:#aaa;margin-top:8px">'+st+'</div>'
+        + (canAcceptOffline ? '<button type="button" onclick="event.stopPropagation();startDateFromInvite('+idx+')" style="margin-top:10px;width:100%;border:none;border-radius:8px;padding:8px;background:#1c1c1e;color:#fff;font-size:13px">进入线下约会</button>' : '')
+        + '</div>';
     } else if (m.type === 'location') {
       content = `<div class="loc-card" style="min-width:180px;max-width:220px;background:#fff;border:1px solid #e5e5e5;border-radius:10px;overflow:hidden;color:#1c1c1e">
         <div class="loc-map" style="height:80px;background:${m.img?`url(${m.img}) center/cover`:'#e8e8e8'};position:relative">
@@ -3662,11 +3668,18 @@ async function apiChat(messages, opts) {
     state._lastApiDebug.ok = res.ok;
 
     if (!res.ok) {
-      const msg = (data && ((data.error && (data.error.message || data.error)) || data.message || data.msg)) || ('HTTP ' + res.status);
-      throw new Error(String(msg).slice(0, 200));
+      let detail = '';
+      try {
+        detail = (data && (data.error && (data.error.message || data.error.code || data.error)) ) || data.message || data.msg || '';
+        if (typeof detail === 'object') detail = JSON.stringify(detail);
+      } catch(e) { detail = ''; }
+      detail = String(detail || '').slice(0, 120);
+      // 简洁报错：状态码 + 原文，不误报「没钱」
+      throw new Error(res.status + (detail ? (' · ' + detail) : ''));
     }
     if (data && data.error) {
-      throw new Error(String(data.error.message || data.error).slice(0, 200));
+      const em = String(data.error.message || data.error.code || data.error).slice(0, 120);
+      throw new Error((data.error.code || 'error') + ' · ' + em);
     }
 
     let text = extractApiText(data);
@@ -4127,13 +4140,61 @@ function sendDateInvite() {
   if (!id) return;
   if (!state.chats[id]) state.chats[id] = { messages: [] };
   state.chats[id].messages.push({
-    id: 'm'+Date.now(), who: 'user', type: 'dateInvite',
+    id: 'm'+Date.now(), from: 'user', type: 'dateInvite',
     place: place.trim(), note: note.trim(), status: 'pending', ts: Date.now()
   });
+  // 写入线下 pending 约会
+  try {
+    if (!state.offline) state.offline = { meets: [], settings: {} };
+    if (!state.offline.pendingDates) state.offline.pendingDates = {};
+    state.offline.pendingDates[id] = { place: place.trim(), note: note.trim(), from: 'user', status: 'pending', ts: Date.now() };
+  } catch(e) {}
   save();
   closeModal();
-  try { renderMessages(); } catch(e) {}
-  showToast('约会邀请已发送');
+  try { renderMessages({ forceBottom: true }); scrollMsgBottom(); } catch(e) {}
+  showToast('约会邀请已发送 · 点生成让对方回应');
+}
+function startDateFromInvite(msgIdx) {
+  const id = state.currentChatId;
+  const chat = state.chats[id];
+  if (!chat || !chat.messages[msgIdx]) return;
+  const m = chat.messages[msgIdx];
+  openModal('开启约会', `
+    <div style="font-size:14px;line-height:1.6;margin-bottom:12px">地点：<b>${escapeHtml(m.place||'')}</b><br>${m.note?('备注：'+escapeHtml(m.note)) : ''}</div>
+    <div class="text-sub" style="margin-bottom:12px">是否在线下开启全新约会剧情？选「否」则沿用该角色已有线下进度。</div>
+  `, `<button class="btn btn-secondary" onclick="closeModal();confirmStartDate('${id}',${msgIdx},false)">否，继续旧剧情</button>
+      <button class="btn btn-primary" onclick="closeModal();confirmStartDate('${id}',${msgIdx},true)">是，全新约会</button>`);
+}
+function confirmStartDate(charId, msgIdx, fresh) {
+  const chat = state.chats[charId] || { messages: [] };
+  let m = (msgIdx >= 0 && chat.messages[msgIdx]) ? chat.messages[msgIdx] : null;
+  if (!m && state.offline && state.offline.pendingDates && state.offline.pendingDates[charId]) {
+    m = state.offline.pendingDates[charId];
+  }
+  if (!m) { showToast('没有约会信息'); return; }
+  if (msgIdx >= 0 && chat.messages[msgIdx]) chat.messages[msgIdx].status = 'accepted';
+  if (!state.offline) state.offline = { meets: [] };
+  if (!state.offline.sessions) state.offline.sessions = {};
+  const sess = ensureOfflineSession(charId);
+  sess.dateMeta = { place: m.place, note: m.note, ts: Date.now() };
+  if (fresh) {
+    sess.log = [];
+    sess.statusCache = {};
+    sess.log.push({ who: 'system', text: '约会地点：'+(m.place||'')+(m.note?(' · '+m.note):''), ts: Date.now() });
+  } else {
+    sess.log = sess.log || [];
+    sess.log.push({ who: 'system', text: '继续约会 · 地点：'+(m.place||''), ts: Date.now() });
+  }
+  if (state.offline.pendingDates) delete state.offline.pendingDates[charId];
+  save();
+  showToast(fresh ? '已开启全新约会' : '已接入线下剧情');
+  // 切到线下
+  try {
+    state.inWechat = false;
+    const dock = document.getElementById('dock');
+    if (dock) dock.style.display = 'none';
+    openOfflineScene(charId);
+  } catch(e) { alert(e.message||e); }
 }
 function openVoicePopup() {
   document.getElementById('funcPanel').classList.remove('show');
@@ -4617,14 +4678,29 @@ function onFileSelected(e) {
       ensureLockState();
       state.lock.wallpaper = data;
       try { sessionStorage.setItem('eenook_lock_wp', data); } catch(e) {}
+      try {
+        // 单独存 IDB，避免被大体积裁剪
+        if (window.indexedDB) {
+          const req = indexedDB.open('eenook_idb', 1);
+          req.onupgradeneeded = function() { try { req.result.createObjectStore('kv'); } catch(e) {} };
+          req.onsuccess = function() {
+            try {
+              const db = req.result;
+              if (!db.objectStoreNames.contains('kv')) return;
+              db.transaction('kv','readwrite').objectStore('kv').put(data, 'lockWp');
+            } catch(e) {}
+          };
+        }
+      } catch(e) {}
       try { save(); } catch(e) {}
       try { if (typeof saveAsync === 'function') saveAsync(); } catch(e) {}
       try {
         const ls = document.getElementById('lockScreen');
         if (ls) {
-          ls.style.backgroundImage = 'url(' + data + ')';
+          ls.style.backgroundImage = 'url("' + data.replace(/"/g, '') + '")';
           ls.style.backgroundSize = 'cover';
           ls.style.backgroundPosition = 'center';
+          ls.style.backgroundRepeat = 'no-repeat';
         }
         const prev = document.getElementById('lockWpPreview');
         if (prev) prev.innerHTML = '<img src="'+data+'" style="width:100%;max-height:140px;object-fit:cover;border-radius:10px">';
@@ -11483,32 +11559,51 @@ function editCharFromLib(id) {
   editCharInChat();
 }
 
-function openMemoryApp() {
+function openMemoryApp(filterCharId) {
   ensureHomeState();
   if (!state.memoryApp) state.memoryApp = { items: [] };
   state._homeRoot = 'memory';
   state._homeDepth = 0;
   state._subKind = 'homeApp';
+  state._memFilter = filterCharId || state._memFilter || '';
+  const q = (state._memQ || '').trim().toLowerCase();
   const items = (state.memoryApp.items || []).slice();
   (state.chars || []).forEach(function(c) {
     const chat = (state.chats || {})[c.id] || {};
     (chat.longMem || []).forEach(function(m) {
-      items.push({ id: m.id || ('lm'+c.id+(m.ts||0)), charId: c.id, charName: c.nick, type: 'long', title: '长期记忆 · '+(c.nick||''), content: m.text || m.content || '', ts: m.ts || 0 });
+      items.push({ id: m.id || ('lm'+c.id+(m.ts||0)), charId: c.id, charName: c.nick, type: 'long', title: '长期 · '+(c.nick||''), content: m.text || m.content || '', ts: m.ts || 0 });
     });
     (chat.shortMem || []).forEach(function(m) {
-      items.push({ id: m.id || ('sm'+c.id+(m.ts||0)), charId: c.id, charName: c.nick, type: 'short', title: '短期记忆 · '+(c.nick||''), content: m.text || m.content || '', ts: m.ts || 0 });
+      items.push({ id: m.id || ('sm'+c.id+(m.ts||0)), charId: c.id, charName: c.nick, type: 'short', title: '短期 · '+(c.nick||''), content: m.text || m.content || '', ts: m.ts || 0 });
     });
   });
-  items.sort(function(a,b){ return (b.ts||0)-(a.ts||0); });
-  const list = items.map(function(it, idx) {
+  let view = items;
+  if (state._memFilter) view = view.filter(function(it){ return it.charId === state._memFilter; });
+  if (q) view = view.filter(function(it){ return (it.title||'').toLowerCase().indexOf(q)>=0 || (it.content||'').toLowerCase().indexOf(q)>=0 || (it.charName||'').toLowerCase().indexOf(q)>=0; });
+  view.sort(function(a,b){ return (b.ts||0)-(a.ts||0); });
+  const chips = [{id:'',name:'全部'}].concat((state.chars||[]).map(function(c){ return {id:c.id, name:c.nick||c.realName||'角色'}; }));
+  const chipHtml = chips.map(function(ch){
+    const on = (state._memFilter||'') === ch.id;
+    return '<span onclick="state._memFilter=\''+ch.id+'\';openMemoryApp()" style="flex-shrink:0;padding:6px 12px;border-radius:16px;font-size:12px;margin-right:6px;'+(on?'background:#1c1c1e;color:#fff':'background:#f2f2f7;color:#333')+'">'+escapeHtml(ch.name)+'</span>';
+  }).join('');
+  const list = view.map(function(it, idx) {
     return '<div style="padding:14px;border-bottom:0.5px solid #eee" data-mi="'+idx+'">'
       + '<div style="font-size:14px;font-weight:600">'+escapeHtml(it.title||'')+'</div>'
       + '<div class="text-sub" style="font-size:12px;margin-top:4px;line-height:1.5">'+escapeHtml(String(it.content||'').slice(0,90))+'</div>'
       + '<div style="font-size:11px;color:#bbb;margin-top:6px">'+(it.ts?new Date(it.ts).toLocaleString():'')+' · '+(it.type||'')+'</div></div>';
-  }).join('') || '<div class="empty">暂无记忆<br>线下点「见面结束」或聊天总结后会出现在这里</div>';
-  openSubPage('记忆', '<div id="memList" style="height:100%;overflow-y:auto">'+list+'</div>');
-  state._memView = items;
+  }).join('') || '<div class="empty">暂无记忆</div>';
+  openSubPage('记忆', `
+    <div style="display:flex;flex-direction:column;height:100%">
+      <div style="padding:10px 12px;flex-shrink:0;border-bottom:0.5px solid #eee;background:#fff">
+        <input id="memSearch" value="${escapeHtml(state._memQ||'')}" placeholder="搜索记忆…" style="width:100%;border:none;background:#f2f2f7;border-radius:10px;padding:10px 12px;font-size:14px;box-sizing:border-box" onkeydown="if(event.key==='Enter'){state._memQ=this.value;openMemoryApp()}">
+        <div style="display:flex;overflow-x:auto;margin-top:10px;padding-bottom:2px">${chipHtml}</div>
+      </div>
+      <div id="memList" style="flex:1;overflow-y:auto">${list}</div>
+    </div>`);
+  state._memView = view;
   setTimeout(function(){
+    const inp = document.getElementById('memSearch');
+    if (inp) inp.onblur = function(){ state._memQ = inp.value; };
     document.querySelectorAll('#memList [data-mi]').forEach(function(el){
       el.onclick = function(){
         const it = state._memView[+el.getAttribute('data-mi')];
@@ -11583,6 +11678,18 @@ function openOfflineScene(charId) {
   const c = state.chars.find(x => x.id === charId);
   if (!c) return;
   const sess = ensureOfflineSession(charId);
+  try {
+    const pd = state.offline && state.offline.pendingDates && state.offline.pendingDates[charId];
+    if (pd && pd.status === 'pending' && !sess._dateAsked) {
+      sess._dateAsked = true;
+      setTimeout(function(){
+        openModal('约会邀请', `
+          <div style="font-size:14px;line-height:1.65">对方想在 <b>${escapeHtml(pd.place||'')}</b> 见面。<br>${pd.note?escapeHtml(pd.note):''}<br><br>是否开启约会？</div>
+        `, `<button class="btn btn-secondary" onclick="closeModal();state.offline.pendingDates['${charId}'].status='skipped';save()">暂不</button>
+            <button class="btn btn-primary" onclick="closeModal();confirmStartDate('${charId}',-1,true)">开启全新约会</button>`);
+      }, 400);
+    }
+  } catch(e) {}
   state._homeRoot = 'offline';
   state._homeDepth = 1;
   state._subKind = 'homeApp';
@@ -16968,13 +17075,36 @@ function showLockScreen() {
   // 壁纸：优先 state，其次 session 临时缓存
   let wp = state.lock.wallpaper || '';
   try { if (!wp) wp = sessionStorage.getItem('eenook_lock_wp') || ''; } catch(e) {}
-  if (wp) {
-    el.style.backgroundImage = 'url(' + wp + ')';
-    el.style.backgroundSize = 'cover';
-    el.style.backgroundPosition = 'center';
-  } else {
-    el.style.backgroundImage = 'linear-gradient(160deg,#2c2c34,#1a1a22)';
-  }
+  const applyWp = function(url) {
+    if (url) {
+      el.style.backgroundImage = 'url("' + String(url).replace(/"/g,'') + '")';
+      el.style.backgroundSize = 'cover';
+      el.style.backgroundPosition = 'center';
+      el.style.backgroundRepeat = 'no-repeat';
+    } else {
+      el.style.backgroundImage = 'linear-gradient(160deg,#2c2c34,#1a1a22)';
+    }
+  };
+  applyWp(wp);
+  // 异步从 IDB 再补一次
+  try {
+    if (!wp && window.indexedDB) {
+      const req = indexedDB.open('eenook_idb', 1);
+      req.onsuccess = function() {
+        try {
+          const db = req.result;
+          if (!db.objectStoreNames.contains('kv')) return;
+          const g = db.transaction('kv').objectStore('kv').get('lockWp');
+          g.onsuccess = function() {
+            if (g.result) {
+              state.lock.wallpaper = g.result;
+              applyWp(g.result);
+            }
+          };
+        } catch(e) {}
+      };
+    }
+  } catch(e) {}
   let buf = '';
   const dots = () => {
     const ds = el.querySelectorAll('#lockDots span');
