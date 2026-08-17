@@ -42,6 +42,30 @@
 }
 #page-home.active {
   display: flex !important;
+  z-index: 1;
+}
+#page-home:not(.active) {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+#page-chat.active {
+  position: absolute !important;
+  left: 0; right: 0; top: 0; bottom: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-height: none !important;
+  z-index: 40 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  background: #ededed !important;
+  overflow: hidden !important;
+}
+#page-chats.active, #page-contacts.active, #page-moments.active, #page-mine.active {
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 30 !important;
+  background: #f5f5f7 !important;
 }
 #page-home .home-bg {
   position: absolute; inset: 0;
@@ -314,8 +338,13 @@ body {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
-.page, .chat-list, #msgArea, #momentsList, #contactsList, #page-mine {
+.chat-list, #momentsList, #contactsList, #page-mine {
   background: transparent !important;
+}
+#msgArea { background: #ededed !important; }
+#page-home { background: var(--bg); }
+#page-chat, #page-chats, #page-contacts {
+  background: #ededed !important;
 }
 .chat-item, .setting-item, .mine-item, .moment-item, .add-menu {
   background: var(--card) !important;
@@ -1238,7 +1267,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 }
 [data-ui="wechat"] .wx-input-bar { background: #f7f7f7 !important; backdrop-filter: none !important; }
 #page-chat {
-  display: flex;
+  display: none;
   flex-direction: column;
   overflow: hidden !important;
   background: #ededed !important;
@@ -1583,7 +1612,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-17h';
+const EENOK_BUILD = '2026-08-17i';
 function checkAppUpdate() {
   try {
     const prev = localStorage.getItem('eenook_build');
@@ -2560,13 +2589,21 @@ function bindChatKeyboardFix() {
   window._vvChatBound = true;
   const vv = window.visualViewport;
   if (!vv) return;
+  const fullH = window.innerHeight;
   const apply = function() {
     const page = document.getElementById('page-chat');
     if (!page || !page.classList.contains('active')) return;
-    // 避免键盘顶起后底部出现黑条：用 visualViewport 高度
     const h = vv.height;
-    page.style.height = h + 'px';
-    page.style.maxHeight = h + 'px';
+    // 仅当键盘明显顶起（高度少 120px+）时才收缩，否则保持全屏，避免半屏露主屏
+    if (h < fullH - 120) {
+      page.style.height = h + 'px';
+      page.style.maxHeight = h + 'px';
+      page.style.top = (vv.offsetTop || 0) + 'px';
+    } else {
+      page.style.height = '';
+      page.style.maxHeight = '';
+      page.style.top = '0';
+    }
     const area = document.getElementById('msgArea');
     if (area) try { scrollMsgBottom(); } catch(e) {}
   };
@@ -2620,6 +2657,22 @@ function openChat(id, isGroup) {
   applyChatStyle(id);
   renderMessages({ forceBottom: true });
   showPage('chat');
+  // 确保聊天页盖住一切
+  try {
+    const page = document.getElementById('page-chat');
+    if (page) {
+      page.style.display = 'flex';
+      page.style.visibility = 'visible';
+      page.style.position = 'absolute';
+      page.style.inset = '0';
+      page.style.height = '';
+      page.style.maxHeight = '';
+      page.style.zIndex = '40';
+      page.style.background = '#ededed';
+    }
+    const home = document.getElementById('page-home');
+    if (home) { home.classList.remove('active'); home.style.display = 'none'; }
+  } catch(e) {}
   setTimeout(function(){ try { scrollMsgBottom(); } catch(e) {} }, 30);
   setTimeout(function(){ try { scrollMsgBottom(); } catch(e) {} }, 120);
   document.getElementById('dock').style.display = 'none';
@@ -6932,14 +6985,47 @@ function closeAllModals() {
   document.getElementById('modalMask').classList.remove('show');
 }
 function showPage(name) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(function(p) {
+    p.classList.remove('active');
+    // 硬隐藏，避免透明叠层
+    if (p.id !== 'page-' + name) {
+      p.style.display = 'none';
+      p.style.visibility = 'hidden';
+      p.style.pointerEvents = 'none';
+      p.style.height = '';
+      p.style.maxHeight = '';
+    }
+  });
   const sub = document.getElementById('page-sub');
   if (sub && name !== 'sub') {
     sub.classList.remove('active');
     sub.style.display = 'none';
   }
   const el = document.getElementById('page-' + name);
-  if (el) el.classList.add('active');
+  if (el) {
+    el.classList.add('active');
+    el.style.display = 'flex';
+    el.style.visibility = 'visible';
+    el.style.pointerEvents = 'auto';
+    if (name === 'chat' || name === 'chats' || name === 'home') {
+      el.style.height = '';
+      el.style.maxHeight = '';
+      el.style.position = (name === 'home') ? 'relative' : 'absolute';
+      if (name !== 'home') {
+        el.style.left = '0'; el.style.right = '0'; el.style.top = '0'; el.style.bottom = '0';
+        el.style.width = '100%';
+      }
+    }
+  }
+  // 主屏绝对不能透出来
+  if (name !== 'home') {
+    const home = document.getElementById('page-home');
+    if (home) {
+      home.classList.remove('active');
+      home.style.display = 'none';
+      home.style.visibility = 'hidden';
+    }
+  }
 }
 
 function renderContacts() {
