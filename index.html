@@ -1714,7 +1714,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-17x';
+const EENOK_BUILD = '2026-08-17y';
 function checkAppUpdate() {
   try {
     const prev = localStorage.getItem('eenook_build');
@@ -5175,6 +5175,7 @@ function openAddChar() {
       </select>
     </div>
     <div class="form-group"><label>签名</label><input id="fSign" placeholder="个性签名"></div>
+    <div class="form-group"><label>与 user 的关系</label><input id="fRelation" placeholder="例如：恋人 / 好友 / 前桌"></div>
     <div class="form-group"><label>人物设定</label><textarea id="fPersona" placeholder="性格、说话风格等"></textarea></div>
     <div class="form-group"><label>故事背景</label><textarea id="fBg" placeholder="世界观、关系等"></textarea></div>
   `, `
@@ -5191,8 +5192,11 @@ function saveChar() {
     id, realName: document.getElementById('fRealName').value.trim(), nick,
     gender: (document.getElementById('fGender') || {}).value || '',
     avatar: state._tempAvatar || '', signature: document.getElementById('fSign').value.trim(),
-    persona: document.getElementById('fPersona').value.trim(), background: document.getElementById('fBg').value.trim()
+    persona: document.getElementById('fPersona').value.trim(),
+    relation: (document.getElementById('fRelation') && document.getElementById('fRelation').value || '').trim(),
+    background: (document.getElementById('fBg') && document.getElementById('fBg').value || '').trim()
   };
+  if (data.relation) data.relationship = data.relation;
   if (state.editingCharId) {
     const idx = state.chars.findIndex(c => c.id === state.editingCharId);
     if (!data.avatar) data.avatar = state.chars[idx].avatar;
@@ -5427,6 +5431,7 @@ function editCharInChat() {
       </select>
     </div>
     <div class="form-group"><label>签名</label><input id="fSign" value="${c.signature || ''}"></div>
+    <div class="form-group"><label>与 user 的关系</label><input id="fRelation" value="${c.relation || c.relationship || ''}" placeholder="例如：恋人 / 好友 / 前桌 / 师妹"></div>
     <div class="form-group"><label>人物设定</label><textarea id="fPersona">${c.persona || ''}</textarea></div>
     <div class="form-group"><label>故事背景</label><textarea id="fBg">${c.background || ''}</textarea></div>
     <input type="hidden" id="fId" value="${c.id}">
@@ -11721,6 +11726,11 @@ function editHomePolaroid() {
 function openChangelog() {
   const ver = (typeof EENOK_BUILD !== 'undefined') ? EENOK_BUILD : '';
   const logs = [
+    { v: '2026-08-17y', items: [
+      'icity 日记白底；线条点赞/评论图标；点赞变红',
+      '评论可回复；生成评论可选角色（读人设与关系）',
+      '角色编辑增加「与 user 的关系」'
+    ]},
     { v: '2026-08-17x', items: [
       '倒数日：Days Matter 风格（全部 / 分类倒数本 + 悬浮 Dock）',
       '三宫格照片墙可分别上传三张图',
@@ -12758,6 +12768,7 @@ function openIcityDiary(i) {
   } catch(e) {}
 }
 
+
 function openIcityDiaryList(filter) {
   state._homeRoot = 'icity';
   state._subKind = 'icity';
@@ -12766,48 +12777,54 @@ function openIcityDiaryList(filter) {
   if (!state.icity.diaries) state.icity.diaries = [];
   filter = filter || state._icityDiaryFilter || 'all';
   state._icityDiaryFilter = filter;
-  const p = state.icity.profile || {};
-  const u = state.user || {};
-  const nick = p.nick || u.nick || '我';
-  const handle = p.id || u.id || 'user';
-  const av = p.avatar || u.avatar || (typeof defaultAvatar==='function'?defaultAvatar(nick):'');
-  let list = (state.icity.diaries || []).slice();
-  if (filter === 'public') list = list.filter(d => (d.vis === 'public' || !d.vis) && !d.archived);
-  else if (filter === 'friends') list = list.filter(d => d.vis === 'friends');
-  else if (filter === 'private') list = list.filter(d => d.vis === 'private');
-  else if (filter === 'archived') list = list.filter(d => d.vis === 'archived' || d.archived);
-  else list = list.filter(d => !d.deleted);
-  const weekNames = '日一二三四五六';
-  const rows = list.map((d) => {
-    const realIdx = state.icity.diaries.indexOf(d);
-    const dt = d.ts ? new Date(d.ts) : new Date();
-    const dateLine = (dt.getMonth()+1) + '月' + dt.getDate() + '日 · 星期' + weekNames[dt.getDay()] + ' ' + dt.getFullYear();
-    const timeStr = String(dt.getHours()).padStart(2,'0') + ':' + String(dt.getMinutes()).padStart(2,'0');
-    return '<div onclick="openIcityDiaryDetail(\'diary\','+realIdx+')" style="background:#2a2a2e;margin:0 0 1px;padding:14px 16px;cursor:pointer">'
+  var p = state.icity.profile || {};
+  var u = state.user || {};
+  var nick = p.nick || u.nick || '我';
+  var handle = p.id || u.id || 'user';
+  var av = p.avatar || u.avatar || (typeof defaultAvatar==='function' ? defaultAvatar(nick) : '');
+  var list = (state.icity.diaries || []).slice();
+  if (filter === 'public') list = list.filter(function(d){ return (d.vis === 'public' || !d.vis) && !d.archived; });
+  else if (filter === 'friends') list = list.filter(function(d){ return d.vis === 'friends'; });
+  else if (filter === 'private') list = list.filter(function(d){ return d.vis === 'private'; });
+  else if (filter === 'archived') list = list.filter(function(d){ return d.vis === 'archived' || d.archived; });
+  else list = list.filter(function(d){ return !d.deleted; });
+  var weekNames = '日一二三四五六';
+  var heartSvg = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="1.6"><path d="M20.8 4.6c-1.6-1.5-4.1-1.5-5.7 0L12 7.6 8.9 4.6C7.3 3.1 4.8 3.1 3.2 4.6 1.6 6.2 1.6 8.7 3.2 10.3L12 19l8.8-8.7c1.6-1.6 1.6-4.1 0-5.7z"/></svg>';
+  var cmtSvg = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="1.6"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>';
+  var rows = list.map(function(d) {
+    var realIdx = state.icity.diaries.indexOf(d);
+    var dt = d.ts ? new Date(d.ts) : new Date();
+    var dateLine = (dt.getMonth()+1) + '月' + dt.getDate() + '日 · 星期' + weekNames[dt.getDay()] + ' ' + dt.getFullYear();
+    var timeStr = String(dt.getHours()).padStart(2,'0') + ':' + String(dt.getMinutes()).padStart(2,'0');
+    var likeN = d.liked ? Math.max(1, (d.likes||[]).length) : (d.likes||[]).length;
+    return '<div onclick="openIcityDiaryDetail(\'diary\','+realIdx+')" style="background:#fff;margin:0 0 8px;padding:14px 16px;cursor:pointer;border-radius:12px">'
       + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'
       + '<div style="display:flex;align-items:center;gap:10px">'
       + '<img src="'+av+'" style="width:36px;height:36px;border-radius:50%;object-fit:cover">'
-      + '<div><div style="font-size:14px;font-weight:600;color:#f0f0f0">'+escapeHtml(nick)+'</div>'
-      + '<div style="font-size:11px;color:#888">@'+escapeHtml(handle)+'</div></div></div>'
-      + '<div style="font-size:11px;color:#888;text-align:right">'+dateLine+'</div></div>'
-      + '<div style="font-size:15px;line-height:1.65;color:#e8e8e8;white-space:pre-wrap">'+escapeHtml(d.content||'')+'</div>'
-      + '<div style="display:flex;gap:16px;margin-top:12px;font-size:12px;color:#777"><span>♡ '+((d.likes||[]).length)+'</span><span>💬 '+((d.comments||[]).length)+'</span><span>'+timeStr+'</span></div></div>';
-  }).join('') || '<div style="padding:48px;text-align:center;color:#888">还没有日记</div>';
-  const tabs = [['all','全部'],['public','公开'],['friends','仅好友'],['private','私密'],['archived','已封存']];
-  const tabBar = tabs.map(function(t){
-    const on = filter===t[0];
-    return '<button type="button" onclick="openIcityDiaryList(\''+t[0]+'\')" style="flex-shrink:0;padding:6px 12px;border:none;border-radius:14px;font-size:12px;cursor:pointer;background:'+(on?'#5b8def':'transparent')+';color:'+(on?'#fff':'#ccc')+'">'+t[1]+'</button>';
-  }).join('') + '<button type="button" onclick="addIcityDiary()" style="flex-shrink:0;padding:6px 12px;border:none;border-radius:14px;font-size:12px;cursor:pointer;background:transparent;color:#ccc">补写</button>';
+      + '<div><div style="font-size:14px;font-weight:600;color:#222">'+escapeHtml(nick)+'</div>'
+      + '<div style="font-size:11px;color:#999">@'+escapeHtml(handle)+'</div></div></div>'
+      + '<div style="font-size:11px;color:#aaa;text-align:right">'+dateLine+'</div></div>'
+      + '<div style="font-size:15px;line-height:1.65;color:#333;white-space:pre-wrap">'+escapeHtml(d.content||'')+'</div>'
+      + '<div style="display:flex;gap:16px;margin-top:12px;font-size:12px;color:#999;align-items:center">'
+      + '<span style="display:inline-flex;align-items:center;gap:4px">'+heartSvg+' '+likeN+'</span>'
+      + '<span style="display:inline-flex;align-items:center;gap:4px">'+cmtSvg+' '+((d.comments||[]).length)+'</span>'
+      + '<span>'+timeStr+'</span></div></div>';
+  }).join('') || '<div style="padding:48px;text-align:center;color:#999">还没有日记</div>';
+  var tabs = [['all','全部'],['public','公开'],['friends','仅好友'],['private','私密'],['archived','已封存']];
+  var tabBar = tabs.map(function(t){
+    var on = filter===t[0];
+    return '<button type="button" onclick="openIcityDiaryList(\''+t[0]+'\')" style="flex-shrink:0;padding:6px 12px;border:none;border-radius:14px;font-size:12px;cursor:pointer;background:'+(on?'#5b8def':'#f0f0f0')+';color:'+(on?'#fff':'#666')+'">'+t[1]+'</button>';
+  }).join('') + '<button type="button" onclick="addIcityDiary()" style="flex-shrink:0;padding:6px 12px;border:none;border-radius:14px;font-size:12px;cursor:pointer;background:#f0f0f0;color:#666">补写</button>';
   openSubPage('icity',
-    '<div style="display:flex;flex-direction:column;height:100%;background:#1c1c1e">'
-    + '<div style="padding:12px 16px;display:flex;align-items:center;gap:10px;background:#1c1c1e;flex-shrink:0">'
-    + '<span onclick="openIcityApp(\'square\')" style="font-size:20px;color:#fff;cursor:pointer;padding:4px">‹</span>'
-    + '<div style="flex:1;text-align:center;font-size:16px;font-weight:600;color:#f5f5f7">'+escapeHtml(nick)+' · 日记</div><span style="width:28px"></span></div>'
-    + '<div style="display:flex;gap:6px;padding:8px 12px;overflow-x:auto;flex-shrink:0">'+tabBar+'</div>'
-    + '<div style="flex:1;overflow-y:auto;padding-bottom:70px">'+rows+'</div>'
-    + '<div style="position:absolute;left:0;right:0;bottom:0;display:flex;border-top:1px solid #333;background:#1c1c1e;z-index:10">'
+    '<div style="display:flex;flex-direction:column;height:100%;background:#f5f5f5">'
+    + '<div style="padding:12px 16px;display:flex;align-items:center;gap:10px;background:#fff;flex-shrink:0;border-bottom:1px solid #eee">'
+    + '<span onclick="openIcityApp(\'square\')" style="font-size:20px;color:#333;cursor:pointer;padding:4px">‹</span>'
+    + '<div style="flex:1;text-align:center;font-size:16px;font-weight:600;color:#222">'+escapeHtml(nick)+' · 日记</div><span style="width:28px"></span></div>'
+    + '<div style="display:flex;gap:6px;padding:10px 12px;overflow-x:auto;flex-shrink:0;background:#fff">'+tabBar+'</div>'
+    + '<div style="flex:1;overflow-y:auto;padding:10px 12px 70px">'+rows+'</div>'
+    + '<div style="position:absolute;left:0;right:0;bottom:0;display:flex;border-top:1px solid #e5e5e5;background:#fff;z-index:10">'
     + '<button type="button" onclick="openIcityApp(\'square\')" style="flex:1;padding:12px;border:none;background:transparent;font-size:13px;color:#888">广场</button>'
-    + '<button type="button" onclick="openIcityDiaryList()" style="flex:1;padding:12px;border:none;background:transparent;font-size:13px;font-weight:700;color:#fff">日记</button>'
+    + '<button type="button" onclick="openIcityDiaryList()" style="flex:1;padding:12px;border:none;background:transparent;font-size:13px;font-weight:700;color:#1a1a1a">日记</button>'
     + '<button type="button" onclick="openIcityApp(\'mine\')" style="flex:1;padding:12px;border:none;background:transparent;font-size:13px;color:#888">我的</button>'
     + '</div></div>', '', { replace: true });
   state._homeDepth = 0;
@@ -12817,7 +12834,7 @@ function addIcityDiary() {
     '<div class="form-group"><label>内容</label><textarea id="idContent" style="min-height:120px" placeholder="今天想写点什么…"></textarea></div>'
     + '<div class="form-group"><label>可见性</label><select id="idVis"><option value="public">公开</option><option value="friends">仅好友</option><option value="private">私密</option><option value="archived">封存</option></select></div>',
     '<button class="btn btn-secondary" onclick="closeModal()">取消</button>'
-    + '<button class="btn btn-primary" onclick="(function(){var c=document.getElementById(\'idContent\').value.trim();if(!c){showToast(\'写点内容吧\');return;}if(!state.icity.diaries)state.icity.diaries=[];state.icity.diaries.unshift({content:c,vis:document.getElementById(\'idVis\').value,ts:Date.now(),likes:[],comments:[]});save();closeModal();openIcityDiaryList(state._icityDiaryFilter||\'all\');})()">发布</button>');
+    + '<button class="btn btn-primary" onclick="(function(){var c=document.getElementById(\'idContent\').value.trim();if(!c){showToast(\'写点内容吧\');return;}if(!state.icity.diaries)state.icity.diaries=[];state.icity.diaries.unshift({content:c,vis:document.getElementById(\'idVis\').value,ts:Date.now(),likes:[],comments:[],liked:false});save();closeModal();openIcityDiaryList(state._icityDiaryFilter||\'all\');})()">发布</button>');
 }
 function openIcityDiaryDetail(kind, idx) {
   var d, nick, handle, av;
@@ -12836,10 +12853,23 @@ function openIcityDiaryDetail(kind, idx) {
     av = d.avatar || '';
   }
   if (!d) return;
+  if (!d.likes) d.likes = [];
+  if (!d.comments) d.comments = [];
+  var liked = !!d.liked || (d.likes && d.likes.indexOf('user') >= 0);
   var dt = d.ts ? new Date(d.ts) : new Date();
   var timeStr = dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0')+' '+String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0');
-  var comments = (d.comments || []).map(function(c){
-    return '<div style="padding:10px 0;border-bottom:1px solid #f0f0f0"><b style="font-size:13px">'+escapeHtml(c.nick||'用户')+'</b><div style="font-size:14px;margin-top:4px;color:#333">'+escapeHtml(c.text||c.content||'')+'</div></div>';
+  var heartSvg = liked
+    ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="#e74c3c" stroke="#e74c3c" stroke-width="1.2"><path d="M20.8 4.6c-1.6-1.5-4.1-1.5-5.7 0L12 7.6 8.9 4.6C7.3 3.1 4.8 3.1 3.2 4.6 1.6 6.2 1.6 8.7 3.2 10.3L12 19l8.8-8.7c1.6-1.6 1.6-4.1 0-5.7z"/></svg>'
+    : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="1.6"><path d="M20.8 4.6c-1.6-1.5-4.1-1.5-5.7 0L12 7.6 8.9 4.6C7.3 3.1 4.8 3.1 3.2 4.6 1.6 6.2 1.6 8.7 3.2 10.3L12 19l8.8-8.7c1.6-1.6 1.6-4.1 0-5.7z"/></svg>';
+  var comments = (d.comments || []).map(function(c, ci){
+    var replies = (c.replies || []).map(function(r){
+      return '<div style="margin:8px 0 0 12px;padding:8px 10px;background:#f7f7f8;border-radius:8px"><b style="font-size:12px;color:#555">'+escapeHtml(r.nick||'')+'</b><div style="font-size:13px;margin-top:2px;color:#333">'+escapeHtml(r.text||'')+'</div></div>';
+    }).join('');
+    return '<div style="padding:12px 0;border-bottom:1px solid #f0f0f0">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:13px">'+escapeHtml(c.nick||'用户')+'</b>'
+      + '<span onclick="replyIcityComment(\''+kind+'\','+idx+','+ci+')" style="font-size:12px;color:#5b8def;cursor:pointer">回复</span></div>'
+      + '<div style="font-size:14px;margin-top:4px;color:#333">'+escapeHtml(c.text||c.content||'')+'</div>'
+      + replies + '</div>';
   }).join('') || '<div style="padding:20px;color:#999;text-align:center;font-size:13px">暂无评论</div>';
   openSubPage(nick + ' · 日记',
     '<div style="display:flex;flex-direction:column;height:100%;background:#f5f5f5">'
@@ -12848,12 +12878,78 @@ function openIcityDiaryDetail(kind, idx) {
     + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><img src="'+av+'" style="width:40px;height:40px;border-radius:50%;object-fit:cover"><div><div style="font-weight:600;font-size:15px">'+escapeHtml(nick)+'</div><div style="font-size:12px;color:#999">@'+escapeHtml(handle)+'</div></div></div>'
     + '<div style="font-size:15px;line-height:1.7;color:#222;white-space:pre-wrap">'+escapeHtml(d.content||'')+'</div>'
     + '<div style="margin-top:14px;font-size:12px;color:#aaa">'+timeStr+'</div>'
-    + '<div style="display:flex;gap:20px;margin-top:14px;padding-top:12px;border-top:1px solid #f0f0f0;font-size:13px;color:#666"><span>♡ 喜欢</span><span>小纸条</span><span>存为图片</span></div></div>'
-    + '<div style="background:#fff;border-radius:12px;padding:12px 16px;margin-top:10px"><div style="font-size:13px;color:#999;margin-bottom:8px">评论</div>'+comments+'</div></div>'
+    + '<div style="display:flex;gap:20px;margin-top:14px;padding-top:12px;border-top:1px solid #f0f0f0;font-size:13px;color:#666;align-items:center">'
+    + '<span onclick="toggleIcityLike(\''+kind+'\','+idx+')" style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;color:'+(liked?'#e74c3c':'#666')+'">'+heartSvg+' 喜欢</span>'
+    + '<span>小纸条</span><span>存为图片</span></div></div>'
+    + '<div style="background:#fff;border-radius:12px;padding:12px 16px;margin-top:10px">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
+    + '<div style="font-size:13px;color:#999">评论</div>'
+    + '<button type="button" onclick="genIcityComments(\''+kind+'\','+idx+')" style="border:1px solid #ddd;background:#fff;border-radius:14px;padding:4px 12px;font-size:12px;cursor:pointer;color:#5b8def">○ 生成</button></div>'
+    + comments + '</div></div>'
     + '<div style="position:absolute;left:0;right:0;bottom:0;display:flex;gap:8px;padding:10px 12px;background:#fff;border-top:1px solid #eee;z-index:10">'
     + '<input id="icityDiaryCmt" placeholder="我要评论" style="flex:1;border:1px solid #e5e5e5;border-radius:20px;padding:10px 14px;font-size:14px;outline:none">'
     + '<button type="button" onclick="sendIcityDiaryComment(\''+kind+'\','+idx+')" style="border:none;background:#4caf50;color:#fff;border-radius:20px;padding:10px 16px;font-size:14px;cursor:pointer">发送</button></div></div>');
   state._homeDepth = 1;
+}
+function toggleIcityLike(kind, idx) {
+  var d = kind === 'diary' ? (state.icity.diaries||[])[idx] : (state.icity.posts||[])[idx];
+  if (!d) return;
+  d.liked = !d.liked;
+  if (!d.likes) d.likes = [];
+  if (d.liked) { if (d.likes.indexOf('user') < 0) d.likes.push('user'); }
+  else { d.likes = d.likes.filter(function(x){ return x !== 'user'; }); }
+  save();
+  openIcityDiaryDetail(kind, idx);
+}
+function replyIcityComment(kind, idx, ci) {
+  openModal('回复评论',
+    '<div class="form-group"><label>回复内容</label><textarea id="icityReplyTxt" style="min-height:80px"></textarea></div>',
+    '<button class="btn btn-secondary" onclick="closeModal()">取消</button>'
+    + '<button class="btn btn-primary" onclick="(function(){var t=document.getElementById(\'icityReplyTxt\').value.trim();if(!t)return;var d=( \''+kind+'\'===\'diary\'?state.icity.diaries:state.icity.posts)['+idx+'];if(!d.comments['+ci+'].replies)d.comments['+ci+'].replies=[];var p=state.icity.profile||{};var u=state.user||{};d.comments['+ci+'].replies.push({nick:p.nick||u.nick||\'我\',text:t,ts:Date.now()});save();closeModal();openIcityDiaryDetail(\''+kind+'\','+idx+');})()">发送</button>');
+}
+function genIcityComments(kind, idx) {
+  var chars = state.chars || [];
+  if (!chars.length) { showToast('请先添加角色'); return; }
+  var opts = chars.map(function(c){
+    return '<label style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f0f0f0"><input type="checkbox" class="icityGenChar" value="'+c.id+'"><span>'+escapeHtml(c.nick||c.realName||'')+'</span>'+(c.relation||c.relationship?'<span style="font-size:11px;color:#999">· '+escapeHtml(c.relation||c.relationship)+'</span>':'')+'</label>';
+  }).join('');
+  openModal('生成评论',
+    '<div class="text-sub" style="margin-bottom:8px">勾选角色（会读取人设、与 user 关系）</div>'
+    + '<label style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><input type="checkbox" id="icityGenAll" onchange="document.querySelectorAll(\'.icityGenChar\').forEach(function(x){x.checked=document.getElementById(\'icityGenAll\').checked})"> 全选</label>'
+    + '<div style="max-height:240px;overflow-y:auto">'+opts+'</div>',
+    '<button class="btn btn-secondary" onclick="closeModal()">取消</button>'
+    + '<button class="btn btn-primary" onclick="doGenIcityComments(\''+kind+'\','+idx+')">生成</button>');
+}
+async function doGenIcityComments(kind, idx) {
+  var ids = Array.from(document.querySelectorAll('.icityGenChar:checked')).map(function(x){ return x.value; });
+  if (!ids.length) { showToast('请选择角色'); return; }
+  closeModal();
+  var d = kind === 'diary' ? (state.icity.diaries||[])[idx] : (state.icity.posts||[])[idx];
+  if (!d) return;
+  if (!d.comments) d.comments = [];
+  showToast('生成中…');
+  var user = state.user || {};
+  for (var i = 0; i < ids.length; i++) {
+    var ch = (state.chars||[]).find(function(c){ return c.id === ids[i]; });
+    if (!ch) continue;
+    var relation = ch.relation || ch.relationship || '朋友';
+    var prompt = '你现在是「'+(ch.nick||ch.realName||'角色')+'」，正在刷 icity 日记并评论。\n'
+      + '【你的人设】\n'+(ch.persona||ch.setting||'普通年轻人')+'\n'
+      + '【你与 user 的关系】'+relation+'\n'
+      + '【user 人设】\n'+(user.persona||user.setting||user.nick||'用户')+'\n'
+      + '【日记正文】\n'+(d.content||'')+'\n\n'
+      + '要求：只输出一条简短评论（1-2句），口语、有温度、符合人设与关系，禁止 OOC，禁止客服腔，少用 emoji，不要引号和前缀。';
+    try {
+      var text = await apiChat([{ role: 'user', content: prompt }], { temperature: 0.88, max_tokens: 100 });
+      text = String(text || '').trim().replace(/^["「]|["」]$/g, '');
+      if (text) d.comments.push({ nick: ch.nick || ch.realName || '角色', text: text, ts: Date.now(), fromId: ch.id });
+    } catch (e) {
+      console.warn(e);
+      showToast('生成失败：' + (e.message || e));
+    }
+  }
+  save();
+  openIcityDiaryDetail(kind, idx);
 }
 function sendIcityDiaryComment(kind, idx) {
   var input = document.getElementById('icityDiaryCmt');
@@ -12872,6 +12968,7 @@ function sendIcityDiaryComment(kind, idx) {
   save();
   openIcityDiaryDetail(kind, idx);
 }
+
 
 function openIcityApp(tab) {
   state._homeRoot = 'icity';
@@ -12973,8 +13070,8 @@ function openIcityApp(tab) {
           </div>
           <div style="font-size:15px;line-height:1.65;margin-top:10px;color:#333;white-space:pre-wrap">${escapeHtml(p.content||'')}</div>
           <div style="display:flex;gap:18px;margin-top:12px;font-size:13px;color:#999" onclick="event.stopPropagation()">
-            <span onclick="icityLike(0,${i})" style="cursor:pointer">♡ ${(p.likes||[]).length}</span>
-            <span onclick="icityComment(0,${i})" style="cursor:pointer">💬 ${(p.comments||[]).length}</span>
+            <span onclick="icityLike(0,${i})" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M20.8 4.6c-1.6-1.5-4.1-1.5-5.7 0L12 7.6 8.9 4.6C7.3 3.1 4.8 3.1 3.2 4.6 1.6 6.2 1.6 8.7 3.2 10.3L12 19l8.8-8.7c1.6-1.6 1.6-4.1 0-5.7z"/></svg> ${(p.likes||[]).length}</span>
+            <span onclick="icityComment(0,${i})" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg> ${(p.comments||[]).length}</span>
             <span onclick="icityForward(0,${i})" style="cursor:pointer">↗</span>
           </div>
         </div>
