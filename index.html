@@ -762,7 +762,7 @@ body.night .moment-comments .moment-comment,
 .mine-item .icon-wrap .icon { width: 20px; height: 20px; }
 .mine-item .arrow { margin-left: auto; color: var(--sub); font-size: 14px; }
 
-/* Dock */
+/* Dock — 贴 #phone 底部，不随页面流错位 */
 .dock {
   height: var(--dock-h);
   background: var(--glass-bg) !important;
@@ -770,12 +770,15 @@ body.night .moment-comments .moment-comment,
   -webkit-backdrop-filter: var(--glass);
   border: 1px solid var(--line);
   border-radius: 22px;
-  margin: 0 12px 10px;
+  margin: 0;
   display: flex; flex-shrink: 0;
   box-shadow: 0 4px 24px rgba(0,0,0,.08);
-  position: relative;
-  z-index: 30;
-  /* 避免底部色块溢出圆角 */
+  position: absolute !important;
+  left: 12px !important;
+  right: 12px !important;
+  bottom: 10px !important;
+  top: auto !important;
+  z-index: 35 !important;
   overflow: hidden;
   isolation: isolate;
 }
@@ -1377,6 +1380,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 #phone > #page-mine.active {
   z-index: 30 !important;
   background: #f5f5f7 !important;
+  padding-bottom: calc(var(--dock-h, 56px) + 24px) !important;
 }
 #phone > #page-sub.active {
   z-index: 60 !important;
@@ -1678,7 +1682,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-17o';
+const EENOK_BUILD = '2026-08-17p';
 function checkAppUpdate() {
   try {
     const prev = localStorage.getItem('eenook_build');
@@ -2451,6 +2455,7 @@ function renderChatList() {
 function openSubPage(title, bodyHtml, rightHtml, opts) {
   if (!state._subStack) state._subStack = [];
   const sub = document.getElementById('page-sub');
+  if (!sub) { console.error('page-sub missing'); return; }
   // 压入当前内容
   if (sub.classList.contains('active') && !(opts && opts.replace)) {
     state._subStack.push({
@@ -2465,7 +2470,7 @@ function openSubPage(title, bodyHtml, rightHtml, opts) {
   document.getElementById('subTitle').textContent = title || '';
   document.getElementById('subBody').innerHTML = bodyHtml || '';
   document.getElementById('subRight').innerHTML = rightHtml || '';
-  // 必须用 !important，否则盖不过 showPage 的隐藏
+  // 藏所有其它 page（含主屏）
   document.querySelectorAll('#phone > .page').forEach(function(p) {
     if (p.id === 'page-sub') return;
     p.classList.remove('active');
@@ -2473,18 +2478,35 @@ function openSubPage(title, bodyHtml, rightHtml, opts) {
     p.style.setProperty('visibility', 'hidden', 'important');
     p.style.setProperty('opacity', '0', 'important');
     p.style.setProperty('pointer-events', 'none', 'important');
+    p.style.setProperty('transform', 'translateX(-120%)', 'important');
+    p.style.setProperty('z-index', '0', 'important');
   });
+  // 显示 page-sub 全屏
   sub.classList.add('active');
   sub.style.setProperty('display', 'flex', 'important');
+  sub.style.setProperty('flex-direction', 'column', 'important');
   sub.style.setProperty('visibility', 'visible', 'important');
   sub.style.setProperty('opacity', '1', 'important');
   sub.style.setProperty('pointer-events', 'auto', 'important');
   sub.style.setProperty('z-index', '60', 'important');
   sub.style.setProperty('position', 'absolute', 'important');
-  sub.style.setProperty('inset', '0', 'important');
+  sub.style.setProperty('left', '0', 'important');
+  sub.style.setProperty('right', '0', 'important');
+  sub.style.setProperty('top', '0', 'important');
+  sub.style.setProperty('bottom', '0', 'important');
+  sub.style.setProperty('width', '100%', 'important');
+  sub.style.setProperty('height', '100%', 'important');
+  sub.style.setProperty('transform', 'none', 'important');
   sub.style.setProperty('background', '#f5f5f7', 'important');
+  sub.style.setProperty('overflow', 'hidden', 'important');
+  // 微信底栏隐藏
   var dock = document.getElementById('dock');
   if (dock) dock.style.display = 'none';
+  // 主屏内部也藏
+  ['homeInner','homeDock','homeBg'].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) { el.style.visibility = 'hidden'; el.style.pointerEvents = 'none'; }
+  });
   const subNav = document.getElementById('subNav');
   if (subNav) subNav.style.display = '';
   const backBtn = document.querySelector('#subNav .nav-btn');
@@ -4927,31 +4949,36 @@ function onFileSelected(e) {
       try { closeModal(); } catch(e) {}
       showToast('主界面壁纸已更新');
     } else if (state.fileTarget && String(state.fileTarget).startsWith('homeWidget_')) {
+      // homeWidget_{page}_{index}
       const parts = String(state.fileTarget).split('_');
-      const pg = parseInt(parts[1], 10) || 0;
-      const wi = parseInt(parts[2], 10) || 0;
+      const pg = parseInt(parts[1], 10);
+      const wi = parseInt(parts[2], 10);
+      const pageIdx = isNaN(pg) ? (state._widgetUploadPage != null ? state._widgetUploadPage : (state.home.page||0)) : pg;
+      const wIdx = isNaN(wi) ? 0 : wi;
       ensureHomeState();
       if (!state.home.pageWidgets) state.home.pageWidgets = {};
-      if (!state.home.pageWidgets[pg]) state.home.pageWidgets[pg] = [];
-      if (!state.home.pageWidgets[pg][wi]) state.home.pageWidgets[pg][wi] = { id:'w'+Date.now(), x:16, y:40, w:150, h:100 };
-      state.home.pageWidgets[pg][wi].img = data;
-      // 按图片比例适配小组件尺寸（最大宽 300）
+      if (!state.home.pageWidgets[pageIdx]) state.home.pageWidgets[pageIdx] = [];
+      if (!state.home.pageWidgets[pageIdx][wIdx]) state.home.pageWidgets[pageIdx][wIdx] = { id:'w'+Date.now(), x:16, y:40, w:150, h:100 };
+      state.home.pageWidgets[pageIdx][wIdx].img = data;
+      // 保持在当前页，不要跳回第一页
+      state.home.page = pageIdx;
       try {
         var im = new Image();
         im.onload = function() {
           var maxW = Math.min(300, (window.innerWidth||360) - 24);
-          var ratio = im.naturalHeight / im.naturalWidth;
-          var nw = Math.min(maxW, im.naturalWidth);
+          var ratio = im.naturalHeight / (im.naturalWidth || 1);
+          var nw = Math.min(maxW, im.naturalWidth || maxW);
           var nh = Math.round(nw * ratio);
-          if (nh > 220) { nh = 220; nw = Math.round(nh / ratio); }
-          state.home.pageWidgets[pg][wi].w = nw;
-          state.home.pageWidgets[pg][wi].h = nh;
+          if (nh > 220) { nh = 220; nw = Math.round(nh / (ratio||1)); }
+          state.home.pageWidgets[pageIdx][wIdx].w = nw;
+          state.home.pageWidgets[pageIdx][wIdx].h = nh;
+          state.home.page = pageIdx;
           try { save(); renderHome(); } catch(e) {}
         };
         im.src = data;
       } catch(e) {}
       try { save(); } catch(e) {}
-      showToast('小组件图片已更新');
+      showToast('第'+(pageIdx+1)+'页小组件已更新');
       try { renderHome(); } catch(e) {}
 
     } else if (state.fileTarget === 'homePolaroid') {
@@ -6247,6 +6274,8 @@ function confirmWbCategory() {
   save(); openWorldBook();
 }
 function openWorldBook(tab) {
+  state._homeRoot = 'worldbook';
+  state._subKind = 'worldbook';
   state._subKind = 'worldbook';
 
   tab = tab || state._wbTab || 'all';
@@ -11073,19 +11102,30 @@ function openWechatApp() {
   state.currentChatId = null;
   state.currentIsGroup = false;
   state._official = null;
-  // 微信底栏回到正常位置
+  state._homeRoot = null;
+  // 微信底栏固定在屏幕底部
   var dock = document.getElementById('dock');
   if (dock) {
     dock.style.display = 'flex';
-    dock.style.position = '';
-    dock.style.bottom = '';
-    dock.style.left = '';
-    dock.style.right = '';
-    dock.style.margin = '';
-    dock.style.zIndex = '';
+    dock.style.setProperty('position', 'absolute', 'important');
+    dock.style.setProperty('left', '12px', 'important');
+    dock.style.setProperty('right', '12px', 'important');
+    dock.style.setProperty('bottom', '10px', 'important');
+    dock.style.setProperty('top', 'auto', 'important');
+    dock.style.setProperty('z-index', '35', 'important');
+    dock.style.margin = '0';
   }
   showPage('chats');
-  setTimeout(function(){ showPage('chats'); try { renderChatList(); } catch(e) {} }, 0);
+  setTimeout(function(){
+    showPage('chats');
+    try { renderChatList(); } catch(e) {}
+    var d2 = document.getElementById('dock');
+    if (d2) {
+      d2.style.display = 'flex';
+      d2.style.setProperty('bottom', '10px', 'important');
+      d2.style.setProperty('top', 'auto', 'important');
+    }
+  }, 0);
   try { renderChatList(); } catch(e) {}
 }
 function homeDefaultLayout() {
@@ -13739,6 +13779,8 @@ function igFilterDm(q) {}
 function igViewStory() { showToast('快拍'); }
 
 function openCountdownApp() {
+  state._homeRoot = 'countdown';
+  state._subKind = 'countdown';
   ensureHomeState();
   const list = state.countdown || [];
   const now = Date.now();
@@ -15111,6 +15153,8 @@ function divHash(str) {
   return Math.abs(h);
 }
 function openDivination(tab) {
+  state._homeRoot = 'divination';
+  state._subKind = 'divination';
   tab = tab || state._divTab || 'east';
   state._divTab = tab;
   state._subKind = 'divination';
@@ -16081,6 +16125,8 @@ function meloFmt(sec) {
   return m + ':' + String(s).padStart(2,'0');
 }
 function openMelo(tab, opts) {
+  state._homeRoot = 'melo';
+  state._subKind = 'melo';
   opts = opts || {};
   tab = tab || state._meloTab || 'home';
   state._meloTab = tab;
@@ -17994,6 +18040,7 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
           }
         } else {
           // 点击上传
+          state._widgetUploadPage = page;
           state.fileTarget = 'homeWidget_'+page+'_'+wi;
           var fi = document.getElementById('fileInput');
           if (fi) { fi.accept = 'image/*'; fi.value = ''; fi.click(); }
@@ -18075,38 +18122,57 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   window.openHomeAddApp = function() {
     var all = homeAllApps();
     var hidden = state.home.hiddenApps || [];
+    var dock = (state.home.dockApps || []).map(function(d){ return typeof d === 'string' ? d : (d && d.id); });
     var list = all.map(function(a){
-      var onHome = hidden.indexOf(a.id)<0 && (state.home.dockApps||[]).indexOf(a.id)<0;
-      return '<div class="setting-item" data-aid="'+a.id+'"><span>'+escapeHtml(a.name)+'</span><span class="right">'+(onHome?'已在桌面':'显示到本页')+'</span></div>';
+      var status;
+      if (hidden.indexOf(a.id) >= 0) status = '显示到本页';
+      else if (dock.indexOf(a.id) >= 0) status = '在 Dock';
+      else status = '已在桌面';
+      return '<div class="setting-item" data-aid="'+a.id+'"><span>'+escapeHtml(a.name)+'</span><span class="right">'+status+'</span></div>';
     }).join('');
     openModal('桌面 App', list, '<button class="btn btn-secondary" onclick="closeModal();renderHome()">完成</button>', {center:true});
     setTimeout(function(){
       document.querySelectorAll('[data-aid]').forEach(function(el){
-        el.onclick = function(){ toggleHomeAppVisible(el.getAttribute('data-aid')); };
+        el.onclick = function(ev){
+          if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+          toggleHomeAppVisible(el.getAttribute('data-aid'));
+        };
       });
     }, 40);
   };
   window.toggleHomeAppVisible = function(id) {
     if (!state.home.hiddenApps) state.home.hiddenApps = [];
-    var i = state.home.hiddenApps.indexOf(id);
-    if (i >= 0) {
-      // 重新显示到当前页
-      state.home.hiddenApps.splice(i, 1);
-      if (!state.home.layout[id]) state.home.layout[id] = {};
-      state.home.layout[id].page = state.home.page || 0;
+    if (!state.home.layout) state.home.layout = {};
+    var hidden = state.home.hiddenApps;
+    var dock = state.home.dockApps || [];
+    var dockIds = dock.map(function(d){ return typeof d === 'string' ? d : (d && d.id); });
+    var inHidden = hidden.indexOf(id) >= 0;
+    var inDock = dockIds.indexOf(id) >= 0;
+    var curPage = state.home.page || 0;
+    if (inHidden) {
+      // 从隐藏 → 当前页桌面
+      state.home.hiddenApps = hidden.filter(function(x){ return x !== id; });
+      state.home.layout[id] = state.home.layout[id] || {};
+      state.home.layout[id].page = curPage;
       state.home.layout[id]._user = false;
-      try { showToast('已添加到第' + ((state.home.page||0)+1) + '页'); } catch(e) {}
-    } else {
-      state.home.hiddenApps.push(id);
-    }
-    // 从 dock 移除同名
-    if (Array.isArray(state.home.dockApps)) {
-      state.home.dockApps = state.home.dockApps.filter(function(d){
+      try { showToast('已添加到第' + (curPage+1) + '页'); } catch(e) {}
+    } else if (inDock) {
+      // 从 Dock → 当前页桌面
+      state.home.dockApps = dock.filter(function(d){
         var did = typeof d === 'string' ? d : (d && d.id);
         return did !== id;
       });
+      state.home.layout[id] = state.home.layout[id] || {};
+      state.home.layout[id].page = curPage;
+      try { showToast('已从 Dock 移到第' + (curPage+1) + '页'); } catch(e) {}
+    } else {
+      // 已在桌面 → 隐藏
+      state.home.hiddenApps.push(id);
+      try { showToast('已从桌面移除'); } catch(e) {}
     }
-    save(); openHomeAddApp();
+    save();
+    // 只刷新列表，不关模态造成“后退”感
+    openHomeAddApp();
   };
   window.openHomeDockPick = function() {
     var all = homeAllApps();
