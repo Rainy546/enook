@@ -253,6 +253,20 @@ body.night .sms-bubble.other { background: rgba(255,255,255,.2); color: #fff; }
 .gal-card .gc-body { padding: 10px; }
 
 
+
+body.glass-ui #homeScreen, body.glass-ui .home-page {
+  backdrop-filter: blur(20px) saturate(1.2);
+}
+body.glass-ui .home-app-icon, body.glass-ui .dock-icon {
+  background: rgba(255,255,255,.22) !important;
+  border: 1px solid rgba(255,255,255,.35) !important;
+  box-shadow: 0 4px 16px rgba(0,80,100,.08), inset 0 1px 0 rgba(255,255,255,.4) !important;
+  backdrop-filter: blur(12px);
+}
+body.glass-ui #page-sub, body.glass-ui #subBody {
+  background: rgba(232,246,244,.72) !important;
+  backdrop-filter: blur(24px);
+}
 </style>
 <style>
 :root {
@@ -1712,7 +1726,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-18d';
+const EENOK_BUILD = '2026-08-18e';
 function checkAppUpdate() {
   try {
     const prev = localStorage.getItem('eenook_build');
@@ -4736,7 +4750,7 @@ function onFileSelected(e) {
       const i = state._meloSongIdx;
       if (state.melo.songs[i]) { state.melo.songs[i].cover = data; save(); }
       try { closeModal(); } catch(e) {}
-      openMelo('home', { replace: true });
+      try { openMeloNowPlaying(); } catch(e) { openMelo(state._meloTab||'home', { replace: true }); }
       return;
     }
     if (state.fileTarget === 'meloPlayBg') {
@@ -5159,6 +5173,8 @@ function onFileSelected(e) {
           if (w.imgs.length < 3) w.imgs.push(data);
         } else if (w.type === 'badge3d') {
           w.img = data; w.w = 120; w.h = 120;
+        } else if (w.type === 'standee') {
+          w.img = data; w.w = 100; w.h = 160;
         } else {
           w.img = data;
         }
@@ -10859,15 +10875,23 @@ function openPhoneCheck() {
   state._subKind = 'phonecheck';
   state._homeDepth = 0;
   state._subBackFn = null;
-  armClickGuard(400);
-  const list = (state.chars||[]).map((ch,i)=>`
-    <div class="setting-item" onclick="if(window.clickGuarded&&clickGuarded())return;openCharPhone('${ch.id}')" style="border-radius:14px;margin:8px 12px;border:1px solid var(--line)">
-      <img src="${avatarUrl(ch)}" style="width:40px;height:40px;border-radius:10px;margin-right:12px;object-fit:cover">
-      <span>${escapeHtml(ch.nick||ch.realName)}</span>
-      <span class="arrow">›</span>
-    </div>
-  `).join('') || '<div class="empty">暂无角色</div>';
+  state._clickGuardUntil = 0;
+  const list = (state.chars||[]).map(function(ch){
+    return '<button type="button" class="setting-item phone-check-row" data-cid="'+ch.id+'" style="width:calc(100% - 24px);border-radius:14px;margin:8px 12px;border:1px solid var(--line);display:flex;align-items:center;background:var(--card);cursor:pointer;text-align:left;padding:12px">'
+      + '<img src="'+avatarUrl(ch)+'" style="width:40px;height:40px;border-radius:10px;margin-right:12px;object-fit:cover;pointer-events:none">'
+      + '<span style="flex:1;pointer-events:none">'+escapeHtml(ch.nick||ch.realName||'')+'</span>'
+      + '<span class="arrow" style="pointer-events:none">›</span></button>';
+  }).join('') || '<div class="empty">暂无角色</div>';
   openSubPage('查手机', list);
+  setTimeout(function(){
+    document.querySelectorAll('.phone-check-row').forEach(function(el){
+      el.onclick = function(ev){
+        if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+        state._clickGuardUntil = 0;
+        openCharPhone(el.getAttribute('data-cid'));
+      };
+    });
+  }, 30);
 }
 function exitPhone() {
   state._phoneLayer = null;
@@ -10875,11 +10899,11 @@ function exitPhone() {
   state._subStack = [];
   state._homeDepth = 0;
   state._subBackFn = null;
+  state._clickGuardUntil = 0;
   try {
     const subNav = document.getElementById('subNav');
     if (subNav) subNav.style.display = '';
   } catch(e) {}
-  // 回到查手机角色列表，不要掉进通讯录
   try { openPhoneCheck(); } catch(e) {
     try { goHome(); } catch(e2) {}
   }
@@ -11806,6 +11830,11 @@ function editHomePolaroid() {
 function openChangelog() {
   const ver = (typeof EENOK_BUILD !== 'undefined') ? EENOK_BUILD : '';
   const logs = [
+    { v: '2026-08-18e', items: [
+      'Melo 补全首页；搜索去掉快速发现/浏览全部；歌单新建编辑；封面上传留在播放页；点唱片看歌词',
+      '查手机列表可点、退出不卡；通话来电/接通界面；最近通话头像；通话记录弹窗',
+      'Instagram 探索退出回搜索并可清空；玻璃质感 UI 开关'
+    ]},
     { v: '2026-08-18d', items: [
       '记忆强制角色列表；查手机图标改为 button 绑定可点；退出回查手机列表',
       'Melo 主屏固定首页；播放器改为黑胶唱片；本地歌可···编辑删除',
@@ -12067,11 +12096,30 @@ function pokeSquish(el) {
   }
   showToast(t);
 }
+function renderGlassSwitchHtml() {
+  const on = !!(state.home && state.home.glassUI);
+  return '<div style="margin:12px;padding:14px;border-radius:14px;background:rgba(255,255,255,.7);border:0.5px solid rgba(94,184,176,.25)">'
+    + '<div style="font-weight:600;margin-bottom:8px">UI 质感</div>'
+    + '<button type="button" id="glassUiSwitch" onclick="applyGlassUI('+(!on)+')" style="border:none;border-radius:12px;padding:10px 14px;width:100%;cursor:pointer;background:'+(on?'linear-gradient(145deg,#a8d4e6,#7eb8d0)':'#f2f2f7')+';color:'+(on?'#fff':'#333')+'">'+(on?'玻璃质感 · 点击恢复默认':'点击切换玻璃质感 UI')+'</button>'
+    + '<div style="font-size:11px;color:#888;margin-top:8px">图标半透明毛玻璃，页面磨砂背景</div></div>';
+}
+function applyGlassUI(on) {
+  ensureHomeState();
+  state.home.glassUI = !!on;
+  save();
+  document.body.classList.toggle('glass-ui', !!on);
+  try { localStorage.setItem('eenok_glass', on?'1':'0'); } catch(e) {}
+  showToast(on ? '已切换玻璃质感 UI' : '已恢复默认 UI');
+  try { openHomeBeauty(); } catch(e) {}
+}
 function openHomeBeauty() {
+  /* glass toggle available: applyGlassUI(true/false) */
+
   ensureHomeState();
   resetHomeNav('beauty');
   state._homeDepth = 0;
   if (state.home.iconRadius == null) state.home.iconRadius = 16;
+  if (state.home.glassUI) document.body.classList.add('glass-ui');
   if (!state.home.extraWidgets) state.home.extraWidgets = [];
   const appList = [
     {id:'wechat',name:'微信'},{id:'memory',name:'记忆',open:'openMemoryApp()'},{id:'offline',name:'线下'},{id:'icity',name:'icity'},
@@ -12096,10 +12144,11 @@ function openHomeBeauty() {
   const wtypes = [
     {t:'polaroid_l',n:'大拍立得'},{t:'polaroid_m',n:'中拍立得'},
     {t:'photowall',n:'横屏照片墙'},{t:'ins_card',n:'仿ins卡片'},{t:'text_banner',n:'横屏文案'},
-    {t:'badge3d',n:'立体吧唧'}
+    {t:'badge3d',n:'立体吧唧'},{t:'standee',n:'立体立牌'}
   ];
   openSubPage('美化', `
     <div style="padding:12px 14px 40px;overflow-y:auto;height:100%;box-sizing:border-box">
+      ${typeof renderGlassSwitchHtml==='function'?renderGlassSwitchHtml():''}
       <div style="font-size:13px;color:var(--sub);margin-bottom:8px">壁纸</div>
       <button type="button" class="btn btn-secondary" style="width:100%;margin-bottom:8px" onclick="state.fileTarget='homeWallpaper';document.getElementById('fileInput').click()">上传壁纸</button>
       <button type="button" class="btn btn-secondary" style="width:100%;margin-bottom:16px" onclick="state.home.wallpaper='';save();renderHome();showToast('已还原壁纸')">还原壁纸</button>
@@ -14401,7 +14450,9 @@ function igViewExplore(i) {
       + '<div style="font-size:14px;margin-bottom:6px">'+escapeHtml(v.text||v.caption||'')+'</div>'
       + '<div style="font-size:12px;opacity:.6">#'+escapeHtml(v.tag||'')+' · 上下滑切换</div></div></div>';
   }
-  openSubPage('探索', '<div id="igExploreSwipe" style="height:100%">'+renderOne(i)+'</div>', '', { replace: false });
+  state._homeRoot = 'ig'; state._homeDepth = 1;
+  state._subBackFn = function(){ openForumIG('search'); };
+  openSubPage('探索', '<div style="padding:8px 12px;display:flex;justify-content:flex-end"><button type="button" onclick="if(confirm(\'清空全部探索内容？\')){ensureIG().explore=[];save();openForumIG(\'search\')}" style="border:none;background:transparent;color:#e74c3c;font-size:12px">清空</button></div><div id="igExploreSwipe" style="height:calc(100% - 40px)">'+renderOne(i)+'</div>', '', { replace: false });
   setTimeout(function() {
     var el = document.getElementById('igExploreSwipe');
     if (!el) return;
@@ -15532,7 +15583,7 @@ function openPhonePad(tab) {
     if (/[0-9]/.test(ch)) return '#';
     // 常见姓/字 → 拼音首字母（覆盖角色名）
     const map = {
-      '阿':'A','安':'A','艾':'A','奥':'A',
+      '阿':'A','安':'A','艾':'A','奥':'A','初':'C','楚':'C','从':'C','崔':'C','cz':'C','CZ':'C',
       '白':'B','包':'B','鲍':'B','毕':'B','边':'B','卞':'B','卜':'B','步':'B',
       '蔡':'C','曹':'C','岑':'C','柴':'C','昌':'C','常':'C','陈':'C','成':'C','程':'C','池':'C','褚':'C','崔':'C',
       '戴':'D','邓':'D','狄':'D','丁':'D','董':'D','窦':'D','杜':'D','段':'D',
@@ -15647,7 +15698,7 @@ function openPhonePad(tab) {
         <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:0.5px solid #eee" onclick="${editing?`toggleCallSel('${c.id}')`:`viewCallLog('${c.id||''}')`}">
           ${editing?`<input type="checkbox" ${(state._phoneRecentSel||[]).includes(c.id)?'checked':''} onclick="event.stopPropagation();toggleCallSel('${c.id}')">`:''}
           <div style="width:40px;height:40px;border-radius:50%;overflow:hidden;background:#ddd;flex-shrink:0">
-            <img src="${defaultAvatar(c.name||'?')}" style="width:100%;height:100%;object-fit:cover">
+            <img src="${(function(){const ch=c.charId&&state.chars.find(x=>x.id===c.charId);return ch?avatarUrl(ch):defaultAvatar(c.name||'?');})()}" style="width:100%;height:100%;object-fit:cover">
           </div>
           <div style="flex:1;min-width:0">
             <div style="font-size:16px;font-weight:500;color:${c.missed?'#ff3b30':'#111'}">${escapeHtml(c.name||c.num||'')}</div>
@@ -15896,34 +15947,141 @@ function togglePhoneFav(key) {
   save();
 }
 async function startCall(charId, name) {
-  ensureHomeState();
-  const num = (document.getElementById('phoneNum')||{}).value || '';
   const c = charId ? state.chars.find(x=>x.id===charId) : null;
-  const display = name || (c&&c.nick) || num || '未知';
-  openModal('通话中 · '+display, `<div class="text-sub" id="callBox" style="min-height:80px;line-height:1.6">正在接通…</div>`,
-    `<button class="btn btn-danger" onclick="endCall()">挂断</button>`);
-  let summary = '';
-  try {
-    const { text } = await apiChat([
-      { role:'system', content: '模拟电话通话。你是'+(c?c.nick:'对方')+'，人设：'+(c&&c.persona||'普通人')+'。用几句口语写出电话里的对话摘要，80字内。' },
-      { role:'user', content: '打电话过来了。' }
-    ], { max_tokens: 180, temperature: 0.85 });
-    summary = (text||'').trim();
-    const box = document.getElementById('callBox');
-    if (box) box.textContent = summary;
-  } catch(e) { summary = '未接通'; }
-  state.phoneApp.calls = state.phoneApp.calls || [];
-  state.phoneApp.calls.unshift({ id:'call'+Date.now(), name: display, num, summary, charId, ts: Date.now() });
-  save();
+  const display = name || (c && (c.nick||c.realName)) || '未知';
+  const av = c ? avatarUrl(c) : '';
+  state._callCtx = { charId: charId||'', name: display, logs: [], answered: false };
+  // 来电界面
+  openSubPage('', `
+    <div style="position:absolute;inset:0;background:linear-gradient(180deg,#4a4a6a,#2a2a3e);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:48px 24px 40px;box-sizing:border-box">
+      <div style="text-align:center;width:100%">
+        <div style="font-size:14px;opacity:.7;margin-bottom:8px">手机</div>
+        <div style="font-size:28px;font-weight:600;margin-bottom:24px">${escapeHtml(display)}</div>
+        <div style="width:140px;height:140px;border-radius:50%;margin:0 auto;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;overflow:hidden;border:2px solid rgba(255,255,255,.2)">
+          ${av?`<img src="${av}" style="width:100%;height:100%;object-fit:cover">`:'<div style="width:80px;height:80px;border-radius:50%;background:#fff"></div>'}
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-around;width:100%;max-width:320px">
+        <div style="text-align:center">
+          <button type="button" onclick="closeSubPage()" style="width:64px;height:64px;border-radius:50%;border:none;background:#ff3b30;color:#fff;font-size:24px;cursor:pointer">📵</button>
+          <div style="font-size:12px;margin-top:8px;opacity:.8">拒绝</div>
+        </div>
+        <div style="text-align:center">
+          <button type="button" onclick="answerCall()" style="width:64px;height:64px;border-radius:50%;border:none;background:#34c759;color:#fff;font-size:24px;cursor:pointer">📞</button>
+          <div style="font-size:12px;margin-top:8px;opacity:.8">接听</div>
+        </div>
+      </div>
+    </div>
+  `, '', { replace: false });
+  try { document.getElementById('subNav').style.display = 'none'; } catch(e) {}
 }
-function endCall() { closeModal(); openPhonePad('recents'); }
+function answerCall() {
+  const ctx = state._callCtx || {};
+  const c = ctx.charId ? state.chars.find(x=>x.id===ctx.charId) : null;
+  const display = ctx.name || '未知';
+  const av = c ? avatarUrl(c) : '';
+  ctx.answered = true;
+  ctx.logs = ctx.logs || [];
+  ctx.started = Date.now();
+  openSubPage('', `
+    <div style="position:absolute;inset:0;background:linear-gradient(180deg,#5a5a7a,#2a2a3e);color:#fff;display:flex;flex-direction:column;align-items:center;padding:40px 20px 16px;box-sizing:border-box">
+      <div style="font-size:13px;opacity:.7" id="callTimer">00:00</div>
+      <div style="font-size:26px;font-weight:600;margin:8px 0 20px">${escapeHtml(display)}</div>
+      <div style="width:120px;height:120px;border-radius:50%;margin:0 auto 16px;background:rgba(255,255,255,.12);overflow:hidden;border:2px solid rgba(255,255,255,.15);flex-shrink:0">
+        ${av?`<img src="${av}" style="width:100%;height:100%;object-fit:cover">`:'<div style="width:100%;height:100%;background:#ccc"></div>'}
+      </div>
+      <div id="callChatLog" style="flex:1;width:100%;max-width:360px;overflow-y:auto;font-size:14px;line-height:1.5;padding:8px 4px;text-align:center;opacity:.95"></div>
+      <div style="width:100%;max-width:360px;display:flex;gap:8px;align-items:center;margin-bottom:12px">
+        <input id="callInput" placeholder="说点什么…" style="flex:1;border:none;border-radius:20px;padding:10px 14px;background:rgba(255,255,255,.15);color:#fff;font-size:14px;outline:none">
+        <button type="button" onclick="callGenReply()" style="border:none;background:rgba(255,255,255,.2);color:#fff;border-radius:50%;width:40px;height:40px;cursor:pointer">↑</button>
+        <button type="button" onclick="callSendUser()" style="border:none;background:#34c759;color:#fff;border-radius:50%;width:40px;height:40px;cursor:pointer">发送</button>
+      </div>
+      <div style="display:flex;justify-content:center;gap:28px;padding-bottom:12px">
+        <button type="button" onclick="endCall(true)" style="width:64px;height:64px;border-radius:50%;border:none;background:#ff3b30;color:#fff;font-size:22px;cursor:pointer">结束</button>
+      </div>
+    </div>
+  `, '', { replace: true });
+  try { document.getElementById('subNav').style.display = 'none'; } catch(e) {}
+  if (state._callTimer) clearInterval(state._callTimer);
+  state._callTimer = setInterval(function(){
+    const el = document.getElementById('callTimer');
+    if (!el || !ctx.started) return;
+    const s = Math.floor((Date.now()-ctx.started)/1000);
+    const mm = String(Math.floor(s/60)).padStart(2,'0');
+    const ss = String(s%60).padStart(2,'0');
+    el.textContent = mm+':'+ss;
+  }, 1000);
+}
+function callSendUser() {
+  const inp = document.getElementById('callInput');
+  const t = (inp && inp.value || '').trim();
+  if (!t) return;
+  const ctx = state._callCtx; if (!ctx) return;
+  ctx.logs.push({ role:'user', text: t });
+  if (inp) inp.value = '';
+  renderCallLog();
+}
+async function callGenReply() {
+  const ctx = state._callCtx; if (!ctx) return;
+  const c = ctx.charId ? state.chars.find(x=>x.id===ctx.charId) : null;
+  const box = document.getElementById('callChatLog');
+  if (box) box.innerHTML += '<div style="opacity:.6;margin:6px 0">对方思考中…</div>';
+  try {
+    const hist = (ctx.logs||[]).slice(-8).map(function(m){ return (m.role==='user'?'我: ':'对方: ')+m.text; }).join('\\n');
+    const sys = getOnlineChatRules('电话中。角色：'+(c&&(c.nick||c.realName)||ctx.name)+'。人设：'+(c&&c.persona||'')+'。user人设：'+(state.user&&state.user.persona||'')+'。像电话口语，一句一句短。');
+    const raw = await apiChat([
+      { role:'system', content: sys },
+      { role:'user', content: hist || '（刚接通电话）请先开口打个招呼' }
+    ], { temperature: 0.85, max_tokens: 300 });
+    const text = String(raw||'').trim();
+    if (text) {
+      ctx.logs.push({ role:'char', text: text });
+      renderCallLog();
+    }
+  } catch(e) {
+    showToast('生成失败：'+(e.message||e));
+  }
+}
+function renderCallLog() {
+  const ctx = state._callCtx; if (!ctx) return;
+  const box = document.getElementById('callChatLog');
+  if (!box) return;
+  box.innerHTML = (ctx.logs||[]).map(function(m){
+    return '<div style="margin:8px 0;opacity:'+(m.role==='user'?'.85':'1')+'">'+(m.role==='user'?'我：':'')+escapeHtml(m.text)+'</div>';
+  }).join('');
+  box.scrollTop = box.scrollHeight;
+}
+function endCall(saveLog) {
+  if (state._callTimer) { clearInterval(state._callTimer); state._callTimer = null; }
+  const ctx = state._callCtx;
+  if (saveLog && ctx && ctx.answered) {
+    if (!state.phoneCalls) state.phoneCalls = [];
+    if (!state.phoneApp) state.phoneApp = { contacts: [], calls: [] };
+    if (!state.phoneApp.calls) state.phoneApp.calls = [];
+    const rec = {
+      id: 'call_'+Date.now(),
+      charId: ctx.charId,
+      name: ctx.name,
+      ts: Date.now(),
+      summary: (ctx.logs||[]).map(function(m){ return (m.role==='user'?'我: ':'TA: ')+m.text; }).join('\n'),
+      missed: false
+    };
+    state.phoneCalls.unshift(rec);
+    state.phoneApp.calls.unshift(rec);
+    save();
+  }
+  state._callCtx = null;
+  try { document.getElementById('subNav').style.display = ''; } catch(e) {}
+  openPhonePad('recents');
+}
 function viewCallLog(id) {
-  const c = (state.phoneApp.calls||[]).find(x=>x.id===id);
-  if (!c) return;
-  openModal(c.name||'通话', `<div style="white-space:pre-wrap;line-height:1.6">${escapeHtml(c.summary||'')}</div>`, `<button class="btn btn-secondary" onclick="closeModal()">关闭</button>`);
+  const c = (state.phoneApp&&state.phoneApp.calls||[]).find(x=>x.id===id) || (state.phoneCalls||[]).find(x=>x.id===id) || (state.phoneRecents||[]).find(x=>x.id===id);
+  if (!c) { showToast('无记录'); return; }
+  openModal(c.name||'通话记录', `<div style="white-space:pre-wrap;line-height:1.7;font-size:14px;max-height:50vh;overflow:auto">${escapeHtml(c.summary||'（无通话内容）')}</div>`,
+    `<button class="btn btn-secondary" onclick="closeModal()">关闭</button>`, { center: true });
 }
 
-/* 短信 */
+
 function openSmsApp() {
   ensureHomeState();
   state._homeRoot = 'sms';
@@ -17241,51 +17399,62 @@ function openMelo(tab, opts) {
   state._homeDepth = 0;
   state._subBackFn = null;
   opts = opts || {};
-  // 主屏进入固定首页，避免残留 tab 进喜欢/搜索
-  if (state._openFromHome) tab = 'home';
-  tab = tab || state._meloTab || 'home';
-  if (tab === 'liked') tab = 'home';
+  if (state._openFromHome) { tab = 'home'; state._openFromHome = false; }
+  tab = tab || 'home';
+  if (tab === 'liked' || tab === 'play') tab = 'home';
   state._meloTab = tab;
   if (!state.melo) state.melo = { songs: [], playlists: [], liked: [], history: [], notes: [], current: null, playing: false, loop: 'all', accent: '#5eb8b0', profile: {} };
-  if (!state.melo.profile) state.melo.profile = {};
-  if (!state.melo.notes) state.melo.notes = [];
-  if (!state.melo.songs) state.melo.songs = [];
-  if (!state.melo.playlists) state.melo.playlists = [];
-  if (!state.melo.liked) state.melo.liked = [];
-  if (!state.melo.history) state.melo.history = [];
   const melo = state.melo;
+  if (!melo.profile) melo.profile = {};
+  if (!melo.notes) melo.notes = [];
+  if (!melo.songs) melo.songs = [];
+  if (!melo.playlists) melo.playlists = [];
+  if (!melo.liked) melo.liked = [];
+  if (!melo.history) melo.history = [];
   const accent = melo.accent || '#5eb8b0';
   const bg = 'linear-gradient(180deg,#e8f6f4 0%,#d4ebea 40%,#c5e8e4 100%)';
   const card = 'rgba(255,255,255,.82)';
   const fg = '#2a4a55';
   const subc = '#6a8a90';
-  const dock = function(id, lab) {
+  const dockBtn = function(id, lab) {
     return '<button type="button" onclick="openMelo(\''+id+'\')" style="flex:1;border:none;background:transparent;padding:10px 4px;font-size:12px;font-weight:'+(tab===id?'700':'400')+';color:'+(tab===id?accent:subc)+';cursor:pointer">'+lab+'</button>';
   };
   let main = '';
+
   if (tab === 'search') {
     const q = (state._meloQ || '').trim().toLowerCase();
-    const songs = (melo.songs || []).filter(function(s){ return !q || String(s.name||'').toLowerCase().indexOf(q)>=0 || String(s.artist||'').toLowerCase().indexOf(q)>=0; });
-    const cats = [{t:'国风',d:'古风 · 民乐'},{t:'流行',d:'华语流行'},{t:'轻音',d:'治愈钢琴'},{t:'摇滚',d:'能量满满'},{t:'情歌',d:'心动旋律'},{t:'热歌',d:'本周热播'}];
-    main = '<div style="padding:12px 14px 8px;display:flex;gap:10px;align-items:center">'
-      + '<div style="flex:1;display:flex;align-items:center;gap:8px;background:'+card+';border-radius:20px;padding:10px 14px;border:0.5px solid rgba(94,184,176,.25)">'
+    const songs = (melo.songs || []).filter(function(s){
+      return !q || String(s.name||'').toLowerCase().indexOf(q)>=0 || String(s.artist||'').toLowerCase().indexOf(q)>=0;
+    });
+    main = '<div style="padding:12px 14px 8px">'
+      + '<div style="display:flex;align-items:center;gap:8px;background:'+card+';border-radius:20px;padding:10px 14px;border:0.5px solid rgba(94,184,176,.25)">'
       + '<span style="color:'+subc+'">⌕</span>'
-      + '<input id="meloSearchInp" value="'+escapeHtml(state._meloQ||'')+'" placeholder="搜索歌曲、歌手" style="flex:1;border:none;outline:none;background:transparent;font-size:14px;color:'+fg+'" onkeydown="if(event.key===\'Enter\'){state._meloQ=this.value;openMelo(\'search\')}"></div></div>'
-      + '<div style="padding:8px 14px 4px;font-size:15px;font-weight:600;color:'+fg+'">快速发现</div>'
-      + '<div style="display:flex;gap:10px;overflow-x:auto;padding:8px 14px 12px">'
-      + cats.slice(0,3).map(function(c){ return '<div style="flex-shrink:0;width:120px;height:140px;border-radius:14px;background:'+card+';box-shadow:0 4px 14px rgba(80,140,160,.1);padding:12px;display:flex;flex-direction:column;justify-content:flex-end"><div style="font-size:15px;font-weight:600;color:'+fg+'">'+c.t+'</div><div style="font-size:11px;color:'+subc+';margin-top:4px">'+c.d+'</div></div>'; }).join('')
-      + '</div><div style="padding:4px 14px 8px;font-size:15px;font-weight:600;color:'+fg+'">浏览全部</div>'
-      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 14px 20px">'
-      + cats.map(function(c){ return '<div style="border-radius:14px;background:'+card+';padding:16px 12px;min-height:72px;box-shadow:0 2px 10px rgba(80,140,160,.08)"><div style="font-size:15px;font-weight:600;color:'+fg+'">'+c.t+'</div><div style="font-size:11px;color:'+subc+';margin-top:6px">'+c.d+'</div></div>'; }).join('')
-      + '</div>'
-      + (q ? '<div style="padding:0 14px 20px">'+songs.map(function(s){ var real=melo.songs.indexOf(s); return '<div onclick="playMeloSong('+real+')" style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:0.5px solid rgba(80,140,160,.1);cursor:pointer"><div style="width:44px;height:44px;border-radius:8px;background:'+(s.cover?('url('+s.cover+') center/cover'):'#c5e0e0')+'"></div><div style="flex:1;min-width:0"><div style="font-size:14px;color:'+fg+'">'+escapeHtml(s.name||'')+'</div><div style="font-size:12px;color:'+subc+'">'+escapeHtml(s.artist||'本地')+'</div></div></div>'; }).join('')||('<div class="empty" style="padding:24px;color:'+subc+'">没有匹配的歌曲</div>')+'</div>' : '');
+      + '<input id="meloSearchInp" value="'+escapeHtml(state._meloQ||'')+'" placeholder="搜索本地歌曲、歌手" style="flex:1;border:none;outline:none;background:transparent;font-size:14px;color:'+fg+'" '
+      + 'oninput="state._meloQ=this.value" onkeydown="if(event.key===\'Enter\'){state._meloQ=this.value;openMelo(\'search\')}"></div></div>'
+      + '<div style="padding:4px 14px 100px">'
+      + (songs.length ? songs.map(function(s,idx){
+          const realIdx = melo.songs.indexOf(s);
+          return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:0.5px solid rgba(80,140,160,.08)">'
+            + '<div onclick="playMeloSong('+realIdx+')" style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;cursor:pointer">'
+            + '<div style="width:44px;height:44px;border-radius:10px;background:'+(s.cover?('url('+s.cover+') center/cover'):'linear-gradient(145deg,#c5e8e4,#a8d4e0)')+';flex-shrink:0"></div>'
+            + '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:500;color:'+fg+'">'+escapeHtml(s.name||'未知')+'</div>'
+            + '<div style="font-size:12px;color:'+subc+';margin-top:2px">'+escapeHtml(s.artist||'本地')+'</div></div></div>'
+            + '<button type="button" onclick="event.stopPropagation();editMeloSong('+realIdx+')" style="border:none;background:transparent;color:'+subc+';font-size:18px;padding:8px;cursor:pointer">···</button></div>';
+        }).join('') : '<div class="empty" style="color:'+subc+';padding:40px 0;text-align:center">'+(q?'没有匹配的歌曲':'输入关键词搜索本地曲库')+'</div>')
+      + '</div>';
   } else if (tab === 'notes') {
     var notes = melo.notes || [];
     main = '<div style="padding:12px 14px;display:flex;align-items:center;justify-content:space-between">'
       + '<div><div style="font-size:16px;font-weight:700;color:'+fg+'">笔记</div><div style="font-size:11px;color:'+subc+';margin-top:2px">记录听感与心情</div></div>'
       + '<button type="button" onclick="openMeloNoteModal()" style="border:none;background:'+accent+';color:#fff;border-radius:20px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(94,184,176,.35)">＋ 写笔记</button></div>'
-      + '<div style="padding:0 14px 80px">'
-      + (notes.length ? notes.map(function(n,ni){ return '<div style="background:'+card+';border-radius:14px;padding:14px;margin-bottom:10px;box-shadow:0 2px 10px rgba(80,140,160,.08)"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><div style="width:32px;height:32px;border-radius:50%;background:'+accent+'33;display:flex;align-items:center;justify-content:center;font-size:12px;color:'+accent+'">我</div><div style="flex:1"><div style="font-size:13px;font-weight:600;color:'+fg+'">'+escapeHtml(melo.profile.nick||state.user.nick||'我')+'</div><div style="font-size:11px;color:'+subc+'">'+(n.ts?new Date(n.ts).toLocaleDateString():'')+'</div></div><span onclick="delMeloNote('+ni+')" style="color:#ccc;cursor:pointer;padding:4px">×</span></div><div style="font-size:14px;color:'+fg+';line-height:1.55;white-space:pre-wrap">'+escapeHtml(n.text||'')+'</div>'+(n.songName?'<div style="margin-top:10px;padding:8px 10px;background:rgba(94,184,176,.12);border-radius:10px;font-size:12px;color:'+accent+'">♪ '+escapeHtml(n.songName)+'</div>':'')+'</div>'; }).join('') : '<div style="text-align:center;padding:48px 20px;color:'+subc+'">还没有笔记<br>点右上角 ＋ 写一条</div>')
+      + '<div style="padding:0 14px 100px">'
+      + (notes.length ? notes.map(function(n,ni){
+          return '<div style="background:'+card+';border-radius:14px;padding:14px;margin-bottom:10px;box-shadow:0 2px 10px rgba(80,140,160,.08)">'
+            + '<div style="font-size:14px;color:'+fg+';line-height:1.5">'+escapeHtml(n.text||'')+'</div>'
+            + '<div style="display:flex;justify-content:space-between;margin-top:8px;font-size:11px;color:'+subc+'">'
+            + '<span>'+(n.ts?new Date(n.ts).toLocaleString():'')+'</span>'
+            + '<button type="button" onclick="state.melo.notes.splice('+ni+',1);save();openMelo(\'notes\')" style="border:none;background:transparent;color:#e74c3c;cursor:pointer">删除</button></div></div>';
+        }).join('') : '<div class="empty" style="color:'+subc+';padding:40px 0;text-align:center">还没有笔记</div>')
       + '</div>';
   } else if (tab === 'mine') {
     var p = melo.profile || {};
@@ -17298,47 +17467,115 @@ function openMelo(tab, opts) {
       + (av?'<img src="'+av+'" style="width:100%;height:100%;object-fit:cover">':'')+'</div>'
       + '<div style="margin-top:10px;font-size:17px;font-weight:700;color:'+fg+'">'+escapeHtml(nick)+'</div>'
       + '<div style="font-size:12px;color:'+subc+';margin-top:4px">'+escapeHtml(sign)+'</div>'
-      + '<div style="display:flex;justify-content:center;gap:20px;margin-top:12px;font-size:12px;color:'+subc+'"><span><b style="color:'+fg+'">'+melo.songs.length+'</b> 本地</span><span><b style="color:'+fg+'">'+liked.length+'</b> 喜欢</span><span><b style="color:'+fg+'">'+(melo.notes||[]).length+'</b> 笔记</span></div>'
       + '<button type="button" onclick="editMeloProfile()" style="margin-top:12px;border:1px solid rgba(94,184,176,.35);background:'+card+';border-radius:16px;padding:6px 16px;font-size:12px;color:'+accent+';cursor:pointer">编辑资料</button></div>'
       + '<div style="display:flex;border-bottom:0.5px solid rgba(80,140,160,.15);margin-top:8px">'
       + '<button type="button" onclick="state._meloMineTab=\'music\';openMelo(\'mine\')" style="flex:1;border:none;background:transparent;padding:12px;font-size:14px;font-weight:'+(subTab==='music'?'700':'400')+';color:'+(subTab==='music'?fg:subc)+';border-bottom:2px solid '+(subTab==='music'?accent:'transparent')+'">音乐</button>'
       + '<button type="button" onclick="state._meloMineTab=\'notes\';openMelo(\'mine\')" style="flex:1;border:none;background:transparent;padding:12px;font-size:14px;font-weight:'+(subTab==='notes'?'700':'400')+';color:'+(subTab==='notes'?fg:subc)+';border-bottom:2px solid '+(subTab==='notes'?accent:'transparent')+'">笔记</button></div>'
-      + '<div style="padding:12px 14px 80px">'
+      + '<div style="padding:12px 14px 100px">'
       + (subTab==='notes'
-        ? ((melo.notes||[]).map(function(n){ return '<div style="padding:12px 0;border-bottom:0.5px solid rgba(80,140,160,.1)"><div style="font-size:14px;color:'+fg+'">'+escapeHtml(n.text||'')+'</div><div style="font-size:11px;color:'+subc+';margin-top:4px">'+(n.ts?new Date(n.ts).toLocaleString():'')+'</div></div>'; }).join('') || '<div class="empty" style="color:'+subc+'">暂无笔记</div>')
+        ? ((melo.notes||[]).map(function(n,ni){ return '<div style="padding:12px 0;border-bottom:0.5px solid rgba(80,140,160,.1)"><div style="font-size:14px;color:'+fg+'">'+escapeHtml(n.text||'')+'</div><div style="font-size:11px;color:'+subc+';margin-top:4px">'+(n.ts?new Date(n.ts).toLocaleString():'')+'</div></div>'; }).join('') || '<div class="empty" style="color:'+subc+'">暂无笔记</div>')
         : ('<div onclick="openMeloLiked()" style="display:flex;align-items:center;gap:12px;padding:12px;background:'+card+';border-radius:12px;margin-bottom:10px;cursor:pointer"><div style="width:48px;height:48px;border-radius:8px;background:linear-gradient(145deg,'+accent+',#7ec8c0);color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px">♥</div><div><div style="font-weight:600;color:'+fg+'">我喜欢的音乐</div><div style="font-size:12px;color:'+subc+'">'+liked.length+' 首</div></div></div>'
-          + '<div style="font-size:13px;color:'+subc+';margin:8px 0">本地歌曲 · '+melo.songs.length+'</div>'
-          + (melo.songs.map(function(s,idx){ return '<div onclick="playMeloSong('+idx+')" style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:0.5px solid rgba(80,140,160,.08);cursor:pointer"><div style="width:40px;height:40px;border-radius:6px;background:'+(s.cover?('url('+s.cover+') center/cover'):'#d0e8e6')+'"></div><div style="flex:1;min-width:0"><div style="font-size:14px;color:'+fg+'">'+escapeHtml(s.name||'')+'</div><div style="font-size:11px;color:'+subc+'">'+escapeHtml(s.artist||'本地')+'</div></div></div>'; }).join('') || '<div class="empty" style="color:'+subc+'">还没有导入歌曲</div>')))
+          + '<div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 8px"><div style="font-size:13px;color:'+subc+'">歌单</div><button type="button" onclick="createMeloPlaylist()" style="border:none;background:transparent;color:'+accent+';font-size:12px;cursor:pointer">＋ 新建</button></div>'
+          + (melo.playlists.length ? melo.playlists.map(function(pl,pi){
+              return '<div onclick="openMeloPlaylist('+pi+')" style="display:flex;align-items:center;gap:12px;padding:10px;background:'+card+';border-radius:12px;margin-bottom:8px;cursor:pointer">'
+                + '<div style="width:44px;height:44px;border-radius:8px;background:linear-gradient(145deg,#b8d4e8,#7eb8d0)"></div>'
+                + '<div style="flex:1"><div style="font-weight:600;color:'+fg+'">'+escapeHtml(pl.name||'歌单')+'</div><div style="font-size:12px;color:'+subc+'">'+(pl.songs||[]).length+' 首</div></div></div>';
+            }).join('') : '<div style="font-size:12px;color:'+subc+';margin-bottom:12px">还没有自建歌单</div>')
+          + '<div style="font-size:13px;color:'+subc+';margin:12px 0 8px">本地歌曲 · '+melo.songs.length+'</div>'
+          + (melo.songs.map(function(s,idx){
+              return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:0.5px solid rgba(80,140,160,.08)">'
+                + '<div onclick="playMeloSong('+idx+')" style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;cursor:pointer">'
+                + '<div style="width:44px;height:44px;border-radius:10px;background:'+(s.cover?('url('+s.cover+') center/cover'):'linear-gradient(145deg,#c5e8e4,#a8d4e0)')+';flex-shrink:0"></div>'
+                + '<div style="flex:1;min-width:0"><div style="font-size:14px;color:'+fg+'">'+escapeHtml(s.name||'未知')+'</div><div style="font-size:12px;color:'+subc+'">'+escapeHtml(s.artist||'本地')+'</div></div></div>'
+                + '<button type="button" onclick="event.stopPropagation();editMeloSong('+idx+')" style="border:none;background:transparent;color:'+subc+';font-size:18px;padding:8px;cursor:pointer">···</button></div>';
+            }).join('') || '<div class="empty" style="color:'+subc+'">点首页导入本地歌曲</div>')
+        ))
       + '</div>';
   } else {
-    var songs = melo.songs || [];
-    main = '<div style="padding:10px 14px;display:flex;align-items:center;gap:10px">'
+    /* home */
+    main = '<div style="padding:12px 14px;display:flex;align-items:center;justify-content:space-between">'
       + '<button type="button" onclick="importMeloSongs()" style="border:none;background:'+card+';border-radius:14px;padding:8px 12px;font-size:13px;color:'+accent+';cursor:pointer;border:0.5px solid rgba(94,184,176,.3)">＋ 导入</button>'
-      + '<div style="flex:1"></div>'
-      + '<button type="button" onclick="openMelo(\'search\')" style="border:none;background:'+card+';border-radius:50%;width:36px;height:36px;font-size:16px;color:'+fg+';cursor:pointer">⌕</button></div>'
-      + '<div style="padding:4px 14px 8px;font-size:15px;font-weight:600;color:'+fg+'">快速发现</div>'
-      + '<div style="display:flex;gap:10px;overflow-x:auto;padding:4px 14px 14px">'
-      + '<div onclick="openMelo(\'search\')" style="flex-shrink:0;width:130px;height:150px;border-radius:16px;background:linear-gradient(160deg,#7ec8c0,#5eb8b0);color:#fff;padding:14px;display:flex;flex-direction:column;justify-content:flex-end;cursor:pointer;box-shadow:0 6px 18px rgba(94,184,176,.3)"><div style="font-size:15px;font-weight:700">每日推荐</div><div style="font-size:11px;opacity:.9;margin-top:4px">今日好歌</div></div>'
+      + '<div style="font-size:16px;font-weight:700;color:'+fg+'">Melo</div>'
+      + '<button type="button" onclick="openMelo(\'search\')" style="border:none;background:'+card+';border-radius:14px;padding:8px 12px;font-size:13px;color:'+fg+';cursor:pointer">⌕</button></div>'
+      + '<div style="display:flex;gap:12px;overflow-x:auto;padding:4px 14px 12px">'
       + '<div onclick="openMeloLiked()" style="flex-shrink:0;width:130px;height:150px;border-radius:16px;background:linear-gradient(160deg,#a8d4e6,#7eb8d0);color:#fff;padding:14px;display:flex;flex-direction:column;justify-content:flex-end;cursor:pointer"><div style="font-size:15px;font-weight:700">我喜欢的</div><div style="font-size:11px;opacity:.9;margin-top:4px">'+(melo.liked||[]).length+' 首</div></div>'
-      + '<div onclick="importMeloSongs()" style="flex-shrink:0;width:130px;height:150px;border-radius:16px;background:'+card+';padding:14px;display:flex;flex-direction:column;justify-content:flex-end;cursor:pointer;border:0.5px solid rgba(94,184,176,.2)"><div style="font-size:15px;font-weight:700;color:'+fg+'">导入本地</div><div style="font-size:11px;color:'+subc+';margin-top:4px">MP3 / AAC</div></div></div>'
-      + '<div style="padding:4px 14px;font-size:15px;font-weight:600;color:'+fg+'">本地歌曲</div>'
-      + '<div style="padding:8px 14px 90px">'
-      + (songs.length ? songs.map(function(s,idx){ return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:0.5px solid rgba(80,140,160,.08)"><div onclick="playMeloSong('+idx+')" style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;cursor:pointer"><div style="width:48px;height:48px;border-radius:10px;background:'+(s.cover?('url('+s.cover+') center/cover'):'linear-gradient(145deg,#c5e8e4,#a8d4e0)')+';flex-shrink:0"></div><div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:500;color:'+fg+'">'+escapeHtml(s.name||'未知')+'</div><div style="font-size:12px;color:'+subc+';margin-top:2px">'+escapeHtml(s.artist||'本地')+'</div></div></div><button type="button" onclick="event.stopPropagation();editMeloSong('+idx+')" style="border:none;background:transparent;color:'+subc+';font-size:18px;padding:8px;cursor:pointer">···</button></div>'; }).join('') : '<div style="text-align:center;padding:40px 20px;color:'+subc+'">还没有歌曲<br>点左上角「导入」添加本地音乐</div>')
+      + '<div onclick="importMeloSongs()" style="flex-shrink:0;width:130px;height:150px;border-radius:16px;background:'+card+';padding:14px;display:flex;flex-direction:column;justify-content:flex-end;cursor:pointer;border:0.5px solid rgba(94,184,176,.2)"><div style="font-size:15px;font-weight:700;color:'+fg+'">导入本地</div><div style="font-size:11px;color:'+subc+';margin-top:4px">MP3 / AAC</div></div>'
+      + (melo.playlists||[]).map(function(pl,pi){
+          return '<div onclick="openMeloPlaylist('+pi+')" style="flex-shrink:0;width:130px;height:150px;border-radius:16px;background:'+card+';padding:14px;display:flex;flex-direction:column;justify-content:flex-end;cursor:pointer;border:0.5px solid rgba(94,184,176,.15)"><div style="font-size:15px;font-weight:700;color:'+fg+'">'+escapeHtml(pl.name||'歌单')+'</div><div style="font-size:11px;color:'+subc+';margin-top:4px">'+(pl.songs||[]).length+' 首</div></div>';
+        }).join('')
+      + '</div>'
+      + '<div style="padding:0 14px;display:flex;justify-content:space-between;align-items:center"><div style="font-size:14px;font-weight:600;color:'+fg+'">最近</div>'
+      + '<button type="button" onclick="createMeloPlaylist()" style="border:none;background:transparent;color:'+accent+';font-size:12px;cursor:pointer">＋ 歌单</button></div>'
+      + '<div style="padding:8px 14px 100px">'
+      + (melo.songs.length ? melo.songs.map(function(s,idx){
+          return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:0.5px solid rgba(80,140,160,.08)">'
+            + '<div onclick="playMeloSong('+idx+')" style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;cursor:pointer">'
+            + '<div style="width:48px;height:48px;border-radius:10px;background:'+(s.cover?('url('+s.cover+') center/cover'):'linear-gradient(145deg,#c5e8e4,#a8d4e0)')+';flex-shrink:0"></div>'
+            + '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:500;color:'+fg+'">'+escapeHtml(s.name||'未知')+'</div><div style="font-size:12px;color:'+subc+';margin-top:2px">'+escapeHtml(s.artist||'本地')+'</div></div></div>'
+            + '<button type="button" onclick="event.stopPropagation();editMeloSong('+idx+')" style="border:none;background:transparent;color:'+subc+';font-size:18px;padding:8px;cursor:pointer">···</button></div>';
+        }).join('') : '<div class="empty" style="color:'+subc+';padding:30px 0;text-align:center">导入本地歌曲开始听</div>')
       + '</div>';
   }
-  var mini = '';
-  if (melo.current != null && melo.songs[melo.current]) {
-    var s = melo.songs[melo.current];
-    mini = '<div onclick="openMeloNowPlaying()" style="position:absolute;left:12px;right:12px;bottom:62px;height:48px;border-radius:24px;background:rgba(255,255,255,.92);backdrop-filter:blur(12px);display:flex;align-items:center;gap:10px;padding:0 12px;z-index:15;box-shadow:0 4px 16px rgba(80,140,160,.15);cursor:pointer;border:0.5px solid rgba(255,255,255,.8)">'
-      + '<div style="width:36px;height:36px;border-radius:50%;background:'+(s.cover?('url('+s.cover+') center/cover'):'#c5e0e0')+';flex-shrink:0"></div>'
-      + '<div style="flex:1;min-width:0;font-size:13px;color:'+fg+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escapeHtml(s.name||'')+'</div>'
-      + '<button type="button" onclick="event.stopPropagation();toggleMeloPlay()" style="border:none;background:'+accent+';color:#fff;width:32px;height:32px;border-radius:50%;font-size:12px">'+(melo.playing?'❚❚':'▶')+'</button></div>';
-  }
-  openSubPage('Melo', '<div style="display:flex;flex-direction:column;height:100%;background:'+bg+';position:relative;color:'+fg+'"><div style="flex:1;overflow-y:auto;min-height:0">'+main+'</div>'+mini+'<div style="flex-shrink:0;padding:6px 12px 12px"><div style="display:flex;border-radius:22px;background:rgba(255,255,255,.75);backdrop-filter:blur(14px);border:0.5px solid rgba(255,255,255,.8);box-shadow:0 4px 20px rgba(80,140,160,.12);min-height:52px;align-items:center">'+dock('home','首页')+dock('search','搜索')+dock('notes','笔记')+dock('mine','我的')+'</div></div></div>', '', { replace: !!(opts && opts.replace) || !!state._openFromHome });
-  state._openFromHome = false;
+
+  const mini = (melo.current!=null && melo.songs[melo.current]) ? ('<div id="meloMiniBar" onclick="openMeloNowPlaying()" style="position:absolute;left:12px;right:12px;bottom:62px;z-index:5;display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:20px;background:rgba(255,255,255,.92);backdrop-filter:blur(12px);box-shadow:0 4px 20px rgba(80,140,160,.15);cursor:pointer">'
+    + '<div style="width:36px;height:36px;border-radius:8px;background:'+(melo.songs[melo.current].cover?('url('+melo.songs[melo.current].cover+') center/cover'):'#c5e8e4')+';flex-shrink:0"></div>'
+    + '<div style="flex:1;min-width:0;font-size:13px;color:'+fg+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escapeHtml(melo.songs[melo.current].name||'')+'</div>'
+    + '<button type="button" onclick="event.stopPropagation();toggleMeloPlay()" style="border:none;background:'+accent+';color:#fff;width:32px;height:32px;border-radius:50%;font-size:12px">'+(melo.playing?'❚❚':'▶')+'</button></div>') : '';
+
+  openSubPage('Melo', '<div style="height:100%;display:flex;flex-direction:column;background:'+bg+';position:relative;overflow:hidden">'
+    + '<div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch">'+main+'</div>'
+    + mini
+    + '<div style="flex-shrink:0;display:flex;background:rgba(255,255,255,.88);backdrop-filter:blur(16px);border-top:0.5px solid rgba(80,140,160,.12);padding-bottom:env(safe-area-inset-bottom,0)">'
+    + dockBtn('home','首页')+dockBtn('search','搜索')+dockBtn('notes','笔记')+dockBtn('mine','我的')
+    + '</div></div>', '', { replace: !!opts.replace });
   try { document.getElementById('subNav').style.display = ''; } catch(e) {}
 }
 
+
+function createMeloPlaylist() {
+  openModal('新建歌单', '<div class="form-group"><label>名称</label><input id="mplName" placeholder="我的歌单"></div>',
+    `<button class="btn btn-secondary" onclick="closeModal()">取消</button>
+     <button class="btn btn-primary" onclick="const n=(document.getElementById('mplName').value||'').trim()||'未命名歌单';if(!state.melo.playlists)state.melo.playlists=[];state.melo.playlists.push({name:n,songs:[]});save();closeModal();openMelo(state._meloTab||'home')">创建</button>`);
+}
+function openMeloPlaylist(pi) {
+  const pl = (state.melo.playlists||[])[pi];
+  if (!pl) return;
+  state._homeRoot = 'melo';
+  state._homeDepth = 1;
+  state._subBackFn = function(){ openMelo(state._meloTab||'mine', { replace: true }); };
+  const songs = (pl.songs||[]).map(function(ix){ return { s: state.melo.songs[ix], ix: ix }; }).filter(function(x){ return x.s; });
+  const accent = state.melo.accent || '#5eb8b0';
+  openSubPage(pl.name || '歌单', `
+    <div style="padding:12px 14px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-secondary" style="font-size:12px" onclick="editMeloPlaylistMeta(${pi})">编辑歌单</button>
+      <button class="btn btn-secondary" style="font-size:12px" onclick="addSongsToPlaylist(${pi})">添加歌曲</button>
+      <button class="btn btn-secondary" style="font-size:12px;color:#e74c3c" onclick="if(confirm('删除歌单？')){state.melo.playlists.splice(${pi},1);save();openMelo('mine',{replace:1})}">删除</button>
+    </div>
+    <div style="padding:0 14px 40px">
+      ${songs.map(function(x){
+        return '<div onclick="playMeloSong('+x.ix+')" style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:0.5px solid #eee;cursor:pointer">'
+          + '<div style="flex:1"><div style="font-weight:500">'+escapeHtml(x.s.name||'')+'</div><div class="text-sub" style="font-size:12px">'+escapeHtml(x.s.artist||'')+'</div></div></div>';
+      }).join('') || '<div class="empty">歌单为空，点「添加歌曲」</div>'}
+    </div>`, '', { replace: false });
+}
+function editMeloPlaylistMeta(pi) {
+  const pl = state.melo.playlists[pi];
+  if (!pl) return;
+  openModal('编辑歌单', '<div class="form-group"><label>名称</label><input id="mplName" value="'+escapeHtml(pl.name||'')+'"></div>',
+    `<button class="btn btn-secondary" onclick="closeModal()">取消</button>
+     <button class="btn btn-primary" onclick="state.melo.playlists[${pi}].name=(document.getElementById('mplName').value||'').trim()||'歌单';save();closeModal();openMeloPlaylist(${pi})">保存</button>`);
+}
+function addSongsToPlaylist(pi) {
+  const pl = state.melo.playlists[pi];
+  if (!pl) return;
+  const rows = (state.melo.songs||[]).map(function(s,ix){
+    const on = (pl.songs||[]).indexOf(ix)>=0;
+    return '<label style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:0.5px solid #eee"><input type="checkbox" data-six="'+ix+'" '+(on?'checked':'')+'> <span>'+escapeHtml(s.name||'未知')+'</span></label>';
+  }).join('') || '<div class="empty">没有本地歌曲</div>';
+  openModal('添加歌曲', '<div style="max-height:50vh;overflow:auto">'+rows+'</div>',
+    `<button class="btn btn-secondary" onclick="closeModal()">取消</button>
+     <button class="btn btn-primary" onclick="(function(){const pl=state.melo.playlists[${pi}];pl.songs=[];document.querySelectorAll('.modal-box input[data-six]:checked').forEach(function(el){pl.songs.push(+el.getAttribute('data-six'));});save();closeModal();openMeloPlaylist(${pi});})()">保存</button>`);
+}
 function openMeloNoteModal() {
   openModal('写笔记', '<div class="form-group"><label>内容</label><textarea id="meloNoteTxt" style="min-height:100px" placeholder="此刻想写点什么…"></textarea></div><div class="form-group"><label>关联歌曲（可选）</label><input id="meloNoteSong" placeholder="歌名"></div>',
     '<button class="btn btn-secondary" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="(function(){var t=document.getElementById(\'meloNoteTxt\').value.trim();if(!t){showToast(\'写点内容吧\');return;}if(!state.melo.notes)state.melo.notes=[];state.melo.notes.unshift({text:t,songName:document.getElementById(\'meloNoteSong\').value.trim(),ts:Date.now()});save();closeModal();openMelo(\'notes\');})()">发布</button>', { center: true });
@@ -17518,6 +17755,14 @@ function toggleMeloPlay() {
   if (mini) mini.textContent = icon;
   updateMeloFloat();
 }
+function toggleMeloLyrics() {
+  const box = document.getElementById('meloLyricsBox');
+  if (!box) return;
+  if (box.style.display === 'block') { box.style.display = 'none'; return; }
+  const s = state.melo.songs[state.melo.current];
+  box.textContent = (s && s.lyrics) ? s.lyrics : '暂无歌词\n可在编辑歌曲里添加';
+  box.style.display = 'block';
+}
 function openMeloNowPlaying() {
   const i = state.melo.current;
   if (i == null) return;
@@ -17545,8 +17790,9 @@ function openMeloNowPlaying() {
         <button type="button" onclick="state.fileTarget='meloCover';state._meloSongIdx=${i};document.getElementById('fileInput').accept='image/*';document.getElementById('fileInput').click()" style="border:none;background:rgba(255,255,255,.7);border-radius:12px;padding:4px 10px;font-size:11px;color:#2a4a55">封面</button>
       </div>
       <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px 24px 20px;position:relative;z-index:1">
+        <div id="meloLyricsBox" style="display:none;position:absolute;inset:60px 20px 140px;z-index:3;background:rgba(255,255,255,.92);border-radius:16px;padding:16px;overflow-y:auto;font-size:14px;line-height:1.8;color:#2a4a55;white-space:pre-wrap" onclick="event.stopPropagation()"></div>
         <!-- 黑胶唱片 -->
-        <div style="position:relative;width:min(72vw,280px);height:min(72vw,280px);margin-bottom:8px">
+        <div onclick="toggleMeloLyrics()" style="position:relative;width:min(72vw,280px);height:min(72vw,280px);margin-bottom:8px;cursor:pointer">
           <div style="position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle at center,#1a1a1a 0%,#0d0d0d 35%,#222 36%,#111 100%);box-shadow:0 16px 40px rgba(0,40,50,.25),inset 0 0 0 8px #0a0a0a;${spin}">
             <div style="position:absolute;inset:18%;border-radius:50%;overflow:hidden;background:#333;border:3px solid #1a1a1a">
               ${cover
@@ -19004,7 +19250,14 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
           + '<div style="position:absolute;left:8px;right:8px;bottom:6px;font-size:11px;color:#666;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">'+(w.caption||w.content||'')+'</div></div>';
         return '<div class="home-widget" data-widx="'+wi+'" data-wtype="polaroid" style="'+base+'overflow:visible">'+inner+del+'</div>';
       }
-      if (t === 'badge3d') {
+            if (t === 'standee') {
+        inner = '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end">'
+          + '<div style="width:88%;height:78%;border-radius:8px 8px 4px 4px;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.2),inset 0 0 0 2px rgba(255,255,255,.5);background:linear-gradient(180deg,#eef6f8,#d0e4ea);transform:perspective(200px) rotateX(2deg)">'
+          + (w.img ? '<img src="'+w.img+'" style="width:100%;height:100%;object-fit:cover" draggable="false">' : '<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#8aa;font-size:11px">立牌</div>')
+          + '</div><div style="width:70%;height:8px;margin-top:4px;border-radius:4px;background:rgba(0,0,0,.12)"></div></div>';
+        return '<div class="home-widget" data-widx="'+wi+'" data-wtype="standee" style="'+base+'overflow:visible;background:transparent;box-shadow:none">'+inner+del+'</div>';
+      }
+if (t === 'badge3d') {
         inner = '<div class="badge-spin" style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.18),inset 0 0 0 3px rgba(255,255,255,.7);transform:rotate('+(w.rot||0)+'deg);transition:transform .45s ease;background:#e8eef0">'
           + (w.img ? '<img src="'+w.img+'" style="width:100%;height:100%;object-fit:cover" draggable="false">' : '')
           + '</div>';
@@ -19516,6 +19769,7 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
         {id:'polaroid_l',name:'大拍立得',size:'大型 · 可换图可编辑',img:'',w:160,h:200,page:0,type:'polaroid_l'},
         {id:'polaroid_m',name:'小拍立得',size:'中型 · 可换图可编辑',img:'',w:120,h:150,page:0,type:'polaroid_m'},
         {id:'badge3d',name:'立体吧唧',size:'中型 · 点击旋转',img:'',w:110,h:110,page:0,type:'badge3d'},
+        {id:'standee',name:'立体立牌',size:'中型 · 可换图',img:'',w:100,h:160,page:0,type:'standee'},
         {id:'clock_sm',name:'时间小组件',size:'小型 · 显示当前时间',img:'',w:150,h:80,page:0,type:'clock_sm'},
         {id:'photowall3',name:'三宫格照片墙',size:'中型 · 三格',img:'',w:200,h:140,page:0,type:'photowall3'},
         {id:'pw_s',name:'空白照片墙·小',size:'小型',img:'',w:100,h:100,page:0,type:'pw_blank',sizeKey:'s'},
@@ -19576,6 +19830,7 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
         {id:'polaroid_l',name:'大拍立得',size:'大型 · 可换图可编辑',img:'',w:160,h:200,page:0,type:'polaroid_l'},
         {id:'polaroid_m',name:'小拍立得',size:'中型 · 可换图可编辑',img:'',w:120,h:150,page:0,type:'polaroid_m'},
         {id:'badge3d',name:'立体吧唧',size:'中型 · 点击旋转',img:'',w:110,h:110,page:0,type:'badge3d'},
+        {id:'standee',name:'立体立牌',size:'中型 · 可换图',img:'',w:100,h:160,page:0,type:'standee'},
         {id:'clock_sm',name:'时间小组件',size:'小型 · 显示当前时间',img:'',w:150,h:80,page:0,type:'clock_sm'},
         {id:'photowall3',name:'三宫格照片墙',size:'中型 · 三格',img:'',w:200,h:140,page:0,type:'photowall3'},
         {id:'pw_s',name:'空白照片墙·小',size:'小型',img:'',w:100,h:100,page:0,type:'pw_blank',sizeKey:'s'},
