@@ -1714,7 +1714,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-17y';
+const EENOK_BUILD = '2026-08-17z';
 function checkAppUpdate() {
   try {
     const prev = localStorage.getItem('eenook_build');
@@ -2578,22 +2578,53 @@ function closeSubPage() {
   if (subNav) subNav.style.display = '';
   const kind = state._subKind;
   // 从主屏幕打开的 App：优先回主屏（避免掉进通讯录）
-  const homeKinds = ['homeApp','bookstore','pomodoro','icity','gal','sk','countdown','memory','offline','charlib','divination','worldbook','forum','sms','phone','beauty','settings','tomato'];
+  const homeKinds = ['homeApp','bookstore','pomodoro','icity','gal','sk','countdown','memory','offline','charlib','divination','worldbook','forum','sms','phone','beauty','settings','tomato','scriptkill'];
   if (state._homeRoot || homeKinds.indexOf(kind) >= 0) {
-    // 子层 stack 先弹出
-    if (state._subStack && state._subStack.length) {
-      const prev = state._subStack.pop();
-      document.getElementById('subTitle').textContent = prev.title;
-      document.getElementById('subBody').innerHTML = prev.body;
-      document.getElementById('subRight').innerHTML = prev.right || '';
-      state._subBackFn = prev.backFn;
-      state._subKind = prev.kind || kind;
-      const backBtn = document.querySelector('#subNav .nav-btn');
-      if (backBtn) backBtn.onclick = function(){ closeSubPage(); };
+    // 有自定义返回：优先执行（重新渲染，避免 HTML 快照导致评论/消息消失）
+    if (typeof state._subBackFn === 'function') {
+      const fn = state._subBackFn;
+      state._subBackFn = null;
+      state._subStack = [];
+      try { fn(); } catch(e) { console.warn(e); goHome(); }
       return;
+    }
+    // 深层：回到该 App 根界面（不用过期 HTML 回放）
+    if (state._homeDepth && state._homeDepth > 0) {
+      state._homeDepth = 0;
+      state._subStack = [];
+      const root = state._homeRoot || '';
+      try {
+        if (root === 'icity') { openIcityDiaryList(state._icityDiaryFilter||'all'); return; }
+        if (root === 'charlib') { openCharLib(); return; }
+        if (root === 'memory') { state._memFilter = null; openMemoryApp(); return; }
+        if (root === 'countdown') { openCountdownApp(state._cdTab||'all'); return; }
+        if (root === 'sk' || kind === 'scriptkill') { state._skId=null; openScriptKill('scripts'); return; }
+        if (root === 'phone') { openPhonePad(state._phoneTab||'contacts'); return; }
+        if (root === 'sms') { openSmsApp(); return; }
+        if (root === 'gal') { openGalApp(state._galTab||'targets'); return; }
+        if (root === 'offline') { openOfflineApp(); return; }
+        if (root === 'beauty') { openHomeBeauty(); return; }
+        if (root === 'settings') { openHomeSettingsPage(); return; }
+        if (root === 'forum') { openForumIG(state._igTab||'home'); return; }
+      } catch(e) { console.warn(e); }
+      try { goHome(); } catch(e) { showPage('home'); }
+      return;
+    }
+    // 仍有 stack：清空并回 App 根或主屏（禁止逐层 HTML 回放）
+    if (state._subStack && state._subStack.length) {
+      state._subStack = [];
+      const root = state._homeRoot || '';
+      try {
+        if (root === 'icity') { openIcityApp(state._icityTab||'square'); return; }
+        if (root === 'charlib') { openCharLib(); return; }
+        if (root === 'memory') { state._memFilter=null; openMemoryApp(); return; }
+        if (root === 'countdown') { openCountdownApp('all'); return; }
+        if (root === 'sk' || kind === 'scriptkill') { openScriptKill_HOME(); return; }
+      } catch(e) {}
     }
     state._subKind = null;
     state._homeRoot = null;
+    state._homeDepth = 0;
     state._subStack = [];
     if (sub) {
       sub.classList.remove('active');
@@ -7835,10 +7866,15 @@ const SK_DATA = {
 
 
 function openScriptKill_HOME(){
-  state._homeRoot='sk'; state._subKind='sk';
+  state._homeRoot='sk'; state._subKind='scriptkill';
   state._openFromHome = true;
+  state._homeDepth = 0;
   state._skId = null;
   state._skChatId = null;
+  state._skChatRoom = null;
+  state._skPostIdx = null;
+  state._skTab = 'scripts';
+  armClickGuard(900);
   return openScriptKill('scripts');
 }
 function openScriptKill(tab) {
@@ -7995,6 +8031,8 @@ function getSKScript(id) {
   return (state.scriptKill.custom||[]).find(s => s.id === id);
 }
 function openSKDetail(id) {
+  state._skId = id; state._homeDepth = 1; state._homeRoot = state._homeRoot || 'sk';
+
   const s = getSKScript(id);
   if (!s) return;
   state._skId = id;
@@ -11726,6 +11764,12 @@ function editHomePolaroid() {
 function openChangelog() {
   const ver = (typeof EENOK_BUILD !== 'undefined') ? EENOK_BUILD : '';
   const logs = [
+    { v: '2026-08-17z', items: [
+      '主屏 App 从入口进主界面（剧本杀/角色库/记忆/倒数日），不再直进详情',
+      '长按图标进入布局编辑时不再误开 App',
+      '子页退出禁止 HTML 快照回放（评论/消息不再逐条消失）',
+      '日记评论可删除；角色评论文本异常 [object Object] 修复'
+    ]},
     { v: '2026-08-17y', items: [
       'icity 日记白底；线条点赞/评论图标；点赞变红',
       '评论可回复；生成评论可选角色（读人设与关系）',
@@ -12113,6 +12157,9 @@ function editHomeWidget(id) {
 function openCharLib() {
   state._homeRoot = 'charlib';
   state._homeDepth = 0;
+  state._subKind = 'homeApp';
+  state._openFromHome = true;
+  armClickGuard(900);
   const cards = (state.chars||[]).map((c) => `
     <div onclick="openCharLibDetail('${c.id}')" style="border-radius:16px;border:1px solid var(--line);background:var(--card);overflow:hidden;cursor:pointer">
       <div style="height:120px;background:linear-gradient(145deg,#f5f5f7,#ebe8f0);overflow:hidden">
@@ -12134,6 +12181,7 @@ function openCharLibDetail(id) {
   if (!c) return;
   state._homeRoot = 'charlib';
   state._homeDepth = 1;
+  state._subBackFn = function(){ openCharLib(); };
   openSubPage(c.nick||'角色', `
     <div style="padding:20px 16px;overflow-y:auto;height:100%;box-sizing:border-box">
       <div style="text-align:center">
@@ -12241,7 +12289,13 @@ function openMemoryApp(filterCharId) {
   state._homeRoot = 'memory';
   state._homeDepth = 0;
   state._subKind = 'homeApp';
-  if (filterCharId) state._memFilter = filterCharId;
+  // 从主屏进入：强制角色列表；列表内点角色会传 filter 或先设 _memFilter 再调
+  if (filterCharId) {
+    state._memFilter = filterCharId;
+  } else if (state._openFromHome) {
+    state._memFilter = null;
+  }
+  // 列表点选：调用前已设置 state._memFilter，此处保留
   const chars = state.chars || [];
   // 未选角色：先选人
   if (!state._memFilter) {
@@ -12266,6 +12320,8 @@ function openMemoryApp(filterCharId) {
     }, 20);
     return;
   }
+  state._homeDepth = 1;
+  state._subBackFn = function(){ state._memFilter = null; openMemoryApp(); };
   const c = chars.find(function(x){ return x.id === state._memFilter; }) || {};
   const q = (state._memQ || '').trim().toLowerCase();
   const items = (state.memoryApp.items || []).filter(function(it){ return it.charId === state._memFilter; });
@@ -12861,14 +12917,27 @@ function openIcityDiaryDetail(kind, idx) {
   var heartSvg = liked
     ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="#e74c3c" stroke="#e74c3c" stroke-width="1.2"><path d="M20.8 4.6c-1.6-1.5-4.1-1.5-5.7 0L12 7.6 8.9 4.6C7.3 3.1 4.8 3.1 3.2 4.6 1.6 6.2 1.6 8.7 3.2 10.3L12 19l8.8-8.7c1.6-1.6 1.6-4.1 0-5.7z"/></svg>'
     : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="1.6"><path d="M20.8 4.6c-1.6-1.5-4.1-1.5-5.7 0L12 7.6 8.9 4.6C7.3 3.1 4.8 3.1 3.2 4.6 1.6 6.2 1.6 8.7 3.2 10.3L12 19l8.8-8.7c1.6-1.6 1.6-4.1 0-5.7z"/></svg>';
-  var comments = (d.comments || []).map(function(c, ci){
-    var replies = (c.replies || []).map(function(r){
-      return '<div style="margin:8px 0 0 12px;padding:8px 10px;background:#f7f7f8;border-radius:8px"><b style="font-size:12px;color:#555">'+escapeHtml(r.nick||'')+'</b><div style="font-size:13px;margin-top:2px;color:#333">'+escapeHtml(r.text||'')+'</div></div>';
+    var comments = (d.comments || []).map(function(c, ci){
+    function cmtText(x){
+      if (x == null) return '';
+      if (typeof x === 'string') return x;
+      if (typeof x === 'object') return String(x.text || x.content || x.msg || '');
+      return String(x);
+    }
+    var replies = (c.replies || []).map(function(r, ri){
+      return '<div style="margin:8px 0 0 12px;padding:8px 10px;background:#f7f7f8;border-radius:8px;position:relative">'
+        + '<b style="font-size:12px;color:#555">'+escapeHtml(cmtText(r.nick)||'用户')+'</b>'
+        + '<span onclick="event.stopPropagation();delIcityCommentReply(\''+kind+'\','+idx+','+ci+','+ri+')" style="position:absolute;right:8px;top:8px;font-size:14px;color:#ccc;cursor:pointer">×</span>'
+        + '<div style="font-size:13px;margin-top:2px;color:#333;padding-right:18px">'+escapeHtml(cmtText(r.text||r.content))+'</div></div>';
     }).join('');
-    return '<div style="padding:12px 0;border-bottom:1px solid #f0f0f0">'
-      + '<div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:13px">'+escapeHtml(c.nick||'用户')+'</b>'
-      + '<span onclick="replyIcityComment(\''+kind+'\','+idx+','+ci+')" style="font-size:12px;color:#5b8def;cursor:pointer">回复</span></div>'
-      + '<div style="font-size:14px;margin-top:4px;color:#333">'+escapeHtml(c.text||c.content||'')+'</div>'
+    return '<div style="padding:12px 0;border-bottom:1px solid #f0f0f0;position:relative">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center">'
+      + '<b style="font-size:13px">'+escapeHtml(cmtText(c.nick)||'用户')+'</b>'
+      + '<span style="display:flex;gap:12px;align-items:center">'
+      + '<span onclick="replyIcityComment(\''+kind+'\','+idx+','+ci+')" style="font-size:12px;color:#5b8def;cursor:pointer">回复</span>'
+      + '<span onclick="delIcityComment(\''+kind+'\','+idx+','+ci+')" style="font-size:14px;color:#ccc;cursor:pointer;padding:0 4px">×</span>'
+      + '</span></div>'
+      + '<div style="font-size:14px;margin-top:4px;color:#333">'+escapeHtml(cmtText(c.text||c.content))+'</div>'
       + replies + '</div>';
   }).join('') || '<div style="padding:20px;color:#999;text-align:center;font-size:13px">暂无评论</div>';
   openSubPage(nick + ' · 日记',
@@ -12890,6 +12959,23 @@ function openIcityDiaryDetail(kind, idx) {
     + '<input id="icityDiaryCmt" placeholder="我要评论" style="flex:1;border:1px solid #e5e5e5;border-radius:20px;padding:10px 14px;font-size:14px;outline:none">'
     + '<button type="button" onclick="sendIcityDiaryComment(\''+kind+'\','+idx+')" style="border:none;background:#4caf50;color:#fff;border-radius:20px;padding:10px 16px;font-size:14px;cursor:pointer">发送</button></div></div>');
   state._homeDepth = 1;
+  state._homeRoot = 'icity';
+  state._subKind = 'icity';
+  state._subBackFn = function(){ openIcityDiaryList(state._icityDiaryFilter||'all'); };
+}
+function delIcityComment(kind, idx, ci) {
+  var d = kind === 'diary' ? (state.icity.diaries||[])[idx] : (state.icity.posts||[])[idx];
+  if (!d || !d.comments) return;
+  d.comments.splice(ci, 1);
+  save();
+  openIcityDiaryDetail(kind, idx);
+}
+function delIcityCommentReply(kind, idx, ci, ri) {
+  var d = kind === 'diary' ? (state.icity.diaries||[])[idx] : (state.icity.posts||[])[idx];
+  if (!d || !d.comments || !d.comments[ci] || !d.comments[ci].replies) return;
+  d.comments[ci].replies.splice(ri, 1);
+  save();
+  openIcityDiaryDetail(kind, idx);
 }
 function toggleIcityLike(kind, idx) {
   var d = kind === 'diary' ? (state.icity.diaries||[])[idx] : (state.icity.posts||[])[idx];
@@ -12941,8 +13027,9 @@ async function doGenIcityComments(kind, idx) {
       + '要求：只输出一条简短评论（1-2句），口语、有温度、符合人设与关系，禁止 OOC，禁止客服腔，少用 emoji，不要引号和前缀。';
     try {
       var text = await apiChat([{ role: 'user', content: prompt }], { temperature: 0.88, max_tokens: 100 });
+      if (text && typeof text === 'object') text = text.text || text.content || JSON.stringify(text);
       text = String(text || '').trim().replace(/^["「]|["」]$/g, '');
-      if (text) d.comments.push({ nick: ch.nick || ch.realName || '角色', text: text, ts: Date.now(), fromId: ch.id });
+      if (text && text !== '[object Object]') d.comments.push({ nick: ch.nick || ch.realName || '角色', text: text, ts: Date.now(), fromId: ch.id });
     } catch (e) {
       console.warn(e);
       showToast('生成失败：' + (e.message || e));
@@ -14222,6 +14309,17 @@ function igFilterDm(q) {}
 function igViewStory() { showToast('快拍'); }
 
 function openCountdownApp(tab) {
+  // 从主屏进入：始终到列表，不进编辑页
+  if (state._openFromHome) {
+    state._cdEditIdx = null;
+    tab = tab || state._cdTab || 'all';
+    if (tab !== 'all' && tab !== 'cat') tab = 'all';
+  }
+  state._homeRoot = 'countdown';
+  state._homeDepth = 0;
+  state._subKind = 'homeApp';
+  armClickGuard(800);
+
   state._homeRoot = 'countdown';
   state._subKind = 'countdown';
   ensureHomeState();
@@ -14404,6 +14502,8 @@ function addCountdown() {
 }
 
 function editCountdown(i) {
+  state._cdEditIdx = i; state._homeDepth = 1; state._homeRoot = 'countdown'; state._subBackFn = function(){ openCountdownApp(state._cdTab||'all'); };
+
   const d = (state.countdown || [])[i];
   if (!d) return;
   const books = state.countdownBooks || [];
@@ -18606,11 +18706,22 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     // —— 绑定 App 点击（不用 eval 字符串陷阱）——
     function launch(openStr) {
       if (!openStr) return;
+      if (state._suppressLaunch || state.home.editMode) return;
       try {
-        // 从主屏点 App：先清子页栈，防止退出连环跳
+        // 从主屏点 App：清栈 + 清各 App 残留选中态，避免直接进详情
         state._subStack = [];
         state._subBackFn = null;
         state._openFromHome = true;
+        state._homeDepth = 0;
+        state._skId = null;
+        state._skChatId = null;
+        state._skChatRoom = null;
+        state._skPostIdx = null;
+        state._memFilter = null;
+        state._cdEditIdx = null;
+        state._official = null;
+        state.currentChatId = null;
+        armClickGuard(900);
         var fn = openStr.replace(/\(\)$/, '');
         if (typeof window[fn] === 'function') { window[fn](); return; }
       } catch(e) {}
@@ -18621,7 +18732,12 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
       var moved = false, sx=0, sy=0;
       el.addEventListener('touchstart', function(e) {
         var t = e.touches[0]; sx = t.clientX; sy = t.clientY; moved = false;
-        el._lp = setTimeout(function(){ state.home.editMode = true; save(); renderHome(); }, 600);
+        el._lp = setTimeout(function(){
+          state._suppressLaunch = true;
+          state.home.editMode = true;
+          save();
+          renderHome();
+        }, 550);
       }, {passive:true});
       el.addEventListener('touchmove', function(e) {
         var t = e.touches[0];
@@ -18636,34 +18752,44 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
       }, {passive:true});
       el.addEventListener('touchend', function() {
         clearTimeout(el._lp);
-        if (editMode) {
+        if (state.home.editMode || editMode) {
           var key = el.dataset.key;
-          if (!state.home.layout[key]) state.home.layout[key] = {};
-          var nx = parseFloat(el.style.left)||0;
-          var ny = parseFloat(el.style.top)||0;
-          var stageW = (document.getElementById('homeInner')||{}).clientWidth || 360;
-          var pages = state.home.pages || 2;
-          var newPage = page;
-          // 拖到右边缘 → 下一页；左边缘 → 上一页
-          if (nx > stageW - 56 && page < pages - 1) newPage = page + 1;
-          else if (nx < 8 && page > 0) newPage = page - 1;
-          state.home.layout[key].x = (newPage !== page) ? 12 : nx;
-          state.home.layout[key].y = ny;
-          state.home.layout[key].page = newPage;
-          state.home.layout[key]._user = true;
-          if (newPage !== page) {
-            state.home.page = newPage;
-            try { showToast(newPage === 0 ? '已移到第1页' : '已移到第2页'); } catch(e) {}
+          if (key) {
+            if (!state.home.layout[key]) state.home.layout[key] = {};
+            var nx = parseFloat(el.style.left)||0;
+            var ny = parseFloat(el.style.top)||0;
+            var stageW = (document.getElementById('homeInner')||{}).clientWidth || 360;
+            var pages = state.home.pages || 2;
+            var newPage = page;
+            if (nx > stageW - 56 && page < pages - 1) newPage = page + 1;
+            else if (nx < 8 && page > 0) newPage = page - 1;
+            state.home.layout[key].x = (newPage !== page) ? 12 : nx;
+            state.home.layout[key].y = ny;
+            state.home.layout[key].page = newPage;
+            state.home.layout[key]._user = true;
+            if (newPage !== page) {
+              state.home.page = newPage;
+              try { showToast(newPage === 0 ? '已移到第1页' : '已移到第2页'); } catch(e) {}
+            }
+            save();
+            if (newPage !== page) { renderHome(); return; }
           }
-          save();
-          if (newPage !== page) { renderHome(); return; }
+          state._suppressLaunch = true;
+          setTimeout(function(){ state._suppressLaunch = false; }, 400);
+          return;
+        }
+        if (state._suppressLaunch) {
+          state._suppressLaunch = false;
           return;
         }
         if (!moved) launch(el.dataset.open);
       });
       // 桌面鼠标
       el.addEventListener('click', function(e) {
-        if (editMode) return;
+        if (state.home.editMode || editMode || state._suppressLaunch) {
+          e.preventDefault(); e.stopPropagation();
+          return;
+        }
         e.preventDefault();
         launch(el.dataset.open);
       });
