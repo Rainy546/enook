@@ -1726,7 +1726,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-18e';
+const EENOK_BUILD = '2026-08-18f';
 function checkAppUpdate() {
   try {
     const prev = localStorage.getItem('eenook_build');
@@ -2509,8 +2509,9 @@ function openSubPage(title, bodyHtml, rightHtml, opts) {
   if (opts.replace || opts.fromHome || state._openFromHome) {
     state._subStack = [];
     state._openFromHome = false;
-    armClickGuard(480);
-  } else if (sub.classList.contains('active')) {
+    // 列表类入口用更短防护，避免点第一项被挡
+    armClickGuard(opts.softGuard ? 120 : 280);
+  } else if (sub.classList.contains('active') && !opts.noStack) {
     state._subStack.push({
       title: document.getElementById('subTitle').textContent,
       body: document.getElementById('subBody').innerHTML,
@@ -2519,7 +2520,10 @@ function openSubPage(title, bodyHtml, rightHtml, opts) {
       kind: state._subKind || null
     });
   }
-  state._subBackFn = opts.backFn || null;
+  // 仅当显式传入 backFn 时覆盖，避免调用方先设的 _subBackFn 被清掉
+  if (Object.prototype.hasOwnProperty.call(opts, 'backFn')) {
+    state._subBackFn = opts.backFn;
+  }
   document.getElementById('subTitle').textContent = title || '';
   document.getElementById('subBody').innerHTML = bodyHtml || '';
   document.getElementById('subRight').innerHTML = rightHtml || '';
@@ -2588,6 +2592,9 @@ function resetHomeNav(kind) {
   state._homeDepth = 0;
 }
 function closeSubPage() {
+  if (state._navLock) return;
+  state._navLock = true;
+  setTimeout(function(){ state._navLock = false; }, 320);
   const sub = document.getElementById('page-sub');
   const subNav = document.getElementById('subNav');
   if (subNav) subNav.style.display = '';
@@ -5120,7 +5127,15 @@ function onFileSelected(e) {
       if (!state.home.pageWidgets) state.home.pageWidgets = {};
       if (!state.home.pageWidgets[pageIdx]) state.home.pageWidgets[pageIdx] = [];
       if (!state.home.pageWidgets[pageIdx][wIdx]) state.home.pageWidgets[pageIdx][wIdx] = { id:'w'+Date.now(), x:16, y:40, w:150, h:100 };
-      state.home.pageWidgets[pageIdx][wIdx].img = data;
+      var ww = state.home.pageWidgets[pageIdx][wIdx];
+      if (ww.type === 'pw3' || ww.type === 'photowall3' || state._pw3Cell != null) {
+        if (!ww.imgs) ww.imgs = ['','',''];
+        var ci = state._pw3Cell != null ? state._pw3Cell : 0;
+        ww.imgs[ci] = data;
+        state._pw3Cell = null;
+      } else {
+        ww.img = data;
+      }
       state.home.page = pageIdx;
       // 空白照片墙等：尺寸不随图片改变
       var fixed = state._widgetFixedSize || (state.home.pageWidgets[pageIdx][wIdx].type === 'pw_blank' || state.home.pageWidgets[pageIdx][wIdx].type === 'photowall3');
@@ -7110,6 +7125,14 @@ function openApi() {
     <div class="form-group"><label>模型</label><input id="apiModel" value="${state.api.model || ''}" placeholder="gpt-3.5-turbo"></div>
     <div class="form-group"><label>温度 Temperature</label><input id="apiTemp" type="number" step="0.1" min="0" max="2" value="${state.api.temperature || 0.7}"></div>
     <div class="form-group"><label>最大 Token</label><input id="apiMaxTok" type="number" min="50" max="128000" value="${state.api.maxTokens || 4096}"></div>
+    <div style="font-weight:600;margin:14px 0 8px;font-size:13px">语音 API（可选）</div>
+    <div class="form-group"><label>语音 Base URL</label><input id="apiVoiceUrl" value="${state.api.voiceUrl || ''}" placeholder="兼容 OpenAI /audio/speech"></div>
+    <div class="form-group"><label>语音模型</label><input id="apiVoiceModel" value="${state.api.voiceModel || 'tts-1'}" placeholder="tts-1"></div>
+    <div class="form-group"><label>音色 voice</label><input id="apiVoiceName" value="${state.api.voiceName || 'alloy'}" placeholder="alloy / nova / ..."></div>
+    <div style="font-weight:600;margin:14px 0 8px;font-size:13px">生图 API（可选）</div>
+    <div class="form-group"><label>生图 Base URL</label><input id="apiImgUrl" value="${state.api.imgUrl || ''}" placeholder="兼容 /images/generations"></div>
+    <div class="form-group"><label>生图模型</label><input id="apiImgModel" value="${state.api.imgModel || 'dall-e-3'}" placeholder="dall-e-3 / sd"></div>
+    <div class="text-sub" style="font-size:11px;margin-bottom:8px">留空则与主 API 同 Key；保存预设时一并写入</div>
     <button class="btn btn-secondary" style="width:100%;margin-bottom:8px" onclick="testApiConnection()">测试连接</button>
     <div id="apiTestResult" class="text-sub" style="margin-bottom:8px"></div>
     <button class="btn btn-secondary" style="width:100%;margin-bottom:12px" onclick="pullModels()">拉取模型列表</button>
@@ -7131,7 +7154,66 @@ function saveApi() {
   state.api.model = document.getElementById('apiModel').value.trim();
   state.api.temperature = parseFloat(document.getElementById('apiTemp').value) || 0.7;
   state.api.maxTokens = parseInt(document.getElementById('apiMaxTok').value, 10) || 4096;
-  save(); closeModal(); alert('API 设置已保存');
+  try {
+    state.api.voiceUrl = (document.getElementById('apiVoiceUrl')||{}).value || '';
+    state.api.voiceModel = (document.getElementById('apiVoiceModel')||{}).value || 'tts-1';
+    state.api.voiceName = (document.getElementById('apiVoiceName')||{}).value || 'alloy';
+    state.api.imgUrl = (document.getElementById('apiImgUrl')||{}).value || '';
+    state.api.imgModel = (document.getElementById('apiImgModel')||{}).value || 'dall-e-3';
+  } catch(e) {}
+  save(); closeModal(); showToast('API 设置已保存');
+}
+async function apiSpeak(text, opts) {
+  opts = opts || {};
+  const key = (state.api && state.api.key) || '';
+  let base = (state.api && state.api.voiceUrl) || (state.api && state.api.baseUrl) || '';
+  if (!base || !key) throw new Error('请先配置语音 API 或主 API');
+  base = normalizeApiBase(base);
+  const endpoint = /\/audio\/speech$/i.test(base) ? base : (base.replace(/\/+$/, '') + '/audio/speech');
+  const body = {
+    model: opts.model || state.api.voiceModel || 'tts-1',
+    input: String(text||'').slice(0, 4096),
+    voice: opts.voice || state.api.voiceName || 'alloy'
+  };
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(res.status + ' ' + (t||'').slice(0,100));
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const audio = new Audio(url);
+  await audio.play();
+  return url;
+}
+async function apiGenImage(prompt, opts) {
+  opts = opts || {};
+  const key = (state.api && state.api.key) || '';
+  let base = (state.api && state.api.imgUrl) || (state.api && state.api.baseUrl) || '';
+  if (!base || !key) throw new Error('请先配置生图 API 或主 API');
+  base = normalizeApiBase(base);
+  const endpoint = /\/images\/generations$/i.test(base) ? base : (base.replace(/\/+$/, '') + '/images/generations');
+  const body = {
+    model: opts.model || state.api.imgModel || 'dall-e-3',
+    prompt: String(prompt||'').slice(0, 1000),
+    n: 1,
+    size: opts.size || '1024x1024'
+  };
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+    body: JSON.stringify(body)
+  });
+  const data = await res.json().catch(function(){ return {}; });
+  if (!res.ok) throw new Error(res.status + ' ' + JSON.stringify(data.error||data).slice(0,120));
+  const u = data.data && data.data[0] && (data.data[0].url || data.data[0].b64_json);
+  if (!u) throw new Error('生图无结果');
+  if (String(u).startsWith('http')) return u;
+  return 'data:image/png;base64,' + u;
 }
 async function testApiConnection() {
   const url = normalizeApiBase((document.getElementById('apiUrl') || {}).value || '');
@@ -10877,21 +10959,29 @@ function openPhoneCheck() {
   state._subBackFn = null;
   state._clickGuardUntil = 0;
   const list = (state.chars||[]).map(function(ch){
-    return '<button type="button" class="setting-item phone-check-row" data-cid="'+ch.id+'" style="width:calc(100% - 24px);border-radius:14px;margin:8px 12px;border:1px solid var(--line);display:flex;align-items:center;background:var(--card);cursor:pointer;text-align:left;padding:12px">'
-      + '<img src="'+avatarUrl(ch)+'" style="width:40px;height:40px;border-radius:10px;margin-right:12px;object-fit:cover;pointer-events:none">'
-      + '<span style="flex:1;pointer-events:none">'+escapeHtml(ch.nick||ch.realName||'')+'</span>'
-      + '<span class="arrow" style="pointer-events:none">›</span></button>';
+    return '<div class="phone-check-row" data-cid="'+ch.id+'" style="display:flex;align-items:center;margin:8px 12px;padding:12px;border-radius:14px;border:1px solid var(--line);background:var(--card);cursor:pointer;-webkit-tap-highlight-color:rgba(0,0,0,.06)">'
+      + '<img src="'+avatarUrl(ch)+'" style="width:40px;height:40px;border-radius:10px;margin-right:12px;object-fit:cover;pointer-events:none" alt="">'
+      + '<span style="flex:1;pointer-events:none;font-size:15px">'+escapeHtml(ch.nick||ch.realName||'')+'</span>'
+      + '<span style="pointer-events:none;color:#c7c7cc">›</span></div>';
   }).join('') || '<div class="empty">暂无角色</div>';
-  openSubPage('查手机', list);
+  openSubPage('查手机', '<div id="phoneCheckList">'+list+'</div>', '', { replace: true, softGuard: true, backFn: null });
+  state._clickGuardUntil = 0;
+  // 事件委托：整列表点击
   setTimeout(function(){
-    document.querySelectorAll('.phone-check-row').forEach(function(el){
-      el.onclick = function(ev){
-        if (ev) { ev.preventDefault(); ev.stopPropagation(); }
-        state._clickGuardUntil = 0;
-        openCharPhone(el.getAttribute('data-cid'));
-      };
-    });
-  }, 30);
+    var box = document.getElementById('phoneCheckList') || document.getElementById('subBody');
+    if (!box) return;
+    box.onclick = function(ev) {
+      var t = ev.target;
+      while (t && t !== box && !t.getAttribute('data-cid')) t = t.parentNode;
+      if (!t || !t.getAttribute) return;
+      var cid = t.getAttribute('data-cid');
+      if (!cid) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      state._clickGuardUntil = 0;
+      openCharPhone(cid);
+    };
+  }, 40);
 }
 function exitPhone() {
   state._phoneLayer = null;
@@ -11039,7 +11129,7 @@ function openCharPhone(cid) {
         <div id="phoneAppGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px 8px">${grid}</div>
       </div>
     </div>
-  `, '', { replace: true });
+  `, '', { replace: true, softGuard: true, backFn: function(){ openPhoneCheck(); } });
   try { const sn = document.getElementById('subNav'); if (sn) sn.style.display = 'none'; } catch(e) {}
   state._clickGuardUntil = 0;
   setTimeout(function() {
@@ -11830,6 +11920,12 @@ function editHomePolaroid() {
 function openChangelog() {
   const ver = (typeof EENOK_BUILD !== 'undefined') ? EENOK_BUILD : '';
   const logs = [
+    { v: '2026-08-18f', items: [
+      '修复 openSubPage 清掉返回函数导致歌单/子页直接回桌面；导航防连点弹跳',
+      '查手机列表事件委托可点；通话角色自动接听+线条图标；修复 [object Object]',
+      '最近通话左滑/删除；小组件删除不再误开相册；三宫格可换三格',
+      'API 设置增加语音/生图接口；玻璃 UI 开关'
+    ]},
     { v: '2026-08-18e', items: [
       'Melo 补全首页；搜索去掉快速发现/浏览全部；歌单新建编辑；封面上传留在播放页；点唱片看歌词',
       '查手机列表可点、退出不卡；通话来电/接通界面；最近通话头像；通话记录弹窗',
@@ -15695,7 +15791,7 @@ function openPhonePad(tab) {
       </div>
       <div style="padding:0 16px 8px;font-size:28px;font-weight:700">最近通话</div>
       ${calls.map(c=>`
-        <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:0.5px solid #eee" onclick="${editing?`toggleCallSel('${c.id}')`:`viewCallLog('${c.id||''}')`}">
+        <div class="call-row" data-callid="${c.id}" style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:0.5px solid #eee;position:relative;overflow:hidden" onclick="${editing?`toggleCallSel('${c.id}')`:`viewCallLog('${c.id||''}')`}">
           ${editing?`<input type="checkbox" ${(state._phoneRecentSel||[]).includes(c.id)?'checked':''} onclick="event.stopPropagation();toggleCallSel('${c.id}')">`:''}
           <div style="width:40px;height:40px;border-radius:50%;overflow:hidden;background:#ddd;flex-shrink:0">
             <img src="${(function(){const ch=c.charId&&state.chars.find(x=>x.id===c.charId);return ch?avatarUrl(ch):defaultAvatar(c.name||'?');})()}" style="width:100%;height:100%;object-fit:cover">
@@ -15763,9 +15859,10 @@ function openPhonePad(tab) {
         ${dockBtn('voicemail','语音留言',svg.voicemail)}
       </div>
     </div>
-  `, '', { replace: true });
+  `, '', { replace: true, softGuard: true });
   state._subKind = 'homeApp';
   state._homeDepth = 0;
+  if (tab === 'recents') setTimeout(function(){ try{ bindCallSwipeRows(); }catch(e){} }, 60);
 }
 async function genVoicemail() {
   ensureHomeState();
@@ -15796,11 +15893,12 @@ async function doGenVoicemail() {
     const c = state.chars.find(x=>x.id===id);
     if (!c) continue;
     try {
-      const { text } = await apiChat([
+      const raw = await apiChat([
         { role:'system', content: getOnlineChatRules('你是'+c.nick+'，人设：'+(c.persona||'')+'。写一条很短的语音留言（口语，30字内），像没接到电话后留下的。只输出留言正文。') },
         { role:'user', content:'请留言' }
       ], { max_tokens: 80, temperature: 0.9 });
-      state.phoneApp.voicemails.unshift({ name: c.nick, text: (text||'').trim(), ts: Date.now(), charId: c.id });
+      const text = (typeof normalizeApiText==='function'?normalizeApiText(raw):String(raw||'')).trim();
+      state.phoneApp.voicemails.unshift({ name: c.nick, text: text, ts: Date.now(), charId: c.id });
     } catch(e) {}
   }
   save(); openPhonePad('voicemail');
@@ -15950,68 +16048,67 @@ async function startCall(charId, name) {
   const c = charId ? state.chars.find(x=>x.id===charId) : null;
   const display = name || (c && (c.nick||c.realName)) || '未知';
   const av = c ? avatarUrl(c) : '';
-  state._callCtx = { charId: charId||'', name: display, logs: [], answered: false };
-  // 来电界面
+  state._callCtx = { charId: charId||'', name: display, logs: [], answered: false, started: Date.now() };
+  // 呼叫中：立刻进接通流程，角色主动接听（调用 API）
   openSubPage('', `
-    <div style="position:absolute;inset:0;background:linear-gradient(180deg,#4a4a6a,#2a2a3e);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:48px 24px 40px;box-sizing:border-box">
-      <div style="text-align:center;width:100%">
-        <div style="font-size:14px;opacity:.7;margin-bottom:8px">手机</div>
-        <div style="font-size:28px;font-weight:600;margin-bottom:24px">${escapeHtml(display)}</div>
-        <div style="width:140px;height:140px;border-radius:50%;margin:0 auto;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;overflow:hidden;border:2px solid rgba(255,255,255,.2)">
-          ${av?`<img src="${av}" style="width:100%;height:100%;object-fit:cover">`:'<div style="width:80px;height:80px;border-radius:50%;background:#fff"></div>'}
-        </div>
+    <div style="position:absolute;inset:0;background:linear-gradient(180deg,#3d3d55,#1e1e2e);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 24px;box-sizing:border-box">
+      <div style="font-size:13px;opacity:.7;margin-bottom:8px" id="callStatusLabel">正在呼叫…</div>
+      <div style="font-size:28px;font-weight:600;margin-bottom:28px">${escapeHtml(display)}</div>
+      <div style="width:130px;height:130px;border-radius:50%;overflow:hidden;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.2);margin-bottom:36px">
+        ${av?`<img src="${av}" style="width:100%;height:100%;object-fit:cover" alt="">`:'<div style="width:100%;height:100%;background:#666"></div>'}
       </div>
-      <div style="display:flex;justify-content:space-around;width:100%;max-width:320px">
-        <div style="text-align:center">
-          <button type="button" onclick="closeSubPage()" style="width:64px;height:64px;border-radius:50%;border:none;background:#ff3b30;color:#fff;font-size:24px;cursor:pointer">📵</button>
-          <div style="font-size:12px;margin-top:8px;opacity:.8">拒绝</div>
-        </div>
-        <div style="text-align:center">
-          <button type="button" onclick="answerCall()" style="width:64px;height:64px;border-radius:50%;border:none;background:#34c759;color:#fff;font-size:24px;cursor:pointer">📞</button>
-          <div style="font-size:12px;margin-top:8px;opacity:.8">接听</div>
-        </div>
-      </div>
+      <button type="button" onclick="endCall(false)" style="width:64px;height:64px;border-radius:50%;border:none;background:#ff3b30;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+      <div style="font-size:12px;margin-top:10px;opacity:.7">取消</div>
     </div>
-  `, '', { replace: false });
+  `, '', { replace: false, backFn: function(){ endCall(false); } });
   try { document.getElementById('subNav').style.display = 'none'; } catch(e) {}
+  // 模拟振铃后角色接听
+  setTimeout(function(){ answerCallAuto(); }, 900);
 }
-function answerCall() {
-  const ctx = state._callCtx || {};
+async function answerCallAuto() {
+  const ctx = state._callCtx;
+  if (!ctx || ctx.answered) return;
+  ctx.answered = true;
+  ctx.started = Date.now();
   const c = ctx.charId ? state.chars.find(x=>x.id===ctx.charId) : null;
   const display = ctx.name || '未知';
   const av = c ? avatarUrl(c) : '';
-  ctx.answered = true;
-  ctx.logs = ctx.logs || [];
-  ctx.started = Date.now();
   openSubPage('', `
-    <div style="position:absolute;inset:0;background:linear-gradient(180deg,#5a5a7a,#2a2a3e);color:#fff;display:flex;flex-direction:column;align-items:center;padding:40px 20px 16px;box-sizing:border-box">
-      <div style="font-size:13px;opacity:.7" id="callTimer">00:00</div>
-      <div style="font-size:26px;font-weight:600;margin:8px 0 20px">${escapeHtml(display)}</div>
-      <div style="width:120px;height:120px;border-radius:50%;margin:0 auto 16px;background:rgba(255,255,255,.12);overflow:hidden;border:2px solid rgba(255,255,255,.15);flex-shrink:0">
-        ${av?`<img src="${av}" style="width:100%;height:100%;object-fit:cover">`:'<div style="width:100%;height:100%;background:#ccc"></div>'}
+    <div style="position:absolute;inset:0;background:linear-gradient(180deg,#4a4a68,#222236);color:#fff;display:flex;flex-direction:column;align-items:center;padding:36px 16px 12px;box-sizing:border-box">
+      <div style="font-size:13px;opacity:.75" id="callTimer">00:00</div>
+      <div style="font-size:24px;font-weight:600;margin:6px 0 16px">${escapeHtml(display)}</div>
+      <div style="width:112px;height:112px;border-radius:50%;overflow:hidden;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.15);flex-shrink:0;margin-bottom:12px">
+        ${av?`<img src="${av}" style="width:100%;height:100%;object-fit:cover" alt="">`:'<div style="width:100%;height:100%;background:#666"></div>'}
       </div>
-      <div id="callChatLog" style="flex:1;width:100%;max-width:360px;overflow-y:auto;font-size:14px;line-height:1.5;padding:8px 4px;text-align:center;opacity:.95"></div>
-      <div style="width:100%;max-width:360px;display:flex;gap:8px;align-items:center;margin-bottom:12px">
-        <input id="callInput" placeholder="说点什么…" style="flex:1;border:none;border-radius:20px;padding:10px 14px;background:rgba(255,255,255,.15);color:#fff;font-size:14px;outline:none">
-        <button type="button" onclick="callGenReply()" style="border:none;background:rgba(255,255,255,.2);color:#fff;border-radius:50%;width:40px;height:40px;cursor:pointer">↑</button>
-        <button type="button" onclick="callSendUser()" style="border:none;background:#34c759;color:#fff;border-radius:50%;width:40px;height:40px;cursor:pointer">发送</button>
+      <div id="callChatLog" style="flex:1;width:100%;max-width:360px;overflow-y:auto;font-size:14px;line-height:1.55;padding:8px 6px;text-align:center"></div>
+      <div style="width:100%;max-width:360px;display:flex;gap:8px;align-items:center;margin:8px 0 12px">
+        <input id="callInput" placeholder="说点什么…" style="flex:1;border:none;border-radius:20px;padding:10px 14px;background:rgba(255,255,255,.14);color:#fff;font-size:14px;outline:none">
+        <button type="button" onclick="callGenReply()" title="生成" style="border:none;background:rgba(255,255,255,.2);color:#fff;border-radius:50%;width:40px;height:40px;cursor:pointer;display:flex;align-items:center;justify-content:center">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+        </button>
+        <button type="button" onclick="callSendUser()" title="发送" style="border:none;background:#34c759;color:#fff;border-radius:50%;width:40px;height:40px;cursor:pointer;display:flex;align-items:center;justify-content:center">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+        </button>
       </div>
-      <div style="display:flex;justify-content:center;gap:28px;padding-bottom:12px">
-        <button type="button" onclick="endCall(true)" style="width:64px;height:64px;border-radius:50%;border:none;background:#ff3b30;color:#fff;font-size:22px;cursor:pointer">结束</button>
-      </div>
+      <button type="button" onclick="endCall(true)" style="width:64px;height:64px;border-radius:50%;border:none;background:#ff3b30;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;margin-bottom:8px">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
     </div>
-  `, '', { replace: true });
+  `, '', { replace: true, backFn: function(){ endCall(true); } });
   try { document.getElementById('subNav').style.display = 'none'; } catch(e) {}
   if (state._callTimer) clearInterval(state._callTimer);
   state._callTimer = setInterval(function(){
     const el = document.getElementById('callTimer');
     if (!el || !ctx.started) return;
     const s = Math.floor((Date.now()-ctx.started)/1000);
-    const mm = String(Math.floor(s/60)).padStart(2,'0');
-    const ss = String(s%60).padStart(2,'0');
-    el.textContent = mm+':'+ss;
+    el.textContent = String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
   }, 1000);
+  // 角色先开口
+  await callGenReply();
 }
+function answerCall() { answerCallAuto(); }
 function callSendUser() {
   const inp = document.getElementById('callInput');
   const t = (inp && inp.value || '').trim();
@@ -16021,25 +16118,43 @@ function callSendUser() {
   if (inp) inp.value = '';
   renderCallLog();
 }
+function normalizeApiText(raw) {
+  if (raw == null) return '';
+  if (typeof raw === 'string') return raw.trim();
+  if (typeof raw === 'object') {
+    if (typeof raw.content === 'string') return raw.content.trim();
+    if (typeof raw.text === 'string') return raw.text.trim();
+    if (typeof raw.message === 'string') return raw.message.trim();
+    try { return JSON.stringify(raw); } catch(e) { return String(raw); }
+  }
+  return String(raw).trim();
+}
 async function callGenReply() {
   const ctx = state._callCtx; if (!ctx) return;
   const c = ctx.charId ? state.chars.find(x=>x.id===ctx.charId) : null;
   const box = document.getElementById('callChatLog');
-  if (box) box.innerHTML += '<div style="opacity:.6;margin:6px 0">对方思考中…</div>';
+  if (box) box.innerHTML += '<div style="opacity:.55;margin:6px 0">对方正在说话…</div>';
   try {
-    const hist = (ctx.logs||[]).slice(-8).map(function(m){ return (m.role==='user'?'我: ':'对方: ')+m.text; }).join('\\n');
-    const sys = getOnlineChatRules('电话中。角色：'+(c&&(c.nick||c.realName)||ctx.name)+'。人设：'+(c&&c.persona||'')+'。user人设：'+(state.user&&state.user.persona||'')+'。像电话口语，一句一句短。');
+    const hist = (ctx.logs||[]).slice(-10).map(function(m){ return (m.role==='user'?'我: ':'对方: ')+m.text; }).join('\n');
+    const sys = getOnlineChatRules(
+      '电话通话中。你是'+(c&&(c.nick||c.realName)||ctx.name)+'。人设：'+(c&&(c.persona||c.setting)||'')+
+      '。user人设：'+(state.user&&state.user.persona||'')+'。关系：'+(c&&c.relation||'熟人')+
+      '。用电话口语短句回复，不要旁白，不要括号。只输出你说的话。'
+    );
     const raw = await apiChat([
       { role:'system', content: sys },
-      { role:'user', content: hist || '（刚接通电话）请先开口打个招呼' }
-    ], { temperature: 0.85, max_tokens: 300 });
-    const text = String(raw||'').trim();
-    if (text) {
+      { role:'user', content: hist || '（电话刚接通）请先自然开口' }
+    ], { temperature: 0.85, max_tokens: 400 });
+    const text = normalizeApiText(raw);
+    if (text && text !== '[object Object]') {
       ctx.logs.push({ role:'char', text: text });
       renderCallLog();
+    } else {
+      if (box) box.innerHTML += '<div style="opacity:.6">（没有听清）</div>';
     }
   } catch(e) {
-    showToast('生成失败：'+(e.message||e));
+    showToast('通话生成失败：'+(e.message||e));
+    if (box) box.innerHTML += '<div style="opacity:.6">信号不好…</div>';
   }
 }
 function renderCallLog() {
@@ -16047,7 +16162,8 @@ function renderCallLog() {
   const box = document.getElementById('callChatLog');
   if (!box) return;
   box.innerHTML = (ctx.logs||[]).map(function(m){
-    return '<div style="margin:8px 0;opacity:'+(m.role==='user'?'.85':'1')+'">'+(m.role==='user'?'我：':'')+escapeHtml(m.text)+'</div>';
+    const t = normalizeApiText(m.text);
+    return '<div style="margin:8px 0">'+(m.role==='user'?'我：':'')+escapeHtml(t)+'</div>';
   }).join('');
   box.scrollTop = box.scrollHeight;
 }
@@ -16063,7 +16179,7 @@ function endCall(saveLog) {
       charId: ctx.charId,
       name: ctx.name,
       ts: Date.now(),
-      summary: (ctx.logs||[]).map(function(m){ return (m.role==='user'?'我: ':'TA: ')+m.text; }).join('\n'),
+      summary: (ctx.logs||[]).map(function(m){ return (m.role==='user'?'我: ':'TA: ')+normalizeApiText(m.text); }).join('\n'),
       missed: false
     };
     state.phoneCalls.unshift(rec);
@@ -16079,6 +16195,30 @@ function viewCallLog(id) {
   if (!c) { showToast('无记录'); return; }
   openModal(c.name||'通话记录', `<div style="white-space:pre-wrap;line-height:1.7;font-size:14px;max-height:50vh;overflow:auto">${escapeHtml(c.summary||'（无通话内容）')}</div>`,
     `<button class="btn btn-secondary" onclick="closeModal()">关闭</button>`, { center: true });
+}
+function bindCallSwipeRows() {
+  document.querySelectorAll('.call-row').forEach(function(row) {
+    var sx = 0, dx = 0;
+    row.addEventListener('touchstart', function(e){ sx = e.touches[0].clientX; dx = 0; }, {passive:true});
+    row.addEventListener('touchmove', function(e){ dx = e.touches[0].clientX - sx; if (dx < -20) row.style.transform = 'translateX('+Math.max(dx,-80)+'px)'; }, {passive:true});
+    row.addEventListener('touchend', function(){
+      if (dx < -60) {
+        var id = row.getAttribute('data-callid');
+        row.style.transform = '';
+        swipeDeleteCall(id);
+      } else {
+        row.style.transform = '';
+      }
+      dx = 0;
+    });
+  });
+}
+function swipeDeleteCall(id) {
+  if (!confirm('删除这条通话记录？')) return;
+  if (state.phoneApp && state.phoneApp.calls) state.phoneApp.calls = state.phoneApp.calls.filter(x=>x.id!==id);
+  if (state.phoneCalls) state.phoneCalls = state.phoneCalls.filter(x=>x.id!==id);
+  save();
+  openPhonePad('recents');
 }
 
 
@@ -17542,7 +17682,6 @@ function openMeloPlaylist(pi) {
   if (!pl) return;
   state._homeRoot = 'melo';
   state._homeDepth = 1;
-  state._subBackFn = function(){ openMelo(state._meloTab||'mine', { replace: true }); };
   const songs = (pl.songs||[]).map(function(ix){ return { s: state.melo.songs[ix], ix: ix }; }).filter(function(x){ return x.s; });
   const accent = state.melo.accent || '#5eb8b0';
   openSubPage(pl.name || '歌单', `
@@ -17556,7 +17695,7 @@ function openMeloPlaylist(pi) {
         return '<div onclick="playMeloSong('+x.ix+')" style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:0.5px solid #eee;cursor:pointer">'
           + '<div style="flex:1"><div style="font-weight:500">'+escapeHtml(x.s.name||'')+'</div><div class="text-sub" style="font-size:12px">'+escapeHtml(x.s.artist||'')+'</div></div></div>';
       }).join('') || '<div class="empty">歌单为空，点「添加歌曲」</div>'}
-    </div>`, '', { replace: false });
+    </div>`, '', { replace: false, backFn: function(){ openMelo(state._meloTab||'mine', { replace: true }); } });
 }
 function editMeloPlaylistMeta(pi) {
   const pl = state.melo.playlists[pi];
@@ -19272,7 +19411,9 @@ if (t === 'badge3d') {
         return '<div class="home-widget" data-widx="'+wi+'" data-wtype="clock" style="'+base+'overflow:hidden">'+inner+del+'</div>';
       }
       if (t === 'photowall3') {
-        var imgs = w.imgs || (w.img ? [w.img] : []);
+        if (!w.w || w.w < 200) w.w = 220; if (!w.h || w.h < 90) w.h = 100;
+        var imgs = w.imgs || (w.img ? [w.img,'',''] : ['','','']);
+        while (imgs.length < 3) imgs.push('');
         var cells = '';
         for (var ci=0;ci<3;ci++) {
           cells += '<div class="pw3-cell" data-widx="'+wi+'" data-cell="'+ci+'" style="flex:1;background:#eef3f4;overflow:hidden;min-width:0;cursor:pointer">'+(imgs[ci]?'<img src="'+imgs[ci]+'" style="width:100%;height:100%;object-fit:cover;pointer-events:none" draggable="false">':'<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#9ab;font-size:14px;pointer-events:none">+</div>')+'</div>';
@@ -19504,7 +19645,7 @@ if (t === 'badge3d') {
         el.style.top = Math.max(0, oy+dy)+'px';
         if (moved > 6) e.preventDefault();
       }, {passive:false});
-      el.addEventListener('touchend', function() {
+      el.addEventListener('touchend', function(ev) {
         if (!dragging) return; dragging = false;
         if (moved > 8) {
           var list = state.home.pageWidgets[page] || [];
@@ -19514,6 +19655,9 @@ if (t === 'badge3d') {
             save();
           }
         } else {
+          // 点到删除键：不上传
+          var tgt = ev && ev.target;
+          if (tgt && (tgt.classList && tgt.classList.contains('home-w-del') || (tgt.closest && tgt.closest('.home-w-del')))) return;
           // 点击上传
           var list = state.home.pageWidgets[page] || [];
           var ww = list[wi];
