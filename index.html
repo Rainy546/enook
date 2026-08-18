@@ -1657,6 +1657,16 @@ body.night .loc-addr { color: #a1a1a6 !important; }
         API 设置
         <span class="arrow">›</span>
       </div>
+      <div class="mine-item" onclick="openVoiceApi()">
+        <span class="icon-wrap"><span class="icon"><svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></span></span>
+        语音 API
+        <span class="arrow">›</span>
+      </div>
+      <div class="mine-item" onclick="openImageApi()">
+        <span class="icon-wrap"><span class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></span></span>
+        生图 API
+        <span class="arrow">›</span>
+      </div>
     </div>
   </div>
 
@@ -1726,7 +1736,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-18f';
+const EENOK_BUILD = '2026-08-18i';
 function checkAppUpdate() {
   try {
     const prev = localStorage.getItem('eenook_build');
@@ -1926,12 +1936,16 @@ async function saveAsync() {
     save();
   }
 }
-function compressDataUrl(dataUrl, maxW, quality) {
+function compressDataUrl(dataUrl, maxW, quality, keepAlpha) {
   return new Promise((resolve) => {
     try {
       if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image')) {
         resolve(dataUrl); return;
       }
+      // 立牌 / 图标 / 通话壁纸等需要透明底：强制 PNG，禁止压成 JPEG
+      var ft = String(state.fileTarget || '');
+      var isWidgetUpload = ft.indexOf('homeWidget') === 0 || ft.indexOf('homeWidgetImg') === 0;
+      var forcePng = !!keepAlpha || isWidgetUpload || ft === 'standee' || ft.indexOf('homeAppIcon') === 0 || ft === 'callBg' || ft.indexOf('pw3Cell') === 0 || (dataUrl.indexOf('image/png') >= 0 && (ft === 'homeWallpaper' || ft.indexOf('dock') >= 0));
       const img = new Image();
       img.onload = () => {
         let w = img.width, h = img.height;
@@ -1940,8 +1954,10 @@ function compressDataUrl(dataUrl, maxW, quality) {
         const canvas = document.createElement('canvas');
         canvas.width = w; canvas.height = h;
         const ctx = canvas.getContext('2d');
+        if (forcePng) ctx.clearRect(0, 0, w, h);
         ctx.drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL('image/jpeg', quality || 0.7));
+        if (forcePng) resolve(canvas.toDataURL('image/png'));
+        else resolve(canvas.toDataURL('image/jpeg', quality || 0.7));
       };
       img.onerror = () => resolve(dataUrl);
       img.src = dataUrl;
@@ -2607,11 +2623,27 @@ function closeSubPage() {
       const fn = state._subBackFn;
       state._subBackFn = null;
       state._subStack = [];
-      try { fn(); } catch(e) { console.warn(e); goHome(); }
+      try {
+        fn();
+      } catch(e) {
+        console.warn('backFn', e);
+        // 尝试按 root 回退，避免直接甩到桌面
+        try {
+          const root = state._homeRoot;
+          if (root === 'melo') { openMelo(state._meloTab||'home', { replace: true }); return; }
+          if (root === 'phonecheck') { openPhoneCheck(); return; }
+        } catch(e2) {}
+        goHome();
+      }
       return;
     }
     // 深层：回到该 App 根界面（不用过期 HTML 回放）
     // melo 播放页：先回 Melo 主界面
+    if (kind === 'meloPlayList' || kind === 'meloPlaylist') {
+      state._homeDepth = 0; state._subStack = []; state._subBackFn = null; state._navLock = false;
+      try { openMelo(state._meloTab || 'home', { replace: true }); } catch(e) { goHome(); }
+      return;
+    }
     if (kind === 'meloPlay' || (state._homeRoot === 'melo' && state._homeDepth > 0 && state._meloPlaying)) {
       state._homeDepth = 0;
       state._subStack = [];
@@ -3125,7 +3157,7 @@ function renderMessages(opts) {
     } else if (m.type === 'voice') {
       const bars = Array.from({length: 6}, (_, i) => `<span style="height:${4 + Math.random()*12}px"></span>`).join('');
       const textBelow = m._showText ? `<div style="margin-top:6px;padding:6px 8px;background:rgba(0,0,0,.05);border-radius:6px;font-size:13px;line-height:1.4">${escapeHtml(m.content||'')}</div>` : '';
-      content = `<div class="voice-bubble"><span class="icon"><svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg></span><div class="bars">${bars}</div><span style="font-size:13px">${m.duration || 3}″</span></div>${textBelow}`;
+      content = `<div class="voice-bubble" data-voice-idx="${idx}" style="cursor:pointer"><span class="icon"><svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg></span><div class="bars">${bars}</div><span style="font-size:13px">${m.duration || 3}″</span></div>${textBelow}`;
     } else if (m.type === 'recall') {
       // 仿微信：居中灰色系统提示，不走气泡
       content = null; // special handled below
@@ -3253,6 +3285,10 @@ function onBubbleClick(e, idx) {
       const l2 = document.getElementById('msgArea');
       if (l2) l2.scrollTop = keep;
     });
+    // 角色语音：若配置了语音 API 则播报
+    if (m.from !== 'user' && (state.api && (state.api.voiceUrl || state.api.baseUrl) && (state.api.voiceKey || state.api.key))) {
+      try { playVoiceMessage(idx); } catch(e) {}
+    }
     return;
   } else if (m.type === 'redpacket' || m.type === 'transfer') {
     // 仅查看详情
@@ -4389,8 +4425,17 @@ ${userP.charKnows===false?'（对方可能使用了小号，你不一定知道�
           msg.userNick = c.nick || c.realName || '对方';
           msg.content = ex.content || '扫码向我付款';
         }
+        if (ex.type === 'image' && (ex.desc || ex.hiddenText)) {
+          // 有生图 API 时按预设词 + 描述生成真实图
+          try {
+            if (state.api && (state.api.imgUrl || state.api.baseUrl) && (state.api.imgKey || state.api.key)) {
+              showToast('角色图片生成中…');
+              const url = await apiGenImage(ex.desc || ex.hiddenText || '');
+              if (url) { msg.content = url; msg.desc = ex.desc || ex.hiddenText; msg.hiddenText = ex.hiddenText || ex.desc; }
+            }
+          } catch(imgErr) { console.warn('char img gen', imgErr); }
+        }
         if (ex.type === 'transfer') {
-          // 角色转账给你 → 钱包收入
           try { recordWalletFlow(parseFloat(ex.amount) || 0, '收到转账 · ' + (ex.desc || ''), id); } catch(e) {}
         }
         if (ex.type === 'redpacket') {
@@ -4752,6 +4797,14 @@ function onFileSelected(e) {
     if (file && file.name) state._lastFileName = file.name;
     if (typeof data === 'string' && data.startsWith('data:image') && state.fileTarget !== 'localBook') {
       data = await compressDataUrl(data, state.fileTarget === 'emojiUpload' ? 200 : 900, state.fileTarget === 'emojiUpload' ? 0.6 : 0.72);
+    }
+    if (state.fileTarget === 'callBg') {
+      if (state._callCtx) state._callCtx.bg = data;
+      try {
+        var el = document.getElementById('callScreenBg');
+        if (el) el.style.background = 'url('+data+') center/cover';
+      } catch(e) {}
+      return;
     }
     if (state.fileTarget === 'meloCover') {
       const i = state._meloSongIdx;
@@ -6123,7 +6176,7 @@ function openPersonas() {
     </div>
   `).join('');
   openModal('人设', list + `<button class="btn btn-primary mt8" style="width:100%" onclick="addPersona()">＋ 新建人设</button>`,
-    `<button class="btn btn-secondary" onclick="closeModal()">关闭</button>`);
+    `<button class="btn btn-secondary" onclick="closeAllModals()">关闭</button>`);
 }
 function addPersona(editIdx) {
   const p = (editIdx != null && state.personas && state.personas[editIdx]) ? state.personas[editIdx] : null;
@@ -6147,7 +6200,7 @@ function addPersona(editIdx) {
     </div>
     <div class="form-group"><label>签名</label><input id="pSign" value="${p ? escapeHtml(p.signature||'') : ''}"></div>
     <div class="form-group"><label>人物设定</label><textarea id="pPersona" style="min-height:100px">${p ? escapeHtml(p.persona||'') : ''}</textarea></div>
-  `, `<button class="btn btn-secondary" onclick="openPersonas()">返回</button><button class="btn btn-primary" onclick="saveNewPersona()">保存</button>`);
+  `, `<button class="btn btn-secondary" onclick="openPersonas()">返回</button><button class="btn btn-primary" onclick="saveNewPersona()">保存</button>`, { replace: true });
 }
 function saveNewPersona() {
   if (!state.personas) state.personas = [];
@@ -6945,7 +6998,7 @@ function openEmojiManage() {
     <button class="btn btn-secondary mt8" style="width:100%" onclick="addEmojiCategory()">＋ 新建分类</button>
     <button class="btn btn-primary mt8" style="width:100%" onclick="addEmojiLocal()">＋ 上传本地图片</button>
     <button class="btn btn-secondary mt8" style="width:100%" onclick="addEmojiUrl()">＋ URL 批量上传</button>
-  `, `<button class="btn btn-secondary" onclick="closeModal()">关闭</button>`);
+  `, `<button class="btn btn-secondary" onclick="closeAllModals()">关闭</button>`);
 }
 function openEmojiCat(cat) {
   const items = (state.customEmojis||[]).map((e,i)=>({...e,_i:i})).filter(e => (e.category||'默认')===cat);
@@ -6962,7 +7015,7 @@ function openEmojiCat(cat) {
     </div>
   `).join('') || '<div class="empty">空</div>';
   openModal(cat, list + `<button class="btn btn-secondary mt8" style="width:100%" onclick="openEmojiManage()">返回分类</button>`,
-    `<button class="btn btn-secondary" onclick="closeModal()">关闭</button>`);
+    `<button class="btn btn-secondary" onclick="closeAllModals()">关闭</button>`);
 }
 
 
@@ -7125,14 +7178,9 @@ function openApi() {
     <div class="form-group"><label>模型</label><input id="apiModel" value="${state.api.model || ''}" placeholder="gpt-3.5-turbo"></div>
     <div class="form-group"><label>温度 Temperature</label><input id="apiTemp" type="number" step="0.1" min="0" max="2" value="${state.api.temperature || 0.7}"></div>
     <div class="form-group"><label>最大 Token</label><input id="apiMaxTok" type="number" min="50" max="128000" value="${state.api.maxTokens || 4096}"></div>
-    <div style="font-weight:600;margin:14px 0 8px;font-size:13px">语音 API（可选）</div>
-    <div class="form-group"><label>语音 Base URL</label><input id="apiVoiceUrl" value="${state.api.voiceUrl || ''}" placeholder="兼容 OpenAI /audio/speech"></div>
-    <div class="form-group"><label>语音模型</label><input id="apiVoiceModel" value="${state.api.voiceModel || 'tts-1'}" placeholder="tts-1"></div>
-    <div class="form-group"><label>音色 voice</label><input id="apiVoiceName" value="${state.api.voiceName || 'alloy'}" placeholder="alloy / nova / ..."></div>
-    <div style="font-weight:600;margin:14px 0 8px;font-size:13px">生图 API（可选）</div>
-    <div class="form-group"><label>生图 Base URL</label><input id="apiImgUrl" value="${state.api.imgUrl || ''}" placeholder="兼容 /images/generations"></div>
-    <div class="form-group"><label>生图模型</label><input id="apiImgModel" value="${state.api.imgModel || 'dall-e-3'}" placeholder="dall-e-3 / sd"></div>
-    <div class="text-sub" style="font-size:11px;margin-bottom:8px">留空则与主 API 同 Key；保存预设时一并写入</div>
+    <div class="text-sub" style="font-size:12px;margin:12px 0 8px;line-height:1.5">语音 / 生图请到「我的」里单独的 <b>语音 API</b>、<b>生图 API</b> 板块配置。</div>
+    <button type="button" class="btn btn-secondary" style="width:100%;margin-bottom:6px" onclick="closeModal();openVoiceApi()">打开语音 API 设置</button>
+    <button type="button" class="btn btn-secondary" style="width:100%;margin-bottom:12px" onclick="closeModal();openImageApi()">打开生图 API 设置</button>
     <button class="btn btn-secondary" style="width:100%;margin-bottom:8px" onclick="testApiConnection()">测试连接</button>
     <div id="apiTestResult" class="text-sub" style="margin-bottom:8px"></div>
     <button class="btn btn-secondary" style="width:100%;margin-bottom:12px" onclick="pullModels()">拉取模型列表</button>
@@ -7163,11 +7211,116 @@ function saveApi() {
   } catch(e) {}
   save(); closeModal(); showToast('API 设置已保存');
 }
+function openVoiceApi() {
+  if (!state.api) state.api = {};
+  openModal('语音 API', `
+    <div class="text-sub" style="font-size:12px;margin-bottom:10px;line-height:1.5">兼容 OpenAI 风格 <code>/audio/speech</code>。配置后：聊天点角色语音条、通话点对方说的话，会调用本接口播报。</div>
+    <div class="form-group"><label>语音 Base URL</label><input id="vApiUrl" value="${escapeHtml(state.api.voiceUrl || '')}" placeholder="可与主 API 同域，或单独 TTS 地址"></div>
+    <div class="form-group"><label>语音 API Key（可留空=用主 Key）</label><input id="vApiKey" type="password" value="${escapeHtml(state.api.voiceKey || '')}" placeholder="sk-..."></div>
+    <div class="form-group"><label>模型</label><input id="vApiModel" value="${escapeHtml(state.api.voiceModel || 'tts-1')}" placeholder="tts-1"></div>
+    <div class="form-group"><label>音色 voice</label><input id="vApiName" value="${escapeHtml(state.api.voiceName || 'alloy')}" placeholder="alloy / nova / shimmer / echo"></div>
+    <button type="button" class="btn btn-secondary" style="width:100%;margin-top:8px" onclick="testVoiceApi()">试听一句</button>
+    <div id="vApiTest" class="text-sub" style="margin-top:8px"></div>
+  `, `<button class="btn btn-secondary" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveVoiceApi()">保存</button>`, { replace: true });
+}
+function saveVoiceApi() {
+  if (!state.api) state.api = {};
+  state.api.voiceUrl = normalizeApiBase((document.getElementById('vApiUrl')||{}).value || '');
+  state.api.voiceKey = ((document.getElementById('vApiKey')||{}).value || '').trim();
+  state.api.voiceModel = ((document.getElementById('vApiModel')||{}).value || 'tts-1').trim();
+  state.api.voiceName = ((document.getElementById('vApiName')||{}).value || 'alloy').trim();
+  save(); closeModal(); showToast('语音 API 已保存');
+}
+async function testVoiceApi() {
+  try {
+    // 先暂存表单到 state 再试听
+    if (document.getElementById('vApiUrl')) {
+      state.api.voiceUrl = normalizeApiBase((document.getElementById('vApiUrl')||{}).value || '');
+      state.api.voiceKey = ((document.getElementById('vApiKey')||{}).value || '').trim();
+      state.api.voiceModel = ((document.getElementById('vApiModel')||{}).value || 'tts-1').trim();
+      state.api.voiceName = ((document.getElementById('vApiName')||{}).value || 'alloy').trim();
+    }
+    const el = document.getElementById('vApiTest');
+    if (el) el.textContent = '生成中…';
+    await apiSpeak('你好，这是语音接口试听。', {});
+    if (el) el.textContent = '播放成功';
+  } catch(e) {
+    const el = document.getElementById('vApiTest');
+    if (el) el.textContent = '失败：' + (e.message||e);
+  }
+}
+function openImageApi() {
+  if (!state.api) state.api = {};
+  if (!Array.isArray(state.api.imgPresets)) state.api.imgPresets = [];
+  const presets = (state.api.imgPresets||[]).map(function(p,i){
+    return '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)">'
+      + '<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:13px">'+escapeHtml(p.name||('预设'+(i+1)))+'</div>'
+      + '<div class="text-sub" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escapeHtml((p.prompt||'').slice(0,60))+'</div></div>'
+      + '<button type="button" class="btn btn-secondary" style="padding:4px 8px;font-size:11px" onclick="editImgPreset('+i+')">编辑</button>'
+      + '<button type="button" class="btn btn-secondary" style="padding:4px 8px;font-size:11px;color:#e74c3c" onclick="delImgPreset('+i+')">删</button></div>';
+  }).join('') || '<div class="text-sub" style="padding:8px 0">暂无预设，可添加风格词</div>';
+  openModal('生图 API', `
+    <div class="text-sub" style="font-size:12px;margin-bottom:10px;line-height:1.5">兼容 <code>/images/generations</code>。角色发图、虚拟图生成时会读取下方预设词 + 图片描述。</div>
+    <div class="form-group"><label>生图 Base URL</label><input id="iApiUrl" value="${escapeHtml(state.api.imgUrl || '')}" placeholder="可与主 API 同域"></div>
+    <div class="form-group"><label>生图 API Key（可留空=用主 Key）</label><input id="iApiKey" type="password" value="${escapeHtml(state.api.imgKey || '')}" placeholder="sk-..."></div>
+    <div class="form-group"><label>模型</label><input id="iApiModel" value="${escapeHtml(state.api.imgModel || 'dall-e-3')}" placeholder="dall-e-3 / flux / sd"></div>
+    <div class="form-group"><label>默认尺寸</label><input id="iApiSize" value="${escapeHtml(state.api.imgSize || '1024x1024')}" placeholder="1024x1024"></div>
+    <div style="font-weight:600;margin:14px 0 8px;font-size:13px">生图预设词（风格）</div>
+    <div id="imgPresetList">${presets}</div>
+    <button type="button" class="btn btn-secondary" style="width:100%;margin-top:8px" onclick="editImgPreset(-1)">＋ 添加预设</button>
+  `, `<button class="btn btn-secondary" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveImageApi()">保存</button>`, { replace: true });
+}
+function saveImageApi() {
+  if (!state.api) state.api = {};
+  state.api.imgUrl = normalizeApiBase((document.getElementById('iApiUrl')||{}).value || '');
+  state.api.imgKey = ((document.getElementById('iApiKey')||{}).value || '').trim();
+  state.api.imgModel = ((document.getElementById('iApiModel')||{}).value || 'dall-e-3').trim();
+  state.api.imgSize = ((document.getElementById('iApiSize')||{}).value || '1024x1024').trim();
+  save(); closeModal(); showToast('生图 API 已保存');
+}
+function editImgPreset(i) {
+  if (!state.api) state.api = {};
+  if (!Array.isArray(state.api.imgPresets)) state.api.imgPresets = [];
+  const p = i >= 0 ? state.api.imgPresets[i] : { name: '', prompt: '' };
+  openModal(i >= 0 ? '编辑生图预设' : '添加生图预设', `
+    <div class="form-group"><label>名称</label><input id="ipName" value="${escapeHtml(p.name||'')}" placeholder="例如：胶片感 / 动漫风"></div>
+    <div class="form-group"><label>预设词（会拼到生成 prompt 前）</label>
+      <textarea id="ipPrompt" style="min-height:100px" placeholder="例如：soft lighting, film grain, pastel colors, anime style">${escapeHtml(p.prompt||'')}</textarea></div>
+  `, `<button class="btn btn-secondary" onclick="openImageApi()">返回</button>
+      <button class="btn btn-primary" onclick="saveImgPreset(${i})">保存</button>`, { replace: true });
+}
+function saveImgPreset(i) {
+  if (!state.api) state.api = {};
+  if (!Array.isArray(state.api.imgPresets)) state.api.imgPresets = [];
+  const name = ((document.getElementById('ipName')||{}).value || '').trim() || '预设';
+  const prompt = ((document.getElementById('ipPrompt')||{}).value || '').trim();
+  if (i >= 0 && state.api.imgPresets[i]) {
+    state.api.imgPresets[i] = { name: name, prompt: prompt };
+  } else {
+    state.api.imgPresets.push({ name: name, prompt: prompt });
+  }
+  save(); openImageApi();
+}
+function delImgPreset(i) {
+  if (!confirm('删除该预设？')) return;
+  if (!state.api || !state.api.imgPresets) return;
+  state.api.imgPresets.splice(i, 1);
+  save(); openImageApi();
+}
+function buildImagePrompt(desc) {
+  const parts = [];
+  const presets = (state.api && state.api.imgPresets) || [];
+  presets.forEach(function(p){ if (p && p.prompt) parts.push(String(p.prompt).trim()); });
+  if (desc) parts.push(String(desc).trim());
+  return parts.join(', ').slice(0, 1000) || 'cute illustration';
+}
 async function apiSpeak(text, opts) {
   opts = opts || {};
-  const key = (state.api && state.api.key) || '';
+  const key = (state.api && (state.api.voiceKey || state.api.key)) || '';
   let base = (state.api && state.api.voiceUrl) || (state.api && state.api.baseUrl) || '';
-  if (!base || !key) throw new Error('请先配置语音 API 或主 API');
+  if (!base || !key) throw new Error('请先在「语音 API」或主 API 中配置');
   base = normalizeApiBase(base);
   const endpoint = /\/audio\/speech$/i.test(base) ? base : (base.replace(/\/+$/, '') + '/audio/speech');
   const body = {
@@ -7186,22 +7339,59 @@ async function apiSpeak(text, opts) {
   }
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
-  const audio = new Audio(url);
-  await audio.play();
+  try {
+    if (window._eenookAudio) { try { window._eenookAudio.pause(); } catch(e) {} }
+    const audio = new Audio(url);
+    window._eenookAudio = audio;
+    await audio.play();
+  } catch(e) {
+    showToast('播放失败：' + (e.message||e));
+  }
   return url;
+}
+async function playVoiceMessage(idx) {
+  try {
+    const chat = state.chats[state.currentChatId];
+    if (!chat || !chat.messages || !chat.messages[idx]) return;
+    const m = chat.messages[idx];
+    if (m.type !== 'voice') return;
+    const text = (m.content || '').trim();
+    if (!text) { showToast('没有可播放的文字'); return; }
+    showToast('语音生成中…');
+    await apiSpeak(text);
+  } catch(e) {
+    showToast('语音失败：' + (e.message||e));
+  }
+}
+async function playCallSpeech(logIdx) {
+  try {
+    const ctx = state._callCtx;
+    if (!ctx || !ctx.logs || !ctx.logs[logIdx]) return;
+    const m = ctx.logs[logIdx];
+    if (m.role === 'user') return;
+    let t = normalizeApiText(m.text || '');
+    // 去掉（描写）行，只读口语
+    t = t.replace(/（[^）]*）/g, ' ').replace(/\([^)]*\)/g, ' ').replace(/^\s*["「『]?/,'').replace(/["」』]?\s*$/,'').trim();
+    if (!t) { showToast('没有可播报的对话'); return; }
+    showToast('通话语音生成中…');
+    await apiSpeak(t);
+  } catch(e) {
+    showToast('语音失败：' + (e.message||e));
+  }
 }
 async function apiGenImage(prompt, opts) {
   opts = opts || {};
-  const key = (state.api && state.api.key) || '';
+  const key = (state.api && (state.api.imgKey || state.api.key)) || '';
   let base = (state.api && state.api.imgUrl) || (state.api && state.api.baseUrl) || '';
-  if (!base || !key) throw new Error('请先配置生图 API 或主 API');
+  if (!base || !key) throw new Error('请先在「生图 API」或主 API 中配置');
   base = normalizeApiBase(base);
   const endpoint = /\/images\/generations$/i.test(base) ? base : (base.replace(/\/+$/, '') + '/images/generations');
+  const fullPrompt = opts.raw ? String(prompt||'') : buildImagePrompt(prompt);
   const body = {
     model: opts.model || state.api.imgModel || 'dall-e-3',
-    prompt: String(prompt||'').slice(0, 1000),
+    prompt: fullPrompt.slice(0, 1000),
     n: 1,
-    size: opts.size || '1024x1024'
+    size: opts.size || state.api.imgSize || '1024x1024'
   };
   const res = await fetch(endpoint, {
     method: 'POST',
@@ -7367,39 +7557,50 @@ function openModal(title, body, footer, opts) {
   }
   mask.classList.add('show');
 }
-function closeModal() {
+function closeAllModals() {
+  state._modalStack = [];
+  state._modalCloseLock = false;
   const mask = document.getElementById('modalMask');
+  if (mask) {
+    mask.classList.remove('show');
+    mask.style.display = '';
+    mask.dataset.center = '';
+    mask.style.alignItems = 'flex-end';
+  }
+}
+function closeModal(forceAll) {
+  const mask = document.getElementById('modalMask');
+  if (forceAll || state._modalCloseLock) {
+    closeAllModals();
+    return;
+  }
   if (state._modalStack && state._modalStack.length) {
     const prev = state._modalStack.pop();
     document.getElementById('modalTitle').textContent = prev.title;
     document.getElementById('modalBody').innerHTML = prev.body;
     document.getElementById('modalFooter').innerHTML = prev.footer || '';
-    const modal = mask.querySelector('.modal');
+    const modal = mask && mask.querySelector('.modal');
     if (prev.center) {
-      mask.style.alignItems = 'center';
-      mask.dataset.center = '1';
+      if (mask) { mask.style.alignItems = 'center'; mask.dataset.center = '1'; }
       if (modal) { modal.style.borderRadius='16px'; modal.style.width='86%'; modal.style.maxWidth='340px'; modal.classList.add('sk-center'); }
     } else {
-      mask.style.alignItems = 'flex-end';
-      mask.dataset.center = '0';
+      if (mask) { mask.style.alignItems = 'flex-end'; mask.dataset.center = '0'; }
       if (modal) { modal.style.borderRadius='16px 16px 0 0'; modal.style.width='100%'; modal.style.maxWidth='none'; modal.classList.remove('sk-center'); }
     }
     return;
   }
-  mask.classList.remove('show');
-  mask.style.alignItems = 'flex-end';
-  mask.dataset.center = '0';
-  const modal = mask.querySelector('.modal');
+  if (mask) {
+    mask.classList.remove('show');
+    mask.style.alignItems = 'flex-end';
+    mask.dataset.center = '0';
+  }
+  const modal = mask && mask.querySelector('.modal');
   if (modal) {
     modal.style.borderRadius = '16px 16px 0 0';
     modal.style.width = '100%';
     modal.style.maxWidth = 'none';
     modal.classList.remove('sk-center');
   }
-}
-function closeAllModals() {
-  state._modalStack = [];
-  document.getElementById('modalMask').classList.remove('show');
 }
 function showPage(name) {
   var target = 'page-' + name;
@@ -10958,30 +11159,52 @@ function openPhoneCheck() {
   state._homeDepth = 0;
   state._subBackFn = null;
   state._clickGuardUntil = 0;
-  const list = (state.chars||[]).map(function(ch){
-    return '<div class="phone-check-row" data-cid="'+ch.id+'" style="display:flex;align-items:center;margin:8px 12px;padding:12px;border-radius:14px;border:1px solid var(--line);background:var(--card);cursor:pointer;-webkit-tap-highlight-color:rgba(0,0,0,.06)">'
-      + '<img src="'+avatarUrl(ch)+'" style="width:40px;height:40px;border-radius:10px;margin-right:12px;object-fit:cover;pointer-events:none" alt="">'
-      + '<span style="flex:1;pointer-events:none;font-size:15px">'+escapeHtml(ch.nick||ch.realName||'')+'</span>'
-      + '<span style="pointer-events:none;color:#c7c7cc">›</span></div>';
-  }).join('') || '<div class="empty">暂无角色</div>';
-  openSubPage('查手机', '<div id="phoneCheckList">'+list+'</div>', '', { replace: true, softGuard: true, backFn: null });
+  state._navLock = false;
+  state._suppressLaunch = false;
+  state._phoneCheckList = (state.chars || []).slice();
+  const list = state._phoneCheckList.map(function(ch, idx) {
+    return '<div class="pc-row" data-pcidx="'+idx+'" role="button" tabindex="0" style="display:flex;align-items:center;margin:8px 12px;padding:16px 14px;border-radius:14px;border:1px solid var(--line);background:var(--card);cursor:pointer;-webkit-tap-highlight-color:rgba(0,0,0,.08)">'
+      + '<img src="'+avatarUrl(ch)+'" alt="" style="width:44px;height:44px;border-radius:12px;margin-right:12px;object-fit:cover;pointer-events:none;flex-shrink:0">'
+      + '<span style="flex:1;font-size:16px;pointer-events:none">'+escapeHtml(ch.nick||ch.realName||('角色'+(idx+1)))+'</span>'
+      + '<span style="color:#c7c7cc;pointer-events:none">›</span></div>';
+  }).join('') || '<div class="empty">暂无角色，请先在角色库添加</div>';
+  openSubPage('查手机', '<div id="phoneCheckList" style="padding:4px 0 24px">'+list+'</div>', '', {
+    replace: true,
+    softGuard: true,
+    backFn: function(){ goHome(); }
+  });
   state._clickGuardUntil = 0;
-  // 事件委托：整列表点击
-  setTimeout(function(){
-    var box = document.getElementById('phoneCheckList') || document.getElementById('subBody');
-    if (!box) return;
-    box.onclick = function(ev) {
-      var t = ev.target;
-      while (t && t !== box && !t.getAttribute('data-cid')) t = t.parentNode;
-      if (!t || !t.getAttribute) return;
-      var cid = t.getAttribute('data-cid');
-      if (!cid) return;
-      ev.preventDefault();
-      ev.stopPropagation();
-      state._clickGuardUntil = 0;
-      openCharPhone(cid);
-    };
+  setTimeout(function() {
+    try {
+      var rows = document.querySelectorAll('#phoneCheckList .pc-row');
+      rows.forEach(function(row) {
+        var fired = false;
+        function go() {
+          if (fired) return;
+          fired = true;
+          var idx = +(row.getAttribute('data-pcidx') || -1);
+          openCharPhoneByIdx(idx);
+          setTimeout(function(){ fired = false; }, 400);
+        }
+        row.onclick = function(e){ e.preventDefault(); e.stopPropagation(); go(); };
+        row.ontouchend = function(e){
+          if (row._moved) { row._moved = false; return; }
+          e.preventDefault(); e.stopPropagation(); go();
+        };
+        row.ontouchstart = function(){ row._moved = false; };
+        row.ontouchmove = function(){ row._moved = true; };
+      });
+    } catch(e) {}
   }, 40);
+}
+function openCharPhoneByIdx(idx) {
+  state._clickGuardUntil = 0;
+  state._navLock = false;
+  state._suppressLaunch = false;
+  var ch = state._phoneCheckList && state._phoneCheckList[idx];
+  if (!ch) ch = (state.chars||[])[idx];
+  if (!ch) { showToast('角色不存在'); return; }
+  openCharPhone(ch.id);
 }
 function exitPhone() {
   state._phoneLayer = null;
@@ -11480,6 +11703,8 @@ function ensureHomeState() {
 }
 function goHome() {
   ensureHomeState();
+  armClickGuard(700);
+  state._navLock = false;
   state.inWechat = false;
   state.currentChatId = null;
   const dock = document.getElementById('dock');
@@ -11920,6 +12145,23 @@ function editHomePolaroid() {
 function openChangelog() {
   const ver = (typeof EENOK_BUILD !== 'undefined') ? EENOK_BUILD : '';
   const logs = [
+    { v: '2026-08-18i', items: [
+      '语音 API / 生图 API 独立成「我的」两个板块',
+      '生图支持多条预设词，角色发图时读取预设+描述',
+      '点击聊天语音条 / 通话对方发言可调用语音 API 播报'
+    ]},
+    { v: '2026-08-18h', items: [
+      '修复：重复 openMeloPlaylist 覆盖导致歌单返回桌面 → 统一带 backFn',
+      '立牌/小组件上传强制 PNG 保留透明底（不再压成 JPEG 黑底）',
+      '通话描写不用「禁止括号」规则，强制（）并后处理 []→（）',
+      '查手机 touchend+onclick 双重绑定；编辑结束立刻可点 Dock',
+      'closeAllModals 去重；美化内「进入玻璃质感设置」独立页'
+    ]},
+    { v: '2026-08-18g', items: [
+      '查手机列表改为行内 onclick；歌单退出强制回 Melo',
+      '人设/表情包关闭清栈；玻璃质感独立设置页',
+      '通话描写用（）格式；通话可换本地背景'
+    ]},
     { v: '2026-08-18f', items: [
       '修复 openSubPage 清掉返回函数导致歌单/子页直接回桌面；导航防连点弹跳',
       '查手机列表事件委托可点；通话角色自动接听+线条图标；修复 [object Object]',
@@ -12199,6 +12441,22 @@ function renderGlassSwitchHtml() {
     + '<button type="button" id="glassUiSwitch" onclick="applyGlassUI('+(!on)+')" style="border:none;border-radius:12px;padding:10px 14px;width:100%;cursor:pointer;background:'+(on?'linear-gradient(145deg,#a8d4e6,#7eb8d0)':'#f2f2f7')+';color:'+(on?'#fff':'#333')+'">'+(on?'玻璃质感 · 点击恢复默认':'点击切换玻璃质感 UI')+'</button>'
     + '<div style="font-size:11px;color:#888;margin-top:8px">图标半透明毛玻璃，页面磨砂背景</div></div>';
 }
+function openGlassUIPage() {
+  ensureHomeState();
+  state._homeRoot = 'beauty';
+  openSubPage('玻璃质感 UI', `
+    <div style="padding:20px 16px 40px;background:linear-gradient(180deg,#e8f6f4,#d4ebea);min-height:100%;box-sizing:border-box">
+      <div style="font-size:14px;line-height:1.7;color:#5a7a80;margin-bottom:16px">开启后主屏图标与部分页面会呈半透明毛玻璃。可随时关闭。</div>
+      <div style="padding:24px;border-radius:20px;background:rgba(255,255,255,.45);backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.55);margin-bottom:18px;text-align:center;box-shadow:0 8px 28px rgba(80,140,160,.12)">
+        <div style="width:68px;height:68px;margin:0 auto 12px;border-radius:18px;background:rgba(255,255,255,.4);border:1px solid rgba(255,255,255,.6);backdrop-filter:blur(8px)"></div>
+        <div style="font-weight:600;color:#2a4a55">预览</div>
+      </div>
+      <button type="button" onclick="applyGlassUI(true);showToast('已开启玻璃质感')" style="width:100%;border:none;border-radius:14px;padding:14px;margin-bottom:10px;background:linear-gradient(145deg,#7ec8c0,#5eb8b0);color:#fff;font-size:15px;font-weight:600;cursor:pointer">开启玻璃质感</button>
+      <button type="button" onclick="applyGlassUI(false);showToast('已还原默认')" style="width:100%;border:none;border-radius:14px;padding:14px;margin-bottom:10px;background:rgba(255,255,255,.8);color:#2a4a55;font-size:15px;cursor:pointer">关闭 / 还原</button>
+      <button type="button" onclick="openHomeBeauty()" style="width:100%;border:none;border-radius:14px;padding:12px;background:transparent;color:#5eb8b0;font-size:14px;cursor:pointer">← 返回美化</button>
+    </div>
+  `, '', { replace: false, backFn: function(){ openHomeBeauty(); } });
+}
 function applyGlassUI(on) {
   ensureHomeState();
   state.home.glassUI = !!on;
@@ -12244,6 +12502,11 @@ function openHomeBeauty() {
   ];
   openSubPage('美化', `
     <div style="padding:12px 14px 40px;overflow-y:auto;height:100%;box-sizing:border-box">
+      <div style="margin:0 0 14px;padding:14px;border-radius:14px;background:linear-gradient(145deg,rgba(126,200,192,.35),rgba(168,212,230,.4));border:1px solid rgba(94,184,176,.35)">
+        <div style="font-weight:700;color:#2a4a55;margin-bottom:8px">✨ 玻璃质感 UI</div>
+        <button type="button" onclick="openGlassUIPage()" style="width:100%;border:none;border-radius:12px;padding:12px;background:#fff;color:#2a4a55;font-weight:600;cursor:pointer;margin-bottom:8px">进入玻璃质感设置</button>
+        <div style="font-size:11px;color:#5a7a80">单独一页开关，不会找不到</div>
+      </div>
       ${typeof renderGlassSwitchHtml==='function'?renderGlassSwitchHtml():''}
       <div style="font-size:13px;color:var(--sub);margin-bottom:8px">壁纸</div>
       <button type="button" class="btn btn-secondary" style="width:100%;margin-bottom:8px" onclick="state.fileTarget='homeWallpaper';document.getElementById('fileInput').click()">上传壁纸</button>
@@ -16076,7 +16339,12 @@ async function answerCallAuto() {
   const display = ctx.name || '未知';
   const av = c ? avatarUrl(c) : '';
   openSubPage('', `
-    <div style="position:absolute;inset:0;background:linear-gradient(180deg,#4a4a68,#222236);color:#fff;display:flex;flex-direction:column;align-items:center;padding:36px 16px 12px;box-sizing:border-box">
+    <div id="callScreenBg" style="position:absolute;inset:0;background:${(state._callCtx&&state._callCtx.bg)?("url("+state._callCtx.bg+") center/cover"):"linear-gradient(180deg,#4a4a68,#222236)"};color:#fff;display:flex;flex-direction:column;align-items:center;padding:36px 16px 12px;box-sizing:border-box">
+      <div style="position:absolute;inset:0;background:rgba(20,20,30,.45);pointer-events:none"></div>
+      <div style="position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;width:100%;height:100%">
+      <div style="position:absolute;top:12px;right:12px;z-index:2">
+        <button type="button" onclick="state.fileTarget='callBg';document.getElementById('fileInput').accept='image/*';document.getElementById('fileInput').click()" style="border:none;background:rgba(0,0,0,.25);color:#fff;border-radius:12px;padding:6px 10px;font-size:11px;cursor:pointer">壁纸</button>
+      </div>
       <div style="font-size:13px;opacity:.75" id="callTimer">00:00</div>
       <div style="font-size:24px;font-weight:600;margin:6px 0 16px">${escapeHtml(display)}</div>
       <div style="width:112px;height:112px;border-radius:50%;overflow:hidden;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.15);flex-shrink:0;margin-bottom:12px">
@@ -16136,16 +16404,27 @@ async function callGenReply() {
   if (box) box.innerHTML += '<div style="opacity:.55;margin:6px 0">对方正在说话…</div>';
   try {
     const hist = (ctx.logs||[]).slice(-10).map(function(m){ return (m.role==='user'?'我: ':'对方: ')+m.text; }).join('\n');
-    const sys = getOnlineChatRules(
-      '电话通话中。你是'+(c&&(c.nick||c.realName)||ctx.name)+'。人设：'+(c&&(c.persona||c.setting)||'')+
-      '。user人设：'+(state.user&&state.user.persona||'')+'。关系：'+(c&&c.relation||'熟人')+
-      '。用电话口语短句回复，不要旁白，不要括号。只输出你说的话。'
-    );
+    // 不用 getOnlineChatRules：其中「禁止括号」会与通话描写冲突
+    const nick = (c && (c.nick || c.realName)) || ctx.name || '对方';
+    const persona = (c && (c.persona || c.setting || '')) || '';
+    const rel = (c && c.relation) || '熟人';
+    const userP = (state.user && state.user.persona) || '';
+    const sys = '你正在和 user 打电话。你是「'+nick+'」。\n'
+      + '人设：'+persona+'\nuser人设：'+userP+'\n关系：'+rel+'\n'
+      + '【输出格式铁律】必须严格两段，禁止方括号[]：\n'
+      + '第一行只用中文圆括号（）写环境/声音描写，例如：（电话接通，背景里有一点风声，声音压得很低，清亮里带着点磨砂感。）\n'
+      + '空一行后写口语对话，可用中文引号「」或英文引号包住，短句，像真人打电话。\n'
+      + '禁止 Markdown、禁止 OOC、禁止扮演 user、禁止客服腔。';
     const raw = await apiChat([
       { role:'system', content: sys },
-      { role:'user', content: hist || '（电话刚接通）请先自然开口' }
+      { role:'user', content: hist || '（电话刚接通）请先按格式自然开口' }
     ], { temperature: 0.85, max_tokens: 400 });
-    const text = normalizeApiText(raw);
+    let text = normalizeApiText(raw);
+    // 强制把方括号描写改成圆括号，避免模型偷用 []
+    if (text) {
+      text = text.replace(/^[ \t]*\[([^\]]+)\]/m, '（$1）');
+      text = text.replace(/\n[ \t]*\[([^\]]+)\]/g, '\n（$1）');
+    }
     if (text && text !== '[object Object]') {
       ctx.logs.push({ role:'char', text: text });
       renderCallLog();
@@ -16161,9 +16440,11 @@ function renderCallLog() {
   const ctx = state._callCtx; if (!ctx) return;
   const box = document.getElementById('callChatLog');
   if (!box) return;
-  box.innerHTML = (ctx.logs||[]).map(function(m){
-    const t = normalizeApiText(m.text);
-    return '<div style="margin:8px 0">'+(m.role==='user'?'我：':'')+escapeHtml(t)+'</div>';
+  box.innerHTML = (ctx.logs||[]).map(function(m, li){
+    let t = normalizeApiText(m.text);
+    t = t.replace(/^[ \t]*\[([^\]]+)\]/m, '（$1）').replace(/\n[ \t]*\[([^\]]+)\]/g, '\n（$1）');
+    const click = m.role !== 'user' ? ' onclick="playCallSpeech('+li+')" title="点击播报" style="cursor:pointer;margin:10px 0;white-space:pre-wrap;text-align:left;padding:8px;border-radius:10px;background:rgba(255,255,255,.08)"' : ' style="margin:10px 0;white-space:pre-wrap;text-align:left;opacity:.9"';
+    return '<div'+click+'>'+(m.role==='user'?'<span style="opacity:.75">我：</span>':'')+escapeHtml(t)+(m.role!=='user'?'<div style="font-size:11px;opacity:.55;margin-top:4px">点此播报语音</div>':'')+'</div>';
   }).join('');
   box.scrollTop = box.scrollHeight;
 }
@@ -17680,22 +17961,47 @@ function createMeloPlaylist() {
 function openMeloPlaylist(pi) {
   const pl = (state.melo.playlists||[])[pi];
   if (!pl) return;
+  state._navLock = false;
+  state._clickGuardUntil = 0;
   state._homeRoot = 'melo';
   state._homeDepth = 1;
+  state._subKind = 'meloPlayList';
+  state._meloPlIdx = pi;
   const songs = (pl.songs||[]).map(function(ix){ return { s: state.melo.songs[ix], ix: ix }; }).filter(function(x){ return x.s; });
-  const accent = state.melo.accent || '#5eb8b0';
-  openSubPage(pl.name || '歌单', `
-    <div style="padding:12px 14px;display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn btn-secondary" style="font-size:12px" onclick="editMeloPlaylistMeta(${pi})">编辑歌单</button>
-      <button class="btn btn-secondary" style="font-size:12px" onclick="addSongsToPlaylist(${pi})">添加歌曲</button>
-      <button class="btn btn-secondary" style="font-size:12px;color:#e74c3c" onclick="if(confirm('删除歌单？')){state.melo.playlists.splice(${pi},1);save();openMelo('mine',{replace:1})}">删除</button>
-    </div>
-    <div style="padding:0 14px 40px">
-      ${songs.map(function(x){
-        return '<div onclick="playMeloSong('+x.ix+')" style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:0.5px solid #eee;cursor:pointer">'
-          + '<div style="flex:1"><div style="font-weight:500">'+escapeHtml(x.s.name||'')+'</div><div class="text-sub" style="font-size:12px">'+escapeHtml(x.s.artist||'')+'</div></div></div>';
-      }).join('') || '<div class="empty">歌单为空，点「添加歌曲」</div>'}
-    </div>`, '', { replace: false, backFn: function(){ openMelo(state._meloTab||'mine', { replace: true }); } });
+  function backToMeloHome() {
+    state._navLock = false;
+    state._homeRoot = 'melo';
+    state._homeDepth = 0;
+    state._subKind = 'melo';
+    state._subBackFn = null;
+    state._subStack = [];
+    try { openMelo(state._meloTab || 'home', { replace: true }); } catch(e) {
+      try { openMelo('home', { replace: true }); } catch(e2) { goHome(); }
+    }
+  }
+  openSubPage(pl.name || '歌单',
+    '<div style="padding:12px 14px;display:flex;gap:8px;flex-wrap:wrap">'
+    + '<button type="button" class="btn btn-secondary" style="font-size:12px" onclick="editMeloPlaylistMeta('+pi+')">编辑歌单</button>'
+    + '<button type="button" class="btn btn-secondary" style="font-size:12px" onclick="addSongsToPlaylist('+pi+')">添加歌曲</button>'
+    + '<button type="button" class="btn btn-secondary" style="font-size:12px;color:#e74c3c" onclick="if(confirm(\'删除歌单？\')){state.melo.playlists.splice('+pi+',1);save();openMelo(\'mine\',{replace:1})}">删除</button></div>'
+    + '<div style="padding:0 14px 40px">'
+    + (songs.map(function(x){
+        return '<div onclick="playMeloSong('+x.ix+')" style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:0.5px solid #eee;cursor:pointer">'
+          + '<div style="flex:1"><div style="font-weight:500">'+escapeHtml(x.s.name||'')+'</div>'
+          + '<div class="text-sub" style="font-size:12px">'+escapeHtml(x.s.artist||'')+'</div></div></div>';
+      }).join('') || '<div class="empty">歌单为空，点「添加歌曲」</div>')
+    + '</div>',
+    '',
+    {
+      replace: true,
+      softGuard: true,
+      backFn: backToMeloHome
+    }
+  );
+  state._homeRoot = 'melo';
+  state._homeDepth = 1;
+  state._subKind = 'meloPlayList';
+  state._subBackFn = backToMeloHome;
 }
 function editMeloPlaylistMeta(pi) {
   const pl = state.melo.playlists[pi];
@@ -17732,12 +18038,31 @@ function editMeloProfile() {
 }
 
 function openMeloPlaylist(i) {
+  // 统一走带 backFn 的实现，禁止无返回函数的旧版覆盖
+  if (typeof openMeloPlaylist === 'function' && arguments.length >= 1) {
+    /* fall through to robust path below by redefining in place */
+  }
   const p = state.melo.playlists[i];
   if (!p) return;
-  state._subKind = 'meloPlaylist';
+  state._navLock = false;
+  state._clickGuardUntil = 0;
+  state._homeRoot = 'melo';
+  state._homeDepth = 1;
+  state._subKind = 'meloPlayList';
   state._meloPlIdx = i;
   if (!p.songs) p.songs = [];
   const all = state.melo.songs || [];
+  function backToMeloHome() {
+    state._navLock = false;
+    state._homeRoot = 'melo';
+    state._homeDepth = 0;
+    state._subKind = 'melo';
+    state._subBackFn = null;
+    state._subStack = [];
+    try { openMelo(state._meloTab || 'home', { replace: true }); } catch(e) {
+      try { openMelo('home', { replace: true }); } catch(e2) { goHome(); }
+    }
+  }
   const rows = (p.songs||[]).map((si, j) => {
     const s = all[si];
     if (!s) return '';
@@ -17754,7 +18079,11 @@ function openMeloPlaylist(i) {
       <button class="btn btn-secondary" style="width:100%;margin-bottom:12px" onclick="addSongsToPlaylist(${i})">＋ 添加歌曲</button>
       ${rows}
     </div>
-  `, '', { replace: false });
+  `, '', { replace: true, softGuard: true, backFn: backToMeloHome });
+  state._homeRoot = 'melo';
+  state._homeDepth = 1;
+  state._subKind = 'meloPlayList';
+  state._subBackFn = backToMeloHome;
 }
 function removeFromPlaylist(pi, j) {
   state.melo.playlists[pi].songs.splice(j, 1);
@@ -19390,11 +19719,11 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
         return '<div class="home-widget" data-widx="'+wi+'" data-wtype="polaroid" style="'+base+'overflow:visible">'+inner+del+'</div>';
       }
             if (t === 'standee') {
-        inner = '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end">'
-          + '<div style="width:88%;height:78%;border-radius:8px 8px 4px 4px;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.2),inset 0 0 0 2px rgba(255,255,255,.5);background:linear-gradient(180deg,#eef6f8,#d0e4ea);transform:perspective(200px) rotateX(2deg)">'
-          + (w.img ? '<img src="'+w.img+'" style="width:100%;height:100%;object-fit:cover" draggable="false">' : '<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#8aa;font-size:11px">立牌</div>')
-          + '</div><div style="width:70%;height:8px;margin-top:4px;border-radius:4px;background:rgba(0,0,0,.12)"></div></div>';
-        return '<div class="home-widget" data-widx="'+wi+'" data-wtype="standee" style="'+base+'overflow:visible;background:transparent;box-shadow:none">'+inner+del+'</div>';
+        inner = '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;background:transparent !important">'
+          + '<div style="width:90%;height:82%;border-radius:0;overflow:visible;background:transparent !important;box-shadow:none;transform:perspective(240px) rotateX(2deg)">'
+          + (w.img ? '<img src="'+w.img+'" style="width:100%;height:100%;object-fit:contain;object-position:center bottom;background:transparent !important;display:block;filter:drop-shadow(0 8px 14px rgba(0,0,0,.22))" draggable="false">' : '<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#8aa;font-size:11px;background:rgba(255,255,255,.25);border-radius:8px">立牌</div>')
+          + '</div><div style="width:48%;height:5px;margin-top:4px;border-radius:3px;background:rgba(0,0,0,.12)"></div></div>';
+        return '<div class="home-widget" data-widx="'+wi+'" data-wtype="standee" style="'+base+'overflow:visible;background:transparent !important;box-shadow:none;border:none">'+inner+del+'</div>';
       }
 if (t === 'badge3d') {
         inner = '<div class="badge-spin" style="width:100%;height:100%;border-radius:50%;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.18),inset 0 0 0 3px rgba(255,255,255,.7);transform:rotate('+(w.rot||0)+'deg);transition:transform .45s ease;background:#e8eef0">'
@@ -19572,10 +19901,17 @@ if (t === 'badge3d') {
     });
 
     inner.querySelectorAll('.home-dock-item').forEach(function(el) {
-      el.addEventListener('click', function() {
-        if (editMode) return;
+      function dockLaunch(e) {
+        if (e) { try { e.preventDefault(); e.stopPropagation(); } catch(err) {} }
+        if (state.home.editMode || state._suppressLaunch) return;
+        state._clickGuardUntil = 0;
         launch(el.dataset.open);
-      });
+      }
+      el.addEventListener('click', dockLaunch);
+      el.addEventListener('touchend', function(e) {
+        if (state.home.editMode || state._suppressLaunch) return;
+        dockLaunch(e);
+      }, { passive: false });
     });
     inner.querySelectorAll('.dock-del').forEach(function(el) {
       el.onclick = function(e) {
@@ -19722,7 +20058,13 @@ if (t === 'badge3d') {
     });
 
     var done = document.getElementById('homeEditDone');
-    if (done) done.onclick = function(){ state.home.editMode=false; save(); renderHome(); };
+    if (done) done.onclick = function(){
+      state.home.editMode = false;
+      state._suppressLaunch = false;
+      state._clickGuardUntil = 0;
+      try { save(); } catch(e) {}
+      renderHome();
+    };
     var add = document.getElementById('homeEditAdd');
     if (add) add.onclick = function(){ openHomeAddApp(); };
     var dadd = document.getElementById('homeDockAdd');
