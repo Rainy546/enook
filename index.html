@@ -1739,7 +1739,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-18k';
+const EENOK_BUILD = '2026-08-18m';
 function checkAppUpdate() {
   try {
     const prev = localStorage.getItem('eenook_build');
@@ -4231,7 +4231,7 @@ function getOnlineChatRules(extra) {
 【人格】不弱化、不神化、不丑化角色；不辱女、不危险发言、不侮辱国家/种族（除非角色特殊设定且仅限角色言行）；不抢话；不侮辱user、不对user人身攻击或肢体伤害（除非user明确要求或特殊设定）；去油腻、去绝望恐吓、去无脑霸道偏执病态（除非人设明确且健康边界内）。
 【身份顺序】除却一切身份之前，角色首先是自己，其次才是恋人/朋友等身份。一切设定前提默认健康、尊重、温暖；仅当user明确要求时才可走向不健康恋爱线。
 【温度】有真实人类的温度、思想、生活习惯与情感；重视user的感受，也重视自己的感受；不忽视情绪。像真人微信/短信/私信。
-【时间】现在是 ${timeStr}（周${week}，${slot}）。时间感知必须准。与已挂载聊天记忆承接，不否定已发生的事。
+【时间】现在是 ${timeStr}（周${week}，${slot}）。时间感知必须准。与已挂载聊天记忆承接，不否定已发生的事。若历史消息标注了「昨天/×月×日」，说明那是当时发的，中间可能隔了很久——禁止当成刚说完的话连续接。
 ${extra||''}`;
 }
 
@@ -4245,7 +4245,22 @@ async function realGenerate(id, c) {
     const memN = Math.min(100, Math.max(0, chat.memCount != null ? chat.memCount : 30));
     const recent = (chat.messages || []).filter(m => !m.recalled && m.type !== 'recall' && m.type !== 'system').slice(-memN);
     const socialMem = collectSocialMemory(id, 8);
-    const history = recent.map(m => {
+    // 给跨时段消息打时间戳标注，避免模型把几天前的对话当成「刚聊完」
+    function fmtMsgClock(ts) {
+      if (!ts) return '';
+      const d = new Date(ts);
+      if (isNaN(d.getTime())) return '';
+      const pad = function(n){ return n < 10 ? '0'+n : ''+n; };
+      const now0 = new Date();
+      const sameDay = d.getFullYear()===now0.getFullYear() && d.getMonth()===now0.getMonth() && d.getDate()===now0.getDate();
+      const yest = new Date(now0); yest.setDate(yest.getDate()-1);
+      const isYest = d.getFullYear()===yest.getFullYear() && d.getMonth()===yest.getMonth() && d.getDate()===yest.getDate();
+      const hm = pad(d.getHours()) + ':' + pad(d.getMinutes());
+      if (sameDay) return hm;
+      if (isYest) return '昨天 ' + hm;
+      return (d.getMonth()+1) + '月' + d.getDate() + '日 ' + hm;
+    }
+    const history = recent.map(function(m, idx) {
       let content = '';
       if (m.type === 'text') content = m.content || '';
       else if (m.type === 'voice') content = '[语音] ' + (m.content || '');
@@ -4255,6 +4270,20 @@ async function realGenerate(id, c) {
       else if (m.type === 'location') content = `[位置] ${m.name||''} ${m.addr||''}`;
       else content = '[' + (m.type||'消息') + ']';
       if (state.currentIsGroup && m.fromName) content = (m.fromName) + '：' + content;
+      // 跨天或间隔较长时标注发送时间，帮助模型感知时间流逝
+      try {
+        const ts = m.ts || 0;
+        const prev = idx > 0 ? recent[idx - 1] : null;
+        const gapMin = prev && prev.ts ? Math.round((ts - prev.ts) / 60000) : 0;
+        const clock = fmtMsgClock(ts);
+        if (clock && (gapMin >= 180 || (prev && prev.ts && new Date(ts).toDateString() !== new Date(prev.ts).toDateString()))) {
+          content = '（' + clock + '）' + content;
+        } else if (clock && idx === 0 && recent.length > 1) {
+          // 第一条也标一下，方便定位整段历史的起点
+          const ageMin = Math.round((Date.now() - ts) / 60000);
+          if (ageMin >= 180) content = '（' + clock + '）' + content;
+        }
+      } catch(e) {}
       return { role: m.from === 'user' ? 'user' : 'assistant', content };
     }).filter(h => h.content);
     if (state._rerollReq) {
@@ -4321,14 +4350,33 @@ ${userP.charKnows===false?'（对方可能使用了小号，你不一定知道�
       else if (h < 23) { slot = '夜里'; life = '接近休息，可以提早点睡，但仍可短聊，不要当成凌晨。'; }
       else { slot = '深夜'; life = '23点后才偏晚，可催睡、说困，仍要看人设。'; }
       let gapTip = '';
+      let longGap = false;
       try {
-        const last = (chat.messages || []).filter(function(m){ return !m.recalled; }).slice(-1)[0];
-        if (last && last.ts) {
-          const mins = Math.round((Date.now() - last.ts) / 60000);
-          if (mins < 1) gapTip = '上一条几乎刚刚发出';
-          else if (mins < 60) gapTip = '距离上一条消息约' + mins + '分钟';
-          else if (mins < 1440) gapTip = '距离上一条消息约' + Math.round(mins/60) + '小时';
-          else gapTip = '距离上一条消息约' + Math.round(mins/1440) + '天';
+        // 当前会话刚发出的消息（近 3 分钟内）不算「间隔」——要找更早的上一段对话终点
+        const all = (chat.messages || []).filter(function(m){ return !m.recalled && m.ts; });
+        const SESSION_MS = 3 * 60 * 1000;
+        const nowMs = Date.now();
+        // 跳过「本轮刚发」的连续消息，找到上一段对话的最后一条
+        let lastOld = null;
+        for (let i = all.length - 1; i >= 0; i--) {
+          if (nowMs - all[i].ts > SESSION_MS) { lastOld = all[i]; break; }
+        }
+        // 若整段都在 3 分钟内，再退而用倒数第二条（用户刚发之前那条）
+        if (!lastOld && all.length >= 2) lastOld = all[all.length - 2];
+        if (lastOld && lastOld.ts) {
+          const mins = Math.max(0, Math.round((nowMs - lastOld.ts) / 60000));
+          const lastD = new Date(lastOld.ts);
+          const lastLabel = (lastD.getMonth()+1) + '月' + lastD.getDate() + '日 ' + pad(lastD.getHours()) + ':' + pad(lastD.getMinutes());
+          if (mins < 3) gapTip = '上一段对话几乎刚刚结束';
+          else if (mins < 60) gapTip = '距离上一段对话约' + mins + '分钟（上次约 ' + lastLabel + '）';
+          else if (mins < 1440) {
+            gapTip = '距离上一段对话约' + Math.round(mins/60) + '小时（上次约 ' + lastLabel + '）';
+            if (mins >= 180) longGap = true;
+          } else {
+            const days = Math.round(mins / 1440);
+            gapTip = '距离上一段对话已经约' + days + '天（上次聊天约在 ' + lastLabel + '）';
+            longGap = true;
+          }
         }
       } catch(e) {}
       system += '\n【时间感知·强制】现在是 ' + timeStr + '（周' + week + '，' + slot + '）。' + (gapTip ? gapTip + '。' : '') +
@@ -4336,6 +4384,11 @@ ${userP.charKnows===false?'（对方可能使用了小号，你不一定知道�
         '必须按这个真实钟点说话：现在若是晚上七八点，禁止说「只剩几分钟就睡」「睡眠比聊天重要到必须立刻停」这类把时间说得过晚的话。' +
         '「刚刚/现在/等会儿/明天/昨天/晚上/凌晨」必须和真实时间一致。不要把已发生的事说成未发生。时间不确定就不要编具体几点。' +
         '一句一句发，有消息间隔感，不要一次把所有话倒完。';
+      if (longGap) {
+        system += '\n【时间流逝·强制】从上一段对话到现在已经隔了较长时间。禁止像「刚聊完下一秒接着说」那样接话；' +
+          '禁止把几天前正在进行的话题当成此刻仍在当面/刚挂断；若对方这轮是重新开口，应自然体现时间差（例如：有点久没聊、这几天、今天才回、前两天那事等，按真实间隔选词），' +
+          '可以简短确认近况，但不要生硬报时，也不要假装中间一直在线。历史里带（月日 时:分）标注的是当时发出的旧消息，不是现在。';
+      }
     }
     try {
       const sm = collectSocialMemory(id, 8);
@@ -12664,6 +12717,11 @@ function editHomePolaroid() {
 function openChangelog() {
   const ver = (typeof EENOK_BUILD !== 'undefined') ? EENOK_BUILD : '';
   const logs = [
+    { v: '2026-08-18m', items: [
+      '时间感知强化：跨天/跨小时会在历史消息上标注发送时间',
+      '正确计算「距上一段对话」间隔（忽略本轮刚发出的消息）',
+      '隔较久再聊时，强制体现时间流逝，禁止当成刚聊完接着说'
+    ]},
     { v: '2026-08-18k', items: [
       '查手机：ch.phone 为电话字符串时不再读 wechat 报错',
       '玻璃强度 0 时主屏图标与 Dock 背景完全透明',
