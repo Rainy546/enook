@@ -1748,7 +1748,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-19a';
+const EENOK_BUILD = '2026-08-19b';
 function checkAppUpdate() {
   try {
     const prev = localStorage.getItem('eenook_build');
@@ -5292,6 +5292,18 @@ function onFileSelected(e) {
       state.gal.chars[gid].boxImg = data;
       save(); showToast('对话框已更新');
       try { if ((state.gal.chars[gid].play||'')==='visual') openGalVisualPlay(gid, state.gal.chars[gid].orient||'portrait'); else galCustomUI(gid); } catch(e) {}
+    } else if (state.fileTarget === 'worldMapBg') {
+      const cid = state.world && state.world.currentCharId;
+      if (cid) {
+        const w = ensureCharWorld(cid);
+        (async function() {
+          let img = data;
+          try { if (typeof compressDataUrl === 'function' && data && data.length > 180000) img = await compressDataUrl(data, 1200, 0.8); } catch(e) {}
+          w.mapBg = img;
+          save(); showToast('地图背景已更新');
+          openWorldChar(cid, 'map');
+        })();
+      }
     } else if (state.fileTarget === 'lockWp') {
       ensureLockState();
       // 压缩后更易持久化
@@ -6188,20 +6200,23 @@ function isMostlyProperName(text) {
 async function autoTranslateText(text, fromLang) {
   if (!text || !String(text).trim()) return '';
   const src = String(text).trim();
-  // 明显人名/称呼不翻译
   if (isMostlyProperName(src)) return '';
-  // 已是中文且源语言是中文则不译
-  if ((!fromLang || fromLang === 'zh') && /[\u4e00-\u9fff]/.test(src) && !/[a-zA-Z]{6,}/.test(src)) return '';
+  // 源语言为中文且几乎全是汉字 → 不译
+  if ((!fromLang || fromLang === 'zh') && /[\u4e00-\u9fff]/.test(src) && !/[a-zA-Zぁ-んァ-ン가-힣]{4,}/.test(src)) return '';
   try {
     const { text: tr } = await apiChat([
-      { role: 'user', content: '将下面内容翻译成简体中文。规则：若整句主要是人名、昵称、称呼（如哥哥/姐/英文名），原样返回不要翻译；专有名词可保留原文。只输出译文或原文，不要解释：\n' + src.slice(0, 500) }
-    ], { max_tokens: 300, temperature: 0.15 });
-    let out = (tr || '').trim().replace(/^["「]|["」]$/g, '');
-    // 译文与原文几乎相同则不显示
-    if (!out || out === src || out.replace(/\s/g,'') === src.replace(/\s/g,'')) return '';
+      { role: 'system', content: '你是翻译器。把用户消息译成简体中文。只输出译文。人名/昵称可保留原文。不要解释、不要引号。' },
+      { role: 'user', content: src.slice(0, 600) }
+    ], { max_tokens: 400, temperature: 0.1, timeout: 60000 });
+    let out = (tr || '').trim().replace(/^["「『]|["」』]$/g, '');
+    if (!out) return '';
+    if (out === src || out.replace(/\s/g,'') === src.replace(/\s/g,'')) return '';
     if (isMostlyProperName(out)) return '';
     return out;
-  } catch(e) { return ''; }
+  } catch(e) {
+    console.warn('translate fail', e);
+    return '';
+  }
 }
 async function translateBubbleMsg(idx) {
   const chat = state.chats[state.currentChatId];
@@ -13064,6 +13079,12 @@ function openChangelog() {
       '世界：从主屏进入强制角色列表，防点击穿透进单个角色页',
       '记忆互通：挂载其它会话时带上近聊原文；API Base 规范化更稳'
     ]},
+    { v: '2026-08-19b', items: [
+      'icity 主屏进入强制广场+防手指穿透，不再误开日记详情',
+      '世界地图：可换背景、编辑名称简介、拖动图钉、AI生成地点',
+      '生活随笔：多角度口语烟火气、不混 user、避免重复',
+      '翻译更稳；IG占位图文字更完整'
+    ]},
     { v: '2026-08-19a', items: [
       '角色发图无生图API也用虚拟图，避免裂图；IG占位图带文字描述',
       '翻译改为后台异步不挡气泡；语言加韩语；去除夜间模式',
@@ -14393,6 +14414,7 @@ function addIcityDiary() {
     + '<button class="btn btn-primary" onclick="(function(){var c=document.getElementById(\'idContent\').value.trim();if(!c){showToast(\'写点内容吧\');return;}if(!state.icity.diaries)state.icity.diaries=[];state.icity.diaries.unshift({content:c,vis:document.getElementById(\'idVis\').value,ts:Date.now(),likes:[],comments:[],liked:false});save();closeModal();openIcityDiaryList(state._icityDiaryFilter||\'all\');})()">发布</button>');
 }
 function openIcityDiaryDetail(kind, idx) {
+  if (typeof clickGuarded === 'function' && clickGuarded()) return;
   var d, nick, handle, av;
   var p = state.icity.profile || {};
   var u = state.user || {};
@@ -14567,8 +14589,12 @@ function openIcityApp(tab) {
   ensureHomeState();
   if (!state.icity) state.icity = { posts: [], myPosts: [], profile: {} };
   if (!state.icity.profile) state.icity.profile = { nick: '', id: '', sign: '', location: '', avatar: '', bg: '' };
-  // 从主屏 / 返回：始终广场，不掉进日记详情
-  if (tab == null || tab === '' || state._openFromHome) tab = 'square';
+  // 从主屏进入：强制广场，并挡穿透点击（避免点到第一篇日记）
+  var fromHome = !!state._openFromHome || tab == null || tab === '';
+  if (fromHome) {
+    tab = 'square';
+    try { armClickGuard(700); } catch(e) {}
+  }
   state._icityTab = tab;
   state._homeRoot = 'icity';
   state._homeDepth = 0;
@@ -14653,7 +14679,7 @@ function openIcityApp(tab) {
     const dateStr = dt ? (dt.getFullYear() + '') : '';
     const timeStr = dt ? (String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0')) : '';
     const handle = p.id || p.handle || (p.nick || 'user');
-    return `<div onclick="openIcityDiaryDetail('post',${i})" style="margin:0 0 10px;background:#fff;border-radius:0;padding:14px 16px;cursor:pointer">
+    return `<div class="icity-post-card" onclick="if(window.clickGuarded&&clickGuarded())return;openIcityDiaryDetail('post',${i})" style="margin:0 0 10px;background:#fff;border-radius:0;padding:14px 16px;cursor:pointer">
       <div style="display:flex;align-items:flex-start;gap:10px">
         <img src="${av}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;flex-shrink:0">
         <div style="flex:1;min-width:0">
@@ -14675,19 +14701,25 @@ function openIcityApp(tab) {
     </div>`;
   }).join('') || '<div class="empty" style="padding:48px">还没有内容</div>';
   openSubPage('icity', `
-    <div style="display:flex;flex-direction:column;height:100%;background:#f0f0f0">
+    <div id="icitySquareRoot" style="display:flex;flex-direction:column;height:100%;background:#f0f0f0;pointer-events:none">
       <div style="padding:14px 16px 8px;background:#f0f0f0;flex-shrink:0">
         <div style="font-size:22px;font-weight:700;color:#1a1a1a;letter-spacing:-0.3px">icity<span style="font-weight:400;color:#888;font-size:16px"> · 广场</span></div>
       </div>
       <div style="flex:1;overflow-y:auto;padding-bottom:70px">${body}</div>
-      <div style="position:absolute;left:0;right:0;bottom:0;display:flex;border-top:1px solid #e5e5e5;background:#fff;flex-shrink:0;z-index:10">
+      <div style="position:absolute;left:0;right:0;bottom:0;display:flex;border-top:1px solid #e5e5e5;background:#fff;flex-shrink:0;z-index:10;pointer-events:auto">
         <button type="button" onclick="openIcityApp('square')" style="flex:1;padding:12px;border:none;background:#fff;font-weight:700;font-size:13px;color:#1a1a1a">广场</button>
         <button type="button" onclick="openIcityDiaryList()" style="flex:1;padding:12px;border:none;background:#fff;font-size:13px;color:#666">日记</button>
         <button type="button" onclick="openIcityApp('mine')" style="flex:1;padding:12px;border:none;background:#fff;font-size:13px;color:#666">我的</button>
         <button type="button" onclick="icityGenOrPost('square')" style="padding:12px 14px;border:none;background:#fff;font-size:16px;color:#4a90e2">○</button>
       </div>
     </div>
-  `, '', { replace: true });
+  `, '', { replace: true, fromHome: fromHome, softGuard: false });
+  setTimeout(function(){
+    try {
+      var root = document.getElementById('icitySquareRoot');
+      if (root) root.style.pointerEvents = 'auto';
+    } catch(e) {}
+  }, 650);
 
   state._subKind = 'homeApp';
   state._homeDepth = 0;
@@ -15827,13 +15859,14 @@ function igMakePlaceholderImg(desc, seed) {
   const c2 = 'hsl(' + h2 + ',50%,56%)';
   const c3 = 'hsl(' + ((h1 + 40) % 360) + ',42%,90%)';
   // 多行文字描述，居中显示
-  const raw = String(desc || '瞬间').replace(/[<>&"']/g, '').slice(0, 48);
+  const raw = String(desc || '瞬间').replace(/[<>&"']/g, '').slice(0, 72);
   const lines = [];
-  for (var li = 0; li < raw.length; li += 12) lines.push(raw.slice(li, li + 12));
+  for (var li = 0; li < raw.length; li += 14) lines.push(raw.slice(li, li + 14));
   if (!lines.length) lines.push('photo');
-  const textY0 = 400 - (lines.length - 1) * 18;
+  if (lines.length > 5) lines.length = 5;
+  const textY0 = 380 - (lines.length - 1) * 20;
   const textSvg = lines.map(function(ln, idx) {
-    return '<text x="400" y="' + (textY0 + idx * 36) + '" font-size="28" fill="rgba(30,40,50,.72)" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif">' + ln + '</text>';
+    return '<text x="400" y="' + (textY0 + idx * 40) + '" font-size="30" fill="rgba(25,35,45,.78)" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif">' + ln + '</text>';
   }).join('');
   const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800" viewBox="0 0 800 800">'
     + '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="'+c1+'"/><stop offset="100%" stop-color="'+c2+'"/></linearGradient></defs>'
@@ -20862,16 +20895,37 @@ function openWorldChar(charId, tab) {
   let main = '';
   if (tab === 'map') {
     const places = w.places || [];
-    main = '<div style="padding:16px 14px 100px">'
-      + '<div style="font-size:17px;font-weight:700;color:'+ink+';margin-bottom:4px">地图 · '+escapeHtml(ch.nick||'')+'</div>'
-      + '<div style="font-size:12px;color:'+soft+';margin-bottom:14px">仅属于该角色的地点</div>'
-      + '<button type="button" style="width:100%;margin-bottom:14px;border:none;border-radius:14px;padding:12px;background:'+accent+';color:#fff;font-weight:600;cursor:pointer" onclick="worldAddPlace()">＋ 添加地点</button>'
+    const mapName = w.mapName || ((ch.nick||'') + '的世界');
+    const mapIntro = w.mapIntro || '';
+    const mapBg = w.mapBg || '';
+    main = '<div style="padding:12px 12px 100px">'
+      + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">'
+      + '<div style="flex:1;min-width:0"><div style="font-size:17px;font-weight:700;color:'+ink+'">'+escapeHtml(mapName)+'</div>'
+      + (mapIntro ? '<div style="font-size:12px;color:'+soft+';margin-top:4px;line-height:1.4">'+escapeHtml(mapIntro)+'</div>' : '<div style="font-size:12px;color:'+soft+';margin-top:4px">拖动图钉移动地点 · 点图钉查看</div>')
+      + '</div>'
+      + '<button type="button" onclick="worldEditMapMeta()" style="border:none;background:rgba(255,255,255,.85);border-radius:12px;padding:8px 10px;font-size:12px;color:'+ink+';cursor:pointer;flex-shrink:0">编辑</button></div>'
+      + '<div id="worldMapBoard" style="position:relative;width:100%;aspect-ratio:1;border-radius:18px;overflow:hidden;border:1px solid rgba(94,184,176,.3);background:'+(mapBg?('#eee url('+mapBg+') center/cover'):'linear-gradient(160deg,#c8e6e2 0%,#a8d4cf 40%,#7eb8b0 100%)')+';box-shadow:inset 0 0 0 1px rgba(255,255,255,.3)">'
+      + (places.map(function(p,i){
+          var x = (p.x != null ? p.x : (15 + (i * 17) % 70));
+          var y = (p.y != null ? p.y : (20 + (i * 23) % 60));
+          return '<div class="world-pin" data-pi="'+i+'" style="position:absolute;left:'+x+'%;top:'+y+'%;transform:translate(-50%,-100%);z-index:2;touch-action:none;cursor:grab">'
+            + '<div style="width:28px;height:28px;border-radius:50% 50% 50% 0;background:'+accent+';transform:rotate(-45deg);box-shadow:0 2px 8px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center">'
+            + '<span style="transform:rotate(45deg);color:#fff;font-size:11px;font-weight:700">'+(i+1)+'</span></div>'
+            + '<div style="margin-top:2px;background:rgba(255,255,255,.92);border-radius:8px;padding:2px 6px;font-size:10px;color:'+ink+';white-space:nowrap;max-width:90px;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 4px rgba(0,0,0,.08)">'+escapeHtml(p.name||'地点')+'</div></div>';
+        }).join(''))
+      + '</div>'
+      + '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">'
+      + '<button type="button" onclick="worldAddPlace()" style="flex:1;min-width:100px;border:none;border-radius:12px;padding:10px;background:'+accent+';color:#fff;font-size:13px;font-weight:600;cursor:pointer">＋ 手动添加</button>'
+      + '<button type="button" onclick="worldAiGenPlaces()" style="flex:1;min-width:100px;border:none;border-radius:12px;padding:10px;background:rgba(255,255,255,.9);color:'+ink+';font-size:13px;cursor:pointer">AI 生成地点</button>'
+      + '<button type="button" onclick="state.fileTarget=\'worldMapBg\';document.getElementById(\'fileInput\').click()" style="flex:1;min-width:100px;border:none;border-radius:12px;padding:10px;background:rgba(255,255,255,.9);color:'+ink+';font-size:13px;cursor:pointer">换背景</button></div>'
+      + '<div style="margin-top:14px;font-size:13px;font-weight:600;color:'+ink+';margin-bottom:8px">地点列表</div>'
       + (places.length ? places.map(function(p,i){
-          return '<div style="background:'+card+';border-radius:16px;padding:14px;margin-bottom:10px;border:1px solid rgba(94,184,176,.2)">'
+          return '<div style="background:'+card+';border-radius:14px;padding:12px;margin-bottom:8px;border:1px solid rgba(94,184,176,.2)">'
             + '<div style="display:flex;justify-content:space-between;align-items:center"><div style="font-weight:600;color:'+ink+'">'+escapeHtml(p.name||'地点')+'</div>'
-            + '<button type="button" onclick="ensureCharWorld(\''+charId+'\').places.splice('+i+',1);save();openWorldChar(\''+charId+'\',\'map\')" style="border:none;background:transparent;color:#e74c3c;font-size:12px;cursor:pointer">删</button></div>'
-            + '<div style="font-size:13px;color:'+ink+';margin-top:8px;line-height:1.5;white-space:pre-wrap">'+escapeHtml(p.desc||'')+'</div></div>';
-        }).join('') : '<div style="text-align:center;color:'+soft+';padding:40px 0">还没有地点</div>')
+            + '<span><button type="button" onclick="worldEditPlace('+i+')" style="border:none;background:transparent;color:'+accent+';font-size:12px;cursor:pointer">编辑</button>'
+            + '<button type="button" onclick="ensureCharWorld(\''+charId+'\').places.splice('+i+',1);save();openWorldChar(\''+charId+'\',\'map\')" style="border:none;background:transparent;color:#e74c3c;font-size:12px;cursor:pointer">删</button></span></div>'
+            + '<div style="font-size:12px;color:'+soft+';margin-top:6px;line-height:1.5;white-space:pre-wrap">'+escapeHtml(p.desc||'')+'</div></div>';
+        }).join('') : '<div style="text-align:center;color:'+soft+';padding:24px 0;font-size:13px">还没有地点，可手动添加或 AI 生成</div>')
       + '</div>';
   } else if (tab === 'calendar') {
     const now = new Date();
@@ -20930,6 +20984,67 @@ function openWorldChar(charId, tab) {
       </div>
     </div>
   `, '', { replace: true, backFn: function(){ state._homeDepth = 0; openWorldApp(); } });
+  if (tab === 'map') setTimeout(function(){ try { bindWorldMapPins(charId); } catch(e) {} }, 80);
+}
+function bindWorldMapPins(charId) {
+  var board = document.getElementById('worldMapBoard');
+  if (!board) return;
+  board.querySelectorAll('.world-pin').forEach(function(el) {
+    var pi = +el.getAttribute('data-pi');
+    var dragging = false, moved = 0;
+    var start = function(e) {
+      var t = e.touches ? e.touches[0] : e;
+      dragging = true; moved = 0;
+      el._sx = t.clientX; el._sy = t.clientY;
+      var br = board.getBoundingClientRect();
+      el._br = br;
+    };
+    var move = function(e) {
+      if (!dragging) return;
+      var t = e.touches ? e.touches[0] : e;
+      var dx = t.clientX - el._sx, dy = t.clientY - el._sy;
+      moved = Math.max(moved, Math.abs(dx) + Math.abs(dy));
+      if (moved < 5) return;
+      if (e.cancelable) e.preventDefault();
+      var br = el._br || board.getBoundingClientRect();
+      var x = ((t.clientX - br.left) / br.width) * 100;
+      var y = ((t.clientY - br.top) / br.height) * 100;
+      x = Math.max(5, Math.min(95, x));
+      y = Math.max(8, Math.min(95, y));
+      el.style.left = x + '%';
+      el.style.top = y + '%';
+      el._nx = x; el._ny = y;
+    };
+    var end = function() {
+      if (!dragging) return; dragging = false;
+      if (moved > 8 && el._nx != null) {
+        var w = ensureCharWorld(charId);
+        if (w.places[pi]) {
+          w.places[pi].x = Math.round(el._nx * 10) / 10;
+          w.places[pi].y = Math.round(el._ny * 10) / 10;
+          save();
+        }
+      } else if (moved < 6) {
+        worldEditPlace(pi);
+      }
+    };
+    el.addEventListener('touchstart', start, { passive: true });
+    el.addEventListener('touchmove', move, { passive: false });
+    el.addEventListener('touchend', end);
+    el.addEventListener('mousedown', start);
+    el.addEventListener('mousemove', function(e){ if(e.buttons) move(e); });
+    el.addEventListener('mouseup', end);
+  });
+}
+function worldEditMapMeta() {
+  var charId = state.world && state.world.currentCharId;
+  if (!charId) return;
+  var w = ensureCharWorld(charId);
+  openModal('编辑地图', `
+    <div class="form-group"><label>地图名称</label><input id="wmName" value="${escapeHtml(w.mapName||'')}" placeholder="例如：旧城区 / 学园地图"></div>
+    <div class="form-group"><label>简介</label><textarea id="wmIntro" style="min-height:70px" placeholder="这个世界的氛围…">${escapeHtml(w.mapIntro||'')}</textarea></div>
+  `, `<button class="btn btn-secondary" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" onclick="(function(){var w=ensureCharWorld('${charId}');w.mapName=(document.getElementById('wmName').value||'').trim();w.mapIntro=(document.getElementById('wmIntro').value||'').trim();save();closeModal();openWorldChar('${charId}','map');})()">保存</button>`);
 }
 function worldAddPlace() {
   const charId = state.world && state.world.currentCharId;
@@ -20940,13 +21055,58 @@ function worldAddPlace() {
   `, `<button class="btn btn-secondary" onclick="closeModal()">取消</button>
       <button class="btn btn-primary" onclick="worldSavePlace()">保存</button>`);
 }
+function worldEditPlace(i) {
+  const charId = state.world && state.world.currentCharId;
+  if (!charId) return;
+  const w = ensureCharWorld(charId);
+  const p = (w.places || [])[i];
+  if (!p) return;
+  openModal('编辑地点', `
+    <div class="form-group"><label>地点名称</label><input id="wpName" value="${escapeHtml(p.name||'')}"></div>
+    <div class="form-group"><label>描述</label><textarea id="wpDesc" style="min-height:90px">${escapeHtml(p.desc||'')}</textarea></div>
+  `, `<button class="btn btn-secondary" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" onclick="(function(){var w=ensureCharWorld('${charId}');var p=w.places[${i}];if(!p)return;p.name=(document.getElementById('wpName').value||'').trim()||p.name;p.desc=(document.getElementById('wpDesc').value||'').trim();save();closeModal();openWorldChar('${charId}','map');})()">保存</button>`);
+}
+async function worldAiGenPlaces() {
+  const charId = state.world && state.world.currentCharId;
+  const c = (state.chars||[]).find(x=>x.id===charId);
+  if (!c) return;
+  showToast('生成地点中…');
+  try {
+    const { text } = await apiChat([
+      { role:'system', content:'根据角色人设，生成 4-6 个该角色生活世界里的地点。只输出 JSON 数组：[{"name":"地点名","desc":"氛围描述一两句"}]。不要 markdown。人设：'+(c.persona||'普通人').slice(0,300) },
+      { role:'user', content:'为「'+(c.nick||c.realName||'角色')+'」生成生活地图地点。' }
+    ], { max_tokens: 700, temperature: 0.85 });
+    let arr = [];
+    try { arr = JSON.parse(String(text||'').replace(/```json|```/g,'').trim()); } catch(e) {}
+    if (!Array.isArray(arr) || !arr.length) { showToast('解析失败'); return; }
+    const w = ensureCharWorld(charId);
+    arr.slice(0, 8).forEach(function(it, idx) {
+      w.places.push({
+        id: 'pl'+Date.now()+'_'+idx,
+        name: (it.name || '地点').toString().slice(0, 20),
+        desc: (it.desc || '').toString().slice(0, 200),
+        x: 15 + (idx * 18) % 70,
+        y: 20 + (idx * 21) % 55,
+        ts: Date.now()
+      });
+    });
+    save(); openWorldChar(charId, 'map');
+    showToast('已导入 ' + Math.min(arr.length, 8) + ' 个地点，可拖动图钉');
+  } catch(e) { showToast('生成失败：'+(e.message||e)); }
+}
 function worldSavePlace() {
   const charId = state.world && state.world.currentCharId;
   if (!charId) return;
   const w = ensureCharWorld(charId);
   const name = ((document.getElementById('wpName')||{}).value||'').trim() || '未命名地点';
   const desc = ((document.getElementById('wpDesc')||{}).value||'').trim();
-  w.places.push({ id:'pl'+Date.now(), name, desc, ts: Date.now() });
+  const n = (w.places || []).length;
+  w.places.push({
+    id: 'pl'+Date.now(), name, desc, ts: Date.now(),
+    x: 20 + (n * 15) % 60,
+    y: 25 + (n * 18) % 50
+  });
   save(); closeModal(); openWorldChar(charId, 'map');
 }
 function worldEditDay(key) {
@@ -20994,14 +21154,25 @@ async function worldGenLife() {
   try { closeModal(); } catch(e) {}
   showToast('生成生活随笔…');
   const displayName = c.realName || c.nick || '角色';
+  const angles = ['早晨琐事','通勤路上','工作/上学间隙','吃饭时','傍晚散步','夜里独处','突然想起的小事','遇到的尴尬瞬间','天气心情','路过熟悉的地方'];
   try {
     const w = ensureCharWorld(charId);
+    const recent = (w.life || []).slice(-6).map(function(x){ return (x.text||'').slice(0,40); }).join(' / ');
     for (var i = 0; i < n; i++) {
+      const angle = angles[(Date.now() + i * 7) % angles.length];
       const { text } = await apiChat([
-        { role:'system', content:'你是角色「'+displayName+'」，写一段今日生活随笔（80-150字）：可能遇见的趣事/糟心小事/忽然想起某人。第一人称，自然口语，禁止第二人称「你」。人设：'+(c.persona||'') },
-        { role:'user', content: '写今天的生活随笔。'+(theme?('主题倾向：'+theme):'') }
-      ], { max_tokens: 400, temperature: 0.9 });
-      w.life.push({ text: (text||'').trim(), ts: Date.now() - i * 1000, theme: theme || '' });
+        { role:'system', content:
+          '你就是角色「'+displayName+'」本人，写一段生活随笔。\n'
+          + '【身份】第一人称「我」=角色自己。禁止扮演 user，禁止对「你」说话，禁止写成聊天记录。\n'
+          + '【内容】从「'+angle+'」角度写今天自己的生活：短句也可以，长一点也可以（约40-180字），口语、烟火气，符合人设，禁止OOC。\n'
+          + '【禁止】不要重复已有随笔的内容与句式；不要提系统/设定。\n'
+          + '人设：'+(c.persona||'普通人').slice(0,280)
+          + (recent ? ('\n已有随笔摘要（勿重复）：'+recent) : '')
+        },
+        { role:'user', content: '写一段生活随笔。'+(theme?('大致主题：'+theme+'。'):'') }
+      ], { max_tokens: 450, temperature: 0.92 });
+      let body = (text||'').trim().replace(/^["「]|["」]$/g,'');
+      if (body) w.life.push({ text: body, ts: Date.now() - i * 1000, theme: theme || '', angle: angle });
     }
     if (w.life.length > 80) w.life = w.life.slice(-80);
     save(); openWorldChar(charId, 'life');
