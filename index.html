@@ -1724,11 +1724,16 @@ body.night .loc-addr { color: #a1a1a6 !important; }
     <div class="bubble-menu-item" onclick="bubbleAction('forward')">转发</div>
     <div class="bubble-menu-item" onclick="bubbleAction('favorite')">收藏</div>
     <div class="bubble-menu-item" onclick="bubbleAction('quote')">引用</div>
+    <div class="bubble-menu-item" onclick="bubbleAction('translate')">翻译</div>
     <div class="bubble-menu-item" onclick="bubbleAction('edit')">编辑</div>
     <div class="bubble-menu-item" onclick="bubbleAction('recall')">撤回</div>
     <div class="bubble-menu-item" onclick="bubbleAction('delete')">删除</div>
     <div class="bubble-menu-item" onclick="bubbleAction('multiselect')">多选</div>
   </div>
+  <style>
+  @keyframes msgBannerIn { from { opacity:0; transform:translateY(-12px); } to { opacity:1; transform:translateY(0); } }
+  .msg-translation { font-size:11px; color:var(--sub,#8e8e93); margin-top:4px; line-height:1.4; opacity:.9; }
+  </style>
 
   <input type="file" id="emojiFileInput" accept="image/*" style="display:none" onchange="onEmojiFile(event)">
   <input type="file" id="fileInput" accept="image/*" style="position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0" onchange="onFileSelected(event)">
@@ -1739,7 +1744,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-18m';
+const EENOK_BUILD = '2026-08-18n';
 function checkAppUpdate() {
   try {
     const prev = localStorage.getItem('eenook_build');
@@ -2660,7 +2665,7 @@ function closeSubPage() {
       state._subStack = [];
       const root = state._homeRoot || '';
       try {
-        if (root === 'icity') { openIcityDiaryList(state._icityDiaryFilter||'all'); return; }
+        if (root === 'icity') { openIcityApp(state._icityTab || 'square'); return; }
         if (root === 'charlib') { openCharLib(); return; }
         if (root === 'memory') { state._memFilter = null; state._subBackFn = null; openMemoryApp(); return; }
         if (root === 'countdown') { openCountdownApp(state._cdTab||'all'); return; }
@@ -3064,6 +3069,7 @@ function renderMessages(opts) {
     if (m.type === 'text') {
       let q = m.quote ? `<div class="msg-quote">${escapeHtml(m.quote)}</div>` : '';
       content = q + escapeHtml(m.content);
+      if (m.translation) content += `<div class="msg-translation">${escapeHtml(m.translation)}</div>`;
     } else if (m.type === 'image') {
       content = `<img class="msg-img" src="${m.content}" onclick="event.stopPropagation();onImageClick(${idx})">`;
     } else if (m.type === 'emoji') {
@@ -3379,6 +3385,8 @@ function bubbleAction(act) {
     addToFavorites(m);
   } else if (act === 'forward') {
     openForward(m);
+  } else if (act === 'translate') {
+    translateBubbleMsg(state.bubbleIdx);
   } else if (act === 'multiselect') {
     enterMultiSelect(state.bubbleIdx);
   }
@@ -3798,17 +3806,38 @@ function parseCharRichContent(raw) {
   return { text: t.trim(), extras: extras };
 }
 
-function notifyPendingReply(name, texts) {
+function ensureMsgBannerHost() {
+  let host = document.getElementById('msgBannerHost');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'msgBannerHost';
+    host.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:99999;width:min(92vw,360px);pointer-events:none;display:flex;flex-direction:column;gap:8px';
+    document.body.appendChild(host);
+  }
+  return host;
+}
+/** 顶部消息弹窗（一条一条弹出） */
+function showMsgBanner(name, text, avatar) {
   try {
-    const body = (Array.isArray(texts) ? texts.join('\n') : String(texts||'')).trim();
-    if (!body) return;
-    // 若当前不在该聊天页，弹窗展示
+    const host = ensureMsgBannerHost();
+    const el = document.createElement('div');
+    el.style.cssText = 'pointer-events:auto;display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:14px;background:rgba(255,255,255,.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);box-shadow:0 8px 28px rgba(0,0,0,.14);border:1px solid rgba(0,0,0,.06);animation:msgBannerIn .28s ease;cursor:pointer';
+    el.innerHTML = (avatar ? '<img src="'+avatar+'" style="width:36px;height:36px;border-radius:10px;object-fit:cover;flex-shrink:0">' : '')
+      + '<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600;color:#333;margin-bottom:2px">'+escapeHtml(name||'消息')+'</div>'
+      + '<div style="font-size:13px;color:#555;line-height:1.4;word-break:break-word">'+escapeHtml(String(text||'').slice(0,120))+'</div></div>';
+    el.onclick = function(){ try { el.remove(); } catch(e) {} };
+    host.appendChild(el);
+    setTimeout(function(){ try { el.style.opacity='0'; el.style.transition='opacity .3s'; setTimeout(function(){ try{el.remove();}catch(e){} }, 320); } catch(e) {} }, 4200);
+  } catch(e) {}
+}
+function notifyPendingReply(name, texts, avatar) {
+  try {
     const onChat = document.getElementById('page-chat') && document.getElementById('page-chat').classList.contains('active');
-    const onSms = state._homeRoot === 'sms' && state._subKind === 'homeApp';
-    if (onChat && state.currentChatId) return; // 还在微信聊天里不弹
-    openModal((name||'对方') + ' 回复了', `
-      <div style="font-size:15px;line-height:1.6;white-space:pre-wrap">${escapeHtml(body.slice(0,500))}</div>
-    `, `<button class="btn btn-primary" onclick="closeModal()">知道了</button>`);
+    if (onChat && state.currentChatId) return;
+    const arr = Array.isArray(texts) ? texts : [String(texts||'')];
+    arr.filter(Boolean).forEach(function(t, i) {
+      setTimeout(function(){ showMsgBanner(name, t, avatar); }, i * 700);
+    });
   } catch(e) {}
 }
 async function pushSentences(chat, sentences, fromMeta) {
@@ -3816,6 +3845,19 @@ async function pushSentences(chat, sentences, fromMeta) {
     const cleaned = (sentences || []).map(function(s) {
       return String(s || '').replace(/[“”「」『』"']/g, '').replace(/[。]{2,}/g, '').trim();
     }).filter(Boolean);
+    const chatId = state.currentChatId;
+    const onChat = document.getElementById('page-chat') && document.getElementById('page-chat').classList.contains('active');
+    const away = !(onChat && chatId && state.chats[chatId] === chat);
+    let bannerName = (fromMeta && fromMeta.fromName) || '消息';
+    let bannerAv = '';
+    try {
+      const cid = (fromMeta && fromMeta.fromId) || (chat && (chat.charId || chat.contactId));
+      const ch = (state.chars || []).find(function(c){ return c && c.id === cid; });
+      if (ch) {
+        bannerName = ch.realName || ch.nick || bannerName;
+        bannerAv = avatarUrl(ch);
+      }
+    } catch(e) {}
     for (let i = 0; i < cleaned.length; i++) {
       await new Promise(r => setTimeout(r, i === 0 ? 280 : 420 + Math.random() * 380));
       const msg = {
@@ -3827,9 +3869,16 @@ async function pushSentences(chat, sentences, fromMeta) {
         if (fromMeta.thought && i === 0) msg.thought = fromMeta.thought;
       }
       if (!msg.thought && state._lastThought && i === 0) msg.thought = state._lastThought;
+      // 自动翻译
+      try {
+        if (chat && chat.autoTranslate && typeof autoTranslateText === 'function') {
+          msg.translation = await autoTranslateText(cleaned[i], chat.replyLang || 'zh');
+        }
+      } catch(e) {}
       chat.messages.push(msg);
       save();
-      renderMessages({ forceBottom: true });
+      try { renderMessages({ forceBottom: true }); } catch(e) {}
+      if (away) showMsgBanner(bannerName, cleaned[i], bannerAv);
     }
   } finally {
     setTyping(false);
@@ -4387,9 +4436,32 @@ ${userP.charKnows===false?'（对方可能使用了小号，你不一定知道�
       if (longGap) {
         system += '\n【时间流逝·强制】从上一段对话到现在已经隔了较长时间。禁止像「刚聊完下一秒接着说」那样接话；' +
           '禁止把几天前正在进行的话题当成此刻仍在当面/刚挂断；若对方这轮是重新开口，应自然体现时间差（例如：有点久没聊、这几天、今天才回、前两天那事等，按真实间隔选词），' +
-          '可以简短确认近况，但不要生硬报时，也不要假装中间一直在线。历史里带（月日 时:分）标注的是当时发出的旧消息，不是现在。';
+          '可以简短确认近况，但不要生硬报时，也不要假装中间一直在线。历史里带（月日 时:分）标注的是当时发出的旧消息，不是现在。' +
+          '若对方明确说「过了三天/几天了」，必须承认时间差，禁止反驳成「刚刚才…」。';
       }
+      // 季节 + 时区
+      try {
+        const mon = now.getMonth() + 1;
+        let season = '春季';
+        if (mon >= 3 && mon <= 5) season = '春季';
+        else if (mon >= 6 && mon <= 8) season = '夏季';
+        else if (mon >= 9 && mon <= 11) season = '秋季';
+        else season = '冬季';
+        const tz = (function(){ try { return Intl.DateTimeFormat().resolvedOptions().timeZone || '本地'; } catch(e){ return '本地'; } })();
+        const tzOff = -now.getTimezoneOffset() / 60;
+        const tzLab = 'UTC' + (tzOff >= 0 ? '+' : '') + tzOff;
+        system += '\n【季节·时区·强制】当前季节为' + season + '（' + mon + '月）。时区 ' + tz + '（' + tzLab + '）。' +
+          '提到天气/穿衣/作息时须符合季节；不要在盛夏说下雪，不要在寒冬说热到中暑。时间表达与此时区一致。';
+      } catch(e) {}
     }
+    // 角色语言
+    try {
+      const langMap = { zh:'中文', ja:'日语', en:'英语', fr:'法语', de:'德语', ru:'俄语', yue:'粤语', sv:'瑞典语' };
+      const rl = chat.replyLang || 'zh';
+      if (rl && rl !== 'zh') {
+        system += '\n【语言·强制】你必须全程使用「' + (langMap[rl]||rl) + '」回复，不要混用中文（专有名词除外）。';
+      }
+    } catch(e) {}
     try {
       const sm = collectSocialMemory(id, 8);
       if (sm) system += '\n【社交账号关联记忆】\n' + sm;
@@ -5158,36 +5230,53 @@ function onFileSelected(e) {
       try { if ((state.gal.chars[gid].play||'')==='visual') openGalVisualPlay(gid, state.gal.chars[gid].orient||'portrait'); else galCustomUI(gid); } catch(e) {}
     } else if (state.fileTarget === 'lockWp') {
       ensureLockState();
-      state.lock.wallpaper = data;
-      try { sessionStorage.setItem('eenook_lock_wp', data); } catch(e) {}
-      try {
-        // 单独存 IDB，避免被大体积裁剪
-        if (window.indexedDB) {
-          const req = indexedDB.open('eenook_idb', 1);
-          req.onupgradeneeded = function() { try { req.result.createObjectStore('kv'); } catch(e) {} };
-          req.onsuccess = function() {
-            try {
-              const db = req.result;
-              if (!db.objectStoreNames.contains('kv')) return;
-              db.transaction('kv','readwrite').objectStore('kv').put(data, 'lockWp');
-            } catch(e) {}
-          };
-        }
-      } catch(e) {}
-      try { save(); } catch(e) {}
-      try { if (typeof saveAsync === 'function') saveAsync(); } catch(e) {}
-      try {
-        const ls = document.getElementById('lockScreen');
-        if (ls) {
-          ls.style.backgroundImage = 'url("' + data.replace(/"/g, '') + '")';
-          ls.style.backgroundSize = 'cover';
-          ls.style.backgroundPosition = 'center';
-          ls.style.backgroundRepeat = 'no-repeat';
-        }
-        const prev = document.getElementById('lockWpPreview');
-        if (prev) prev.innerHTML = '<img src="'+data+'" style="width:100%;max-height:140px;object-fit:cover;border-radius:10px">';
-      } catch(e) {}
-      showToast('锁屏壁纸已更新');
+      // 压缩后更易持久化
+      (async function() {
+        let img = data;
+        try {
+          if (typeof compressDataUrl === 'function' && data && data.length > 200000) {
+            img = await compressDataUrl(data, 1080, 0.82);
+          }
+        } catch(e) {}
+        state.lock.wallpaper = img;
+        try { sessionStorage.setItem('eenook_lock_wp', img); } catch(e) {}
+        try { localStorage.setItem('eenook_lock_wp_flag', '1'); } catch(e) {}
+        try {
+          if (window.indexedDB) {
+            const req = indexedDB.open('eenook_idb', 1);
+            req.onupgradeneeded = function() { try { req.result.createObjectStore('kv'); } catch(e) {} };
+            req.onsuccess = function() {
+              try {
+                const db = req.result;
+                if (!db.objectStoreNames.contains('kv')) {
+                  try { db.close(); } catch(e) {}
+                  const req2 = indexedDB.open('eenook_idb', 2);
+                  req2.onupgradeneeded = function() { try { req2.result.createObjectStore('kv'); } catch(e) {} };
+                  req2.onsuccess = function() {
+                    try { req2.result.transaction('kv','readwrite').objectStore('kv').put(img, 'lockWp'); } catch(e) {}
+                  };
+                  return;
+                }
+                db.transaction('kv','readwrite').objectStore('kv').put(img, 'lockWp');
+              } catch(e) {}
+            };
+          }
+        } catch(e) {}
+        try { save(); } catch(e) {}
+        try { if (typeof saveAsync === 'function') saveAsync(); } catch(e) {}
+        try {
+          const ls = document.getElementById('lockScreen');
+          if (ls) {
+            ls.style.backgroundImage = 'url("' + String(img).replace(/"/g, '') + '")';
+            ls.style.backgroundSize = 'cover';
+            ls.style.backgroundPosition = 'center';
+            ls.style.backgroundRepeat = 'no-repeat';
+          }
+          const prev = document.getElementById('lockWpPreview');
+          if (prev) prev.innerHTML = '<img src="'+img+'" style="width:100%;max-height:140px;object-fit:cover;border-radius:10px">';
+        } catch(e) {}
+        showToast('锁屏壁纸已保存');
+      })();
     } else if (state.fileTarget === 'squishImg') {
       ensureHomeState();
       if (!state.home.squish) state.home.squish = { lines:['捏捏'] };
@@ -5473,7 +5562,11 @@ function openChatSettings() {
       <div class="setting-item" onclick="togglePin()">置顶聊天 <span class="right"><div class="switch ${chat.pinned ? 'on' : ''}" id="swPin"></div></span></div>
       <div class="setting-item" onclick="openMountWorldBook()">挂载世界书 <span class="right">›</span></div>
       <div class="setting-item" onclick="openSocialAccounts()">社交账号 <span class="right">${(chat.socialLink)?'已关联':'关闭'} ›</span></div>
-      <div class="setting-item" onclick="toggleTimeAware()">时间感知 <span class="right"><div class="switch ${chat.timeAware ? 'on' : ''}" id="swTime"></div></span></div>
+      <div class="setting-item" onclick="toggleTimeAware()">时间感知 <span class="right"><div class="switch ${chat.timeAware !== false ? 'on' : ''}" id="swTime"></div></span></div>
+      <div class="setting-item text-sub" style="font-size:11px;opacity:.75;line-height:1.45;padding-top:0">开启后强制：真实日期/时刻、季节、时区、距上一段对话间隔；跨天禁止当成刚聊完</div>
+      <div class="setting-item" onclick="openChatLangSettings()">角色语言 · ${({zh:'中文',ja:'日语',en:'英语',fr:'法语',de:'德语',ru:'俄语',yue:'粤语',sv:'瑞典语'})[chat.replyLang||'zh']||'中文'} <span class="right">›</span></div>
+      <div class="setting-item" onclick="toggleAutoTranslate()">自动翻译 <span class="right"><div class="switch ${chat.autoTranslate ? 'on' : ''}" id="swTrans"></div></span></div>
+      <div class="setting-item text-sub" style="font-size:11px;opacity:.75;padding-top:0">开启后每轮生成的气泡下方自动显示译文</div>
       <div class="setting-item" onclick="openBeautify()">聊天美化 <span class="right">›</span></div>
       <div class="setting-item" onclick="toggleBlockMe()">拉黑对方 <span class="right"><div class="switch ${chat.blockedByMe ? 'on' : ''}" id="swBlockMe"></div></span></div>
       
@@ -5594,8 +5687,9 @@ async function runCharAutonomyOnce() {
     }
   } catch(e) {}
   const persona = (ch.persona || '').slice(0, 220);
-  const nick = ch.nick || ch.realName || '角色';
-  const userNick = (state.user && (state.user.nick || state.user.realName)) || '对方';
+  // 对外展示优先真实姓名
+  const nick = ch.realName || ch.nick || '角色';
+  const userNick = (state.user && (state.user.realName || state.user.nick)) || '对方';
   function writeWorldLifeTrace(text) {
     try {
       if (typeof ensureCharWorld === 'function') {
@@ -5628,15 +5722,41 @@ async function runCharAutonomyOnce() {
       }
     }
     if (a.wechatMsg) {
-      const t = await ask(
-        '你是「'+nick+'」，正在给对方发微信。符合人设，禁止OOC，1-2句短消息口语。人设：'+persona,
-        '随便找个由头给对方发条微信。'
-      );
-      if (t) {
-        if (!chat.messages) chat.messages = [];
-        chat.messages.push({ from: 'char', type: 'text', content: t.replace(/^["「『]|["」』]$/g,''), ts: Date.now() });
-        logs.push('微信');
-        writeWorldLifeTrace('给对方发了微信：' + t.slice(0, 80));
+      // 若关联日程且当前时段在上课/工作，则跳过主动发消息
+      let busyNow = false;
+      try {
+        if (a.linkWorldSchedule && typeof ensureCharWorld === 'function') {
+          const w = ensureCharWorld(charId);
+          const sch = (w && w.schedule) || '';
+          if (sch) {
+            const hh = new Date().getHours();
+            const busyWords = /上课|工作|上班|会议|加班|考试|自习|值班/;
+            const lines = String(sch).split(/\n+/);
+            for (var li = 0; li < lines.length; li++) {
+              const line = lines[li];
+              const m = line.match(/(\d{1,2})\s*[:：点]\s*(\d{0,2}).{0,8}?[-~到至]\s*(\d{1,2})/);
+              if (m) {
+                const h1 = +m[1], h2 = +m[3];
+                if (hh >= h1 && hh < h2 && busyWords.test(line)) { busyNow = true; break; }
+              }
+            }
+          }
+        }
+      } catch(e) {}
+      if (busyNow) {
+        logs.push('微信跳过(日程忙)');
+        writeWorldLifeTrace('日程显示正忙，未主动发微信');
+      } else {
+        const t = await ask(
+          '你是「'+nick+'」，正在给对方发微信。符合人设，禁止OOC，1-2句短消息口语。人设：'+persona,
+          '随便找个由头给对方发条微信。'
+        );
+        if (t) {
+          if (!chat.messages) chat.messages = [];
+          chat.messages.push({ from: 'char', type: 'text', content: t.replace(/^["「『]|["」』]$/g,''), ts: Date.now() });
+          logs.push('微信');
+          writeWorldLifeTrace('给对方发了微信：' + t.slice(0, 80));
+        }
       }
     }
     // 主动打电话 / 视频（在聊天里可被提起；会弹来电界面）
@@ -5678,12 +5798,15 @@ async function runCharAutonomyOnce() {
         try {
           if (!state.sms) state.sms = { threads: {} };
           if (!state.sms.threads) state.sms.threads = {};
-          const tid = charId;
+          const tid = String(charId);
           if (!state.sms.threads[tid]) state.sms.threads[tid] = { id: tid, charId: charId, name: nick, messages: [] };
-          state.sms.threads[tid].messages.push({ from: 'char', text: t.replace(/^["「『]|["」』]$/g,''), ts: Date.now() });
+          if (!Array.isArray(state.sms.threads[tid].messages)) state.sms.threads[tid].messages = [];
+          state.sms.threads[tid].messages.push({ from: 'char', content: t.replace(/^["「『]|["」』]$/g,''), text: t.replace(/^["「『]|["」』]$/g,''), ts: Date.now() });
+          state.sms.threads[tid].name = nick;
+          state.sms.threads[tid].updated = Date.now();
           logs.push('短信');
           writeWorldLifeTrace('给对方发了短信：' + t.slice(0, 80));
-        } catch(e) {}
+        } catch(e) { logs.push('短信失败'); console.warn('sms auto', e); }
       }
     }
     if (a.shop || a.takeout) {
@@ -5729,12 +5852,24 @@ async function runCharAutonomyOnce() {
     if (a.countdown) {
       try {
         if (!state.countdowns) state.countdowns = [];
+        if (!Array.isArray(state.countdowns)) state.countdowns = [];
         const title = nick + '的小目标';
         const day = new Date(); day.setDate(day.getDate() + 7 + Math.floor(Math.random()*20));
-        state.countdowns.push({ id: 'cd_auto_'+Date.now(), title: title, date: day.toISOString().slice(0,10), note: '角色自主添加', charId: ch.id, ts: Date.now() });
+        const y = day.getFullYear(), mo = day.getMonth()+1, dd = day.getDate();
+        const dateStr = y + '-' + String(mo).padStart(2,'0') + '-' + String(dd).padStart(2,'0');
+        state.countdowns.push({
+          id: 'cd_auto_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),
+          title: title,
+          date: dateStr,
+          target: dateStr,
+          note: '角色自主添加',
+          charId: ch.id,
+          charName: nick,
+          ts: Date.now()
+        });
         logs.push('倒数日');
-        writeWorldLifeTrace('添加了倒数日：' + title);
-      } catch(e) {}
+        writeWorldLifeTrace('添加了倒数日：' + title + ' · ' + dateStr);
+      } catch(e) { logs.push('倒数日失败'); console.warn('cd auto', e); }
     }
     if (a.memory) {
       const t = await ask('你是「'+nick+'」，从第一人称写一条想记进备忘/记忆的短句（30字内），符合人设。','记一条。');
@@ -5933,8 +6068,69 @@ function togglePin() {
 }
 function toggleTimeAware() {
   const chat = state.chats[state.currentChatId];
-  chat.timeAware = !chat.timeAware; save();
-  document.getElementById('swTime').classList.toggle('on', chat.timeAware);
+  chat.timeAware = chat.timeAware === false ? true : false; save();
+  const sw = document.getElementById('swTime');
+  if (sw) sw.classList.toggle('on', chat.timeAware !== false);
+  showToast(chat.timeAware !== false ? '已开启时间感知（日期/季节/时区/间隔）' : '已关闭时间感知');
+}
+function openChatLangSettings() {
+  const chat = state.chats[state.currentChatId];
+  if (!chat) return;
+  const cur = chat.replyLang || 'zh';
+  const opts = [
+    ['zh','中文'],['ja','日语'],['en','英语'],['fr','法语'],
+    ['de','德语'],['ru','俄语'],['yue','粤语'],['sv','瑞典语']
+  ];
+  openModal('角色语言', `
+    <div class="text-sub" style="font-size:12px;margin-bottom:12px;line-height:1.5">角色将用所选语言回复。可同时开启「自动翻译」在气泡下显示中文译文。</div>
+    <div class="setting-list">
+      ${opts.map(function(o){
+        return '<div class="setting-item" onclick="setChatReplyLang(\''+o[0]+'\')">'
+          + o[1] + (cur===o[0]?' <span class="right" style="color:var(--accent)">✓</span>':'') + '</div>';
+      }).join('')}
+    </div>
+  `, `<button class="btn btn-secondary" onclick="closeModal();openChatSettings()">返回</button>`);
+}
+function setChatReplyLang(lang) {
+  const chat = state.chats[state.currentChatId];
+  if (!chat) return;
+  chat.replyLang = lang || 'zh';
+  save(); closeModal(); openChatSettings();
+  showToast('已设置角色语言');
+}
+function toggleAutoTranslate() {
+  const chat = state.chats[state.currentChatId];
+  if (!chat) return;
+  chat.autoTranslate = !chat.autoTranslate;
+  save();
+  const sw = document.getElementById('swTrans');
+  if (sw) sw.classList.toggle('on', !!chat.autoTranslate);
+  showToast(chat.autoTranslate ? '已开启自动翻译' : '已关闭自动翻译');
+}
+async function autoTranslateText(text, fromLang) {
+  if (!text || !String(text).trim()) return '';
+  // 已是中文且源语言是中文则不译
+  if ((!fromLang || fromLang === 'zh') && /[\u4e00-\u9fff]/.test(text) && !/[a-zA-Z]{4,}/.test(text)) return '';
+  try {
+    const { text: tr } = await apiChat([
+      { role: 'user', content: '将下面内容翻译成简体中文，只输出译文，不要解释：\n' + String(text).slice(0, 500) }
+    ], { max_tokens: 300, temperature: 0.2 });
+    return (tr || '').trim().replace(/^["「]|["」]$/g, '');
+  } catch(e) { return ''; }
+}
+async function translateBubbleMsg(idx) {
+  const chat = state.chats[state.currentChatId];
+  if (!chat || !chat.messages || !chat.messages[idx]) return;
+  const m = chat.messages[idx];
+  const src = m.content || m.text || '';
+  if (!src) return;
+  showToast('翻译中…');
+  try {
+    const tr = await autoTranslateText(src, chat.replyLang || 'zh');
+    if (tr) { m.translation = tr; save(); renderMessages(); showToast('已翻译'); }
+    else showToast('无需翻译或失败');
+  } catch(e) { showToast('翻译失败'); }
+}
 }
 function toggleBlockMe() {
   const chat = state.chats[state.currentChatId];
@@ -6243,7 +6439,8 @@ function renderMoments() {
             <div class="moment-actions">
               <span onclick="likeMoment(${realIdx})">${(m.likedBy&&m.likedBy.includes(state.user.nick||'我'))?'取消':'赞'}</span>
               <span onclick="commentMoment(${realIdx})">评论</span>
-              ${m.from === 'user' ? `<span onclick="editMoment(${realIdx})">编辑</span><span onclick="delMoment(${realIdx})">删除</span>` : ''}
+              <span onclick="delMoment(${realIdx})">删除</span>
+              ${m.from === 'user' ? `<span onclick="editMoment(${realIdx})">编辑</span>` : ''}
             </div>
           </div>
           ${(m.likedBy && m.likedBy.length) ? `<div class="moment-likes" style="background:#f7f7f8;border-radius:4px;padding:6px 10px;margin-top:8px;font-size:13px;color:#576b95;line-height:1.5"><span style="margin-right:4px">♡</span>${m.likedBy.map(n=>escapeHtml(n)).join('，')}</div>` : ''}
@@ -11500,15 +11697,72 @@ function renderReaderPage() {
   }
   try { saveReaderProgress(); } catch(e) {}
 }
-function readerTurnChapter(dir) {
+async function readerTurnChapter(dir) {
   const chs = state._chapters || [];
   let n = (state._readerChapter || 0) + dir;
+  // 下一章超出已有章节 → AI 继续生成
+  if (dir > 0 && n >= chs.length) {
+    await readerGenNextChapter();
+    return;
+  }
   if (n < 0 || n >= chs.length) return;
   state._readerChapter = n;
   state._readerPage = 0;
   renderReaderPage();
   const body = document.getElementById('readerBody');
   if (body) body.scrollTop = 0;
+}
+async function readerGenNextChapter() {
+  try {
+    const bi = state._readerBookIdx;
+    if (bi == null || !state.bookstore || !state.bookstore.books || !state.bookstore.books[bi]) {
+      showToast('无法定位书籍'); return;
+    }
+    const b = state.bookstore.books[bi];
+    const chs = state._chapters || [];
+    const prev = chs.length ? (chs[chs.length - 1].content || '').slice(-800) : (b.content || '').slice(-800);
+    const nextNo = chs.length + 1;
+    showToast('正在生成第' + nextNo + '章…');
+    const { text } = await apiChat([
+      { role: 'system', content: '你是网文作者，续写下一章。书名：《'+(b.title||'')+'》。保持文风一致，输出格式：\n第'+nextNo+'章 标题\n正文（800-1500字）。只输出章节内容。' },
+      { role: 'user', content: '上一章结尾：\n'+prev+'\n\n请续写第'+nextNo+'章。' }
+    ], { max_tokens: 1800, temperature: 0.85 });
+    const raw = (text || '').trim();
+    if (!raw) { showToast('生成失败'); return; }
+    // 解析标题与正文
+    let title = '第' + nextNo + '章';
+    let body = raw;
+    const hm = raw.match(/^第?\s*\d+\s*章[^\n]{0,40}/);
+    if (hm) {
+      title = hm[0].replace(/\s+/g,' ').trim().slice(0, 40);
+      body = raw.slice(hm[0].length).replace(/^\n+/, '');
+    }
+    chs.push({ title: title, content: body });
+    state._chapters = chs;
+    // 写回书籍正文
+    b.content = (b.content || '') + '\n\n' + title + '\n' + body;
+    // 生成段评
+    try {
+      const { text: cm } = await apiChat([
+        { role: 'user', content: '为下面这段小说正文写 2-3 条读者段评，口语短句，每条一行，不要序号：\n' + body.slice(0, 600) }
+      ], { max_tokens: 200, temperature: 0.9 });
+      if (!b.paraComments) b.paraComments = {};
+      const key = 'ch' + (chs.length - 1);
+      b.paraComments[key] = (cm || '').split(/\n+/).map(function(s){ return s.replace(/^[\d\.\-、\s]+/,'').trim(); }).filter(Boolean).slice(0, 5);
+      // 挂到章节页的评论
+      if (!state._readerComments) state._readerComments = [];
+      (b.paraComments[key] || []).forEach(function(t) {
+        state._readerComments.push({ chapter: chs.length - 1, text: t, ts: Date.now() });
+      });
+    } catch(e) {}
+    save();
+    state._readerChapter = chs.length - 1;
+    state._readerPage = 0;
+    renderReaderPage();
+    showToast('已生成第' + nextNo + '章');
+  } catch(e) {
+    showToast('生成失败：' + (e.message || e));
+  }
 }
 function readerTurn(dir) {
   try{saveReaderProgress();}catch(e){}
@@ -12717,6 +12971,14 @@ function editHomePolaroid() {
 function openChangelog() {
   const ver = (typeof EENOK_BUILD !== 'undefined') ? EENOK_BUILD : '';
   const logs = [
+    { v: '2026-08-18n', items: [
+      '时间感知：日期/季节/时区/间隔全写入聊天设置开关；对方说隔了几天必须承认',
+      '聊天设置：角色语言（8种）+ 自动翻译；气泡菜单可翻译；译文在气泡下',
+      '角色朋友圈可删除；自主活动短信/倒数日修复；对外用真实姓名',
+      '世界生活可设条数与主题；日程每日自动；忙时不主动发微信',
+      '书城下一章可 AI 续写并生成段评；锁屏壁纸压缩后持久保存',
+      '离开聊天时顶部一条条弹出消息通知；icity/世界返回层级修正'
+    ]},
     { v: '2026-08-18m', items: [
       '时间感知强化：跨天/跨小时会在历史消息上标注发送时间',
       '正确计算「距上一段对话」间隔（忽略本轮刚发出的消息）',
@@ -14195,11 +14457,14 @@ function openIcityApp(tab) {
   state._homeRoot = 'icity';
   state._subKind = 'icity';
   ensureHomeState();
+  if (!state.icity) state.icity = { posts: [], myPosts: [], profile: {} };
   if (!state.icity.profile) state.icity.profile = { nick: '', id: '', sign: '', location: '', avatar: '', bg: '' };
-  tab = tab || state._icityTab || 'square';
+  // 从主屏进入默认广场，不掉进旧的日记详情
+  if (tab == null || tab === '') tab = 'square';
   state._icityTab = tab;
   state._homeRoot = 'icity';
   state._homeDepth = 0;
+  state._subBackFn = function(){ goHome(); };
   if (tab === 'mine') {
     const u = state.user || {};
     const p = state.icity.profile;
@@ -20438,8 +20703,10 @@ function openWorldChar(charId, tab) {
   } else if (tab === 'schedule') {
     main = '<div style="padding:16px 14px 100px">'
       + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'
-      + '<div><div style="font-size:17px;font-weight:700;color:'+ink+'">日程</div><div style="font-size:12px;color:'+soft+';margin-top:2px">'+escapeHtml(ch.nick||'')+' 的一天</div></div>'
-      + '<button type="button" onclick="worldGenSchedule(\''+charId+'\')" style="border:none;background:'+accent+';color:#fff;border-radius:14px;padding:8px 14px;font-size:13px;cursor:pointer">生成</button></div>'
+      + '<div><div style="font-size:17px;font-weight:700;color:'+ink+'">日程</div><div style="font-size:12px;color:'+soft+';margin-top:2px">'+escapeHtml(ch.realName||ch.nick||'')+' 的一天</div></div>'
+      + '<div style="display:flex;gap:8px;align-items:center">'
+      + '<label style="font-size:11px;color:'+soft+';display:flex;align-items:center;gap:4px"><input type="checkbox" '+(w.autoSchedule!==false?'checked':'')+' onchange="(function(el){var ww=ensureCharWorld(\''+charId+'\');ww.autoSchedule=!!el.checked;save();showToast(el.checked?\'每日自动生成日程：开\':\'已关闭\');})(this)">每日自动</label>'
+      + '<button type="button" onclick="worldGenSchedule(\''+charId+'\')" style="border:none;background:'+accent+';color:#fff;border-radius:14px;padding:8px 14px;font-size:13px;cursor:pointer">生成</button></div></div>'
       + '<div style="background:'+card+';border-radius:16px;padding:16px;border:1px solid rgba(94,184,176,.2);font-size:14px;color:'+ink+';line-height:1.65;white-space:pre-wrap;min-height:120px">'
       + (w.schedule ? escapeHtml(w.schedule) : '<span style="color:'+soft+'">尚未生成日程</span>')+'</div></div>';
   } else {
@@ -20447,7 +20714,7 @@ function openWorldChar(charId, tab) {
     main = '<div style="padding:16px 14px 100px">'
       + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'
       + '<div><div style="font-size:17px;font-weight:700;color:'+ink+'">生活</div><div style="font-size:12px;color:'+soft+';margin-top:2px">仅该角色的随笔</div></div>'
-      + '<button type="button" onclick="worldGenLife()" style="border:none;background:'+accent+';color:#fff;border-radius:14px;padding:8px 14px;font-size:13px;cursor:pointer">生成今日</button></div>'
+      + '<button type="button" onclick="openWorldGenLife()" style="border:none;background:'+accent+';color:#fff;border-radius:14px;padding:8px 14px;font-size:13px;cursor:pointer">生成</button></div>'
       + (notes.length ? notes.slice().reverse().map(function(n,ri){
           const i = notes.length - 1 - ri;
           return '<div style="background:'+card+';border-radius:16px;padding:14px;margin-bottom:10px;border:1px solid rgba(94,184,176,.2)">'
@@ -20513,21 +20780,60 @@ async function worldGenSchedule(charId) {
     save(); openWorldChar(charId, 'schedule');
   } catch(e) { showToast('生成失败：'+(e.message||e)); }
 }
+function openWorldGenLife() {
+  openModal('生成生活随笔', `
+    <div class="form-group"><label>条数</label><input id="wlN" type="number" min="1" max="8" value="1"></div>
+    <div class="form-group"><label>大致主题（可选）</label><input id="wlTheme" placeholder="例如：下雨天 / 想起某人 / 加班"></div>
+  `, `<button class="btn btn-secondary" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" onclick="worldGenLife()">生成</button>`);
+}
 async function worldGenLife() {
   const charId = state.world && state.world.currentCharId;
   const c = (state.chars||[]).find(x=>x.id===charId);
   if (!c) { showToast('请先选择角色'); return; }
+  const n = Math.min(8, Math.max(1, +((document.getElementById('wlN')||{}).value || 1)));
+  const theme = ((document.getElementById('wlTheme')||{}).value || '').trim();
+  try { closeModal(); } catch(e) {}
   showToast('生成生活随笔…');
+  const displayName = c.realName || c.nick || '角色';
   try {
-    const { text } = await apiChat([
-      { role:'system', content:'你是角色「'+(c.nick||'')+'」，写一段今日生活随笔（80-150字）：可能遇见的趣事/糟心小事/忽然想起和对方有关的事。第一人称，自然口语，不要标题。人设：'+(c.persona||'') },
-      { role:'user', content:'写今天的生活随笔。' }
-    ], { max_tokens: 400, temperature: 0.9 });
     const w = ensureCharWorld(charId);
-    w.life.push({ text: (text||'').trim(), ts: Date.now() });
+    for (var i = 0; i < n; i++) {
+      const { text } = await apiChat([
+        { role:'system', content:'你是角色「'+displayName+'」，写一段今日生活随笔（80-150字）：可能遇见的趣事/糟心小事/忽然想起某人。第一人称，自然口语，禁止第二人称「你」。人设：'+(c.persona||'') },
+        { role:'user', content: '写今天的生活随笔。'+(theme?('主题倾向：'+theme):'') }
+      ], { max_tokens: 400, temperature: 0.9 });
+      w.life.push({ text: (text||'').trim(), ts: Date.now() - i * 1000, theme: theme || '' });
+    }
     if (w.life.length > 80) w.life = w.life.slice(-80);
     save(); openWorldChar(charId, 'life');
   } catch(e) { showToast('生成失败：'+(e.message||e)); }
+}
+/** 每日自动生成日程（开启时） */
+async function worldAutoScheduleTick() {
+  try {
+    const chars = state.chars || [];
+    const today = new Date().toDateString();
+    for (var i = 0; i < chars.length; i++) {
+      const c = chars[i];
+      if (!c || !c.id) continue;
+      const w = ensureCharWorld(c.id);
+      if (w.autoSchedule === false) continue;
+      if (w.scheduleDate === today && w.schedule) continue;
+      try {
+        const { text } = await apiChat([
+          { role:'system', content:'你是角色「'+(c.realName||c.nick||'')+'」的日程助手。根据人设写今天的日常生活时间表，条目简洁，用时间段+事项，共6-10条。人设：'+(c.persona||'普通人')+'。只输出日程正文。' },
+          { role:'user', content:'请生成今天的日程表。' }
+        ], { max_tokens: 500, temperature: 0.75 });
+        w.schedule = (text||'').trim() || w.schedule || '';
+        w.scheduleDate = today;
+        ensureWorldState();
+        if (!state.world.schedules) state.world.schedules = {};
+        state.world.schedules[c.id] = w.schedule;
+      } catch(e) {}
+    }
+    save();
+  } catch(e) {}
 }
 
 // 启动：从 IndexedDB 恢复（主界面美化 / 短信 / IG 等大体积数据）
@@ -20552,6 +20858,9 @@ async function worldGenLife() {
     }
   } catch (e) {}
   try { if (typeof renderHome === 'function') renderHome(); } catch (e) {}
+  try {
+    setTimeout(function(){ try { worldAutoScheduleTick(); } catch(e) {} }, 2500);
+  } catch(e) {}
 })();
 
 // PWA: 仅在 http(s) 下尝试注册空 SW，便于「添加到主屏幕」
