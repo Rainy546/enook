@@ -255,17 +255,17 @@ body.night .sms-bubble.other { background: rgba(255,255,255,.2); color: #fff; }
 
 
 body.glass-ui #homeScreen, body.glass-ui .home-page {
-  backdrop-filter: blur(20px) saturate(1.2);
+  backdrop-filter: blur(var(--glass-blur, 0px)) saturate(var(--glass-sat, 1));
 }
 body.glass-ui .home-app-icon, body.glass-ui .dock-icon {
-  background: rgba(255,255,255,.22) !important;
+  background: var(--glass-icon-bg, rgba(255,255,255,.08)) !important;
   border: 1px solid rgba(255,255,255,.35) !important;
   box-shadow: 0 4px 16px rgba(0,80,100,.08), inset 0 1px 0 rgba(255,255,255,.4) !important;
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(calc(var(--glass-blur, 0px) * 0.6));
 }
 body.glass-ui #page-sub, body.glass-ui #subBody {
-  background: rgba(232,246,244,.72) !important;
-  backdrop-filter: blur(24px);
+  background: var(--glass-sub-bg, rgba(232,246,244,.25)) !important;
+  backdrop-filter: blur(var(--glass-blur, 0px));
 }
 </style>
 <style>
@@ -1739,7 +1739,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-18i';
+const EENOK_BUILD = '2026-08-18j';
 function checkAppUpdate() {
   try {
     const prev = localStorage.getItem('eenook_build');
@@ -5500,11 +5500,20 @@ function saveCharAutonomy() {
   if (!chat) return;
   const a = ensureAutonomy(chat);
   const keys = ['enabled','linkWorldSchedule','moments','wechatMsg','instagram','shop','takeout','sms','galgame','divination','scriptkill','countdown','memory','worldLife'];
+  // 先读 DOM，再写回对象（避免 closeModal 后读不到）
+  const snap = {};
   keys.forEach(function(k) {
     const el = document.getElementById('au_' + k);
-    if (el) a[k] = !!el.checked;
+    if (el) snap[k] = !!el.checked;
   });
-  save();
+  keys.forEach(function(k) {
+    if (snap[k] !== undefined) a[k] = snap[k];
+  });
+  // 总开关再读一次，防止漏绑
+  const enEl = document.getElementById('au_enabled');
+  if (enEl) a.enabled = !!enEl.checked;
+  chat.autonomy = Object.assign({}, a);
+  try { save(); } catch(e) {}
   showToast(a.enabled ? '自主活动已开启' : '自主活动已关闭');
 }
 async function runCharAutonomyOnce() {
@@ -5519,8 +5528,12 @@ async function runCharAutonomyOnce() {
   const logs = [];
   let scheduleHint = '';
   try {
-    if (a.linkWorldSchedule && state.world && state.world.schedules && state.world.schedules[charId]) {
-      scheduleHint = String(state.world.schedules[charId]).slice(0, 300);
+    if (a.linkWorldSchedule && state.world) {
+      if (state.world.byChar && state.world.byChar[charId] && state.world.byChar[charId].schedule) {
+        scheduleHint = String(state.world.byChar[charId].schedule).slice(0, 300);
+      } else if (state.world.schedules && state.world.schedules[charId]) {
+        scheduleHint = String(state.world.schedules[charId]).slice(0, 300);
+      }
     }
   } catch(e) {}
   const persona = (ch.persona || '').slice(0, 220);
@@ -6520,14 +6533,26 @@ function saveNewPersona() {
 }
 function switchPersona(i) {
   if (!state.personas) state.personas = [];
-  const cur = { ...state.user };
-  const target = state.personas[i];
+  if (!state.personas[i]) { showToast('人设不存在'); return; }
+  const cur = Object.assign({}, state.user);
+  const target = Object.assign({}, state.personas[i]);
   state.personas[i] = cur;
-  state.user = { ...target };
-  save();
-  try { closeAllModals(); } catch(e) { try { closeModal(true); } catch(e2) {} }
+  state.user = target;
+  try { save(); } catch(e) {}
+  // 彻底清弹层，防止回弹到上一层人设列表
+  try { state._modalStack = []; } catch(e) {}
+  try { state._modalCloseLock = true; closeAllModals(); } catch(e) {}
+  try {
+    const mask = document.getElementById('modalMask');
+    if (mask) {
+      mask.classList.remove('show');
+      mask.style.display = 'none';
+      setTimeout(function(){ try { mask.style.display = ''; state._modalCloseLock = false; } catch(e2) {} }, 80);
+    }
+  } catch(e) {}
   try { renderMine(); } catch(e) {}
   try { renderMomentsHeader(); } catch(e) {}
+  try { if (typeof renderChats === 'function') renderChats(); } catch(e) {}
   showToast('已切换人设：'+(state.user.nick||''));
 }
 function delPersona(i) {
@@ -11627,10 +11652,23 @@ function openCharPhoneByIdx(idx) {
   state._clickGuardUntil = 0;
   state._navLock = false;
   state._suppressLaunch = false;
-  var ch = state._phoneCheckList && state._phoneCheckList[idx];
-  if (!ch) ch = (state.chars||[])[idx];
+  var list = state._phoneCheckList && state._phoneCheckList.length ? state._phoneCheckList : (state.chars || []);
+  var ch = list[idx];
+  if (!ch && typeof idx === 'number') ch = (state.chars || [])[idx];
   if (!ch) { showToast('角色不存在'); return; }
-  openCharPhone(ch.id);
+  var cid = ch.id;
+  if (!cid) {
+    // 无 id 时补一个并写回
+    cid = 'char_auto_' + Date.now() + '_' + idx;
+    ch.id = cid;
+    try { save(); } catch(e) {}
+  }
+  try {
+    openCharPhone(cid);
+  } catch(err) {
+    console.warn(err);
+    showToast('打开失败：' + (err && err.message ? err.message : '未知错误'));
+  }
 }
 function exitPhone() {
   state._phoneLayer = null;
@@ -11737,8 +11775,14 @@ function setPhoneAppData(contactId, appId, data) {
 }
 
 function openCharPhone(cid) {
-  const ch = state.chars.find(c=>c.id===cid);
-  if (!ch) return;
+  let ch = (state.chars || []).find(c => c && c.id === cid);
+  if (!ch) {
+    // 兼容：id 不一致时用列表兜底
+    ch = (state._phoneCheckList || []).find(c => c && (c.id === cid || c === cid));
+  }
+  if (!ch) { showToast('角色不存在或数据损坏'); return; }
+  if (!ch.id) { ch.id = cid || ('char_' + Date.now()); }
+  cid = ch.id;
   state._phoneChar = cid;
   state.currentPhoneContactId = cid;
   state._homeRoot = 'phonecheck';
@@ -12572,6 +12616,15 @@ function editHomePolaroid() {
 function openChangelog() {
   const ver = (typeof EENOK_BUILD !== 'undefined') ? EENOK_BUILD : '';
   const logs = [
+    { v: '2026-08-18j', items: [
+      '世界：先选角色，每位角色独立世界（地图/日历/日程/生活不互通）；水色 UI；日历标注显示在下方',
+      '玻璃质感可滑动调节 0–100%，默认 0 完全透明',
+      '修复自主活动勾选后保存仍提示已关闭；人设切换彻底清弹层',
+      '查手机无 id 角色自动补 id，减少「打开失败」',
+      '通话禁止表情包；视频通话（仿微信）可上传本地背景',
+      'Galgame 图文模式固定竖屏，移除横屏',
+      '朋友圈可生成角色动态；聊天设置「角色自主活动」全项'
+    ]},
     { v: '2026-08-18i', items: [
       '语音 API / 生图 API 独立成「我的」两个板块',
       '生图支持多条预设词，角色发图时读取预设+描述',
@@ -12871,27 +12924,63 @@ function renderGlassSwitchHtml() {
 function openGlassUIPage() {
   ensureHomeState();
   state._homeRoot = 'beauty';
+  // strength 0 = 完全透明（默认），100 = 最强毛玻璃
+  if (state.home.glassStrength == null) state.home.glassStrength = 0;
+  const s = Math.max(0, Math.min(100, +state.home.glassStrength || 0));
   openSubPage('玻璃质感 UI', `
     <div style="padding:20px 16px 40px;background:linear-gradient(180deg,#e8f6f4,#d4ebea);min-height:100%;box-sizing:border-box">
-      <div style="font-size:14px;line-height:1.7;color:#5a7a80;margin-bottom:16px">开启后主屏图标与部分页面会呈半透明毛玻璃。可随时关闭。</div>
-      <div style="padding:24px;border-radius:20px;background:rgba(255,255,255,.45);backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.55);margin-bottom:18px;text-align:center;box-shadow:0 8px 28px rgba(80,140,160,.12)">
-        <div style="width:68px;height:68px;margin:0 auto 12px;border-radius:18px;background:rgba(255,255,255,.4);border:1px solid rgba(255,255,255,.6);backdrop-filter:blur(8px)"></div>
-        <div style="font-weight:600;color:#2a4a55">预览</div>
+      <div style="font-size:14px;line-height:1.7;color:#5a7a80;margin-bottom:16px">拖动滑条调节毛玻璃强度。默认 0 = 完全透明（无玻璃效果）；越大越模糊、背景越实。</div>
+      <div id="glassPreview" style="padding:24px;border-radius:20px;background:rgba(255,255,255,${0.15 + s/100*0.4});backdrop-filter:blur(${s * 0.28}px) saturate(${1 + s/200});border:1px solid rgba(255,255,255,${0.25 + s/200});margin-bottom:18px;text-align:center;box-shadow:0 8px 28px rgba(80,140,160,.12)">
+        <div style="width:68px;height:68px;margin:0 auto 12px;border-radius:18px;background:rgba(255,255,255,${0.2 + s/200});border:1px solid rgba(255,255,255,.5);backdrop-filter:blur(${Math.max(2,s*0.12)}px)"></div>
+        <div style="font-weight:600;color:#2a4a55">预览 · <span id="glassStrLabel">${s}</span>%</div>
       </div>
-      <button type="button" onclick="applyGlassUI(true);showToast('已开启玻璃质感')" style="width:100%;border:none;border-radius:14px;padding:14px;margin-bottom:10px;background:linear-gradient(145deg,#7ec8c0,#5eb8b0);color:#fff;font-size:15px;font-weight:600;cursor:pointer">开启玻璃质感</button>
-      <button type="button" onclick="applyGlassUI(false);showToast('已还原默认')" style="width:100%;border:none;border-radius:14px;padding:14px;margin-bottom:10px;background:rgba(255,255,255,.8);color:#2a4a55;font-size:15px;cursor:pointer">关闭 / 还原</button>
+      <div style="font-size:13px;color:#5a7a80;margin-bottom:8px">强度 <span id="glassStrVal">${s}</span>%</div>
+      <input type="range" id="glassStrengthRange" min="0" max="100" value="${s}" style="width:100%;margin-bottom:16px"
+        oninput="setGlassStrength(+this.value,true)">
+      <button type="button" onclick="setGlassStrength(0);showToast('已完全透明')" style="width:100%;border:none;border-radius:14px;padding:14px;margin-bottom:10px;background:rgba(255,255,255,.8);color:#2a4a55;font-size:15px;cursor:pointer">完全透明（默认）</button>
+      <button type="button" onclick="setGlassStrength(55);showToast('中等毛玻璃')" style="width:100%;border:none;border-radius:14px;padding:14px;margin-bottom:10px;background:linear-gradient(145deg,#7ec8c0,#5eb8b0);color:#fff;font-size:15px;font-weight:600;cursor:pointer">推荐中等 55%</button>
       <button type="button" onclick="openHomeBeauty()" style="width:100%;border:none;border-radius:14px;padding:12px;background:transparent;color:#5eb8b0;font-size:14px;cursor:pointer">← 返回美化</button>
     </div>
   `, '', { replace: false, backFn: function(){ openHomeBeauty(); } });
 }
+function setGlassStrength(v, live) {
+  ensureHomeState();
+  v = Math.max(0, Math.min(100, +v || 0));
+  state.home.glassStrength = v;
+  state.home.glassUI = v > 0;
+  document.body.classList.toggle('glass-ui', v > 0);
+  document.documentElement.style.setProperty('--glass-blur', (v * 0.28) + 'px');
+  document.documentElement.style.setProperty('--glass-sat', (1 + v / 200).toFixed(2));
+  document.documentElement.style.setProperty('--glass-icon-bg', 'rgba(255,255,255,' + (0.08 + v / 100 * 0.28).toFixed(2) + ')');
+  document.documentElement.style.setProperty('--glass-sub-bg', 'rgba(232,246,244,' + (0.25 + v / 100 * 0.5).toFixed(2) + ')');
+  try {
+    const lab = document.getElementById('glassStrLabel'); if (lab) lab.textContent = v;
+    const val = document.getElementById('glassStrVal'); if (val) val.textContent = v;
+    const prev = document.getElementById('glassPreview');
+    if (prev) {
+      prev.style.background = 'rgba(255,255,255,' + (0.15 + v / 100 * 0.4) + ')';
+      prev.style.backdropFilter = 'blur(' + (v * 0.28) + 'px) saturate(' + (1 + v / 200) + ')';
+    }
+  } catch(e) {}
+  if (!live) {
+    try { save(); } catch(e) {}
+    try { localStorage.setItem('eenok_glass_str', String(v)); } catch(e) {}
+  } else {
+    // 拖动时节流保存
+    clearTimeout(window._glassSaveT);
+    window._glassSaveT = setTimeout(function(){ try { save(); localStorage.setItem('eenok_glass_str', String(v)); } catch(e) {} }, 400);
+  }
+}
 function applyGlassUI(on) {
   ensureHomeState();
-  state.home.glassUI = !!on;
-  save();
-  document.body.classList.toggle('glass-ui', !!on);
-  try { localStorage.setItem('eenok_glass', on?'1':'0'); } catch(e) {}
-  showToast(on ? '已切换玻璃质感 UI' : '已恢复默认 UI');
-  try { openHomeBeauty(); } catch(e) {}
+  if (on) {
+    if (!(state.home.glassStrength > 0)) state.home.glassStrength = 55;
+    setGlassStrength(state.home.glassStrength);
+  } else {
+    setGlassStrength(0);
+  }
+  showToast(on ? '已切换玻璃质感 UI' : '已恢复完全透明');
+  try { openGlassUIPage(); } catch(e) { try { openHomeBeauty(); } catch(e2) {} }
 }
 function openHomeBeauty() {
   /* glass toggle available: applyGlassUI(true/false) */
@@ -16018,21 +16107,14 @@ function continueGal(id) {
   const g = state.gal.chars[id];
   if (!g) return;
   if (g.play === 'visual') {
-    if (!g.orient) {
-      openModal('图文方向', `
-        <div class="setting-item" onclick="closeModal();state.gal.chars['${id}'].orient='portrait';save();openGalVisualPlay('${id}','portrait')">竖屏</div>
-        <div class="setting-item" onclick="closeModal();state.gal.chars['${id}'].orient='landscape';save();openGalVisualPlay('${id}','landscape')">横屏（请旋转设备）</div>
-      `, `<button class="btn btn-secondary" onclick="closeModal()">取消</button>`);
-      return;
-    }
-    openGalVisualPlay(id, g.orient);
+    // 图文模式固定竖屏，不再提供横屏
+    g.orient = 'portrait';
+    try { save(); } catch(e) {}
+    openGalVisualPlay(id, 'portrait');
   } else openGalTextPlay(id);
 }
 function openGalVisualPick(id) {
-  openModal('图文方向', `
-    <div class="setting-item" onclick="closeModal();openGalVisualPlay('${id}','portrait')">竖屏</div>
-    <div class="setting-item" onclick="closeModal();openGalVisualPlay('${id}','landscape')">横屏</div>
-  `, `<button class="btn btn-secondary" onclick="closeModal()">取消</button>`);
+  openGalVisualPlay(id, 'portrait');
 }
 function saveGalProgress(id) {
   const g = state.gal.chars[id];
@@ -16121,13 +16203,8 @@ function galCustomUI(id) {
             <option value="dark" ${g.boxStyle==='dark'?'selected':''}>深色</option>
           </select>
         </div>
-        <div class="form-group"><label>方向</label>
-          <select id="galOrient">
-            <option value="portrait" ${g.orient!=='landscape'?'selected':''}>竖屏</option>
-            <option value="landscape" ${g.orient==='landscape'?'selected':''}>横屏</option>
-          </select>
-        </div>
-        <button class="btn btn-primary" style="width:100%" onclick="state.gal.chars['${id}'].boxStyle=document.getElementById('galBoxStyle').value;state.gal.chars['${id}'].orient=document.getElementById('galOrient').value;save();openGalVisualPlay('${id}', state.gal.chars['${id}'].orient||'portrait')">完成</button>
+        <div class="text-sub" style="font-size:12px;margin-bottom:10px">图文模式固定竖屏</div>
+        <button class="btn btn-primary" style="width:100%" onclick="state.gal.chars['${id}'].boxStyle=document.getElementById('galBoxStyle').value;state.gal.chars['${id}'].orient='portrait';save();openGalVisualPlay('${id}','portrait')">完成</button>
       </div>
     `);
     state._subKind = 'homeApp';
@@ -16675,9 +16752,9 @@ function openPhoneContactDetail(charId, name, phone, idx) {
           <div style="background:#fff;border-radius:12px;padding:12px 0;color:#007aff;display:flex;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#007aff" stroke-width="1.6"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg></div>
           <div style="font-size:11px;color:#007aff;margin-top:4px">呼叫</div>
         </div>
-        <div style="flex:1;max-width:72px;text-align:center;opacity:.35">
-          <div style="background:#fff;border-radius:12px;padding:12px 0;display:flex;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#8e8e93" stroke-width="1.6"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div>
-          <div style="font-size:11px;margin-top:4px">视频</div>
+        <div onclick="startVideoCall('${charId||''}','${escapeHtml(display)}')" style="flex:1;max-width:72px;text-align:center">
+          <div style="background:#fff;border-radius:12px;padding:12px 0;color:#007aff;display:flex;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#007aff" stroke-width="1.6"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div>
+          <div style="font-size:11px;color:#007aff;margin-top:4px">视频</div>
         </div>
         <div style="flex:1;max-width:72px;text-align:center;opacity:.35">
           <div style="background:#fff;border-radius:12px;padding:12px 0;display:flex;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#8e8e93" stroke-width="1.6"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><path d="M22 6l-10 7L2 6"/></svg></div>
@@ -16757,15 +16834,16 @@ function togglePhoneFav(key) {
   if (i>=0) state.phoneApp.favorites.splice(i,1); else state.phoneApp.favorites.push(key);
   save();
 }
-async function startCall(charId, name) {
+async function startCall(charId, name, opts) {
+  opts = opts || {};
+  const isVideo = !!opts.video;
   const c = charId ? state.chars.find(x=>x.id===charId) : null;
   const display = name || (c && (c.nick||c.realName)) || '未知';
   const av = c ? avatarUrl(c) : '';
-  state._callCtx = { charId: charId||'', name: display, logs: [], answered: false, started: Date.now() };
-  // 呼叫中：立刻进接通流程，角色主动接听（调用 API）
+  state._callCtx = { charId: charId||'', name: display, logs: [], answered: false, started: Date.now(), video: isVideo, bg: '' };
   openSubPage('', `
     <div style="position:absolute;inset:0;background:linear-gradient(180deg,#3d3d55,#1e1e2e);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 24px;box-sizing:border-box">
-      <div style="font-size:13px;opacity:.7;margin-bottom:8px" id="callStatusLabel">正在呼叫…</div>
+      <div style="font-size:13px;opacity:.7;margin-bottom:8px" id="callStatusLabel">正在${isVideo?'视频':''}呼叫…</div>
       <div style="font-size:28px;font-weight:600;margin-bottom:28px">${escapeHtml(display)}</div>
       <div style="width:130px;height:130px;border-radius:50%;overflow:hidden;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.2);margin-bottom:36px">
         ${av?`<img src="${av}" style="width:100%;height:100%;object-fit:cover" alt="">`:'<div style="width:100%;height:100%;background:#666"></div>'}
@@ -16777,8 +16855,10 @@ async function startCall(charId, name) {
     </div>
   `, '', { replace: false, backFn: function(){ endCall(false); } });
   try { document.getElementById('subNav').style.display = 'none'; } catch(e) {}
-  // 模拟振铃后角色接听
   setTimeout(function(){ answerCallAuto(); }, 900);
+}
+function startVideoCall(charId, name) {
+  return startCall(charId, name, { video: true });
 }
 async function answerCallAuto() {
   const ctx = state._callCtx;
@@ -16788,33 +16868,64 @@ async function answerCallAuto() {
   const c = ctx.charId ? state.chars.find(x=>x.id===ctx.charId) : null;
   const display = ctx.name || '未知';
   const av = c ? avatarUrl(c) : '';
-  openSubPage('', `
-    <div id="callScreenBg" style="position:absolute;inset:0;background:${(state._callCtx&&state._callCtx.bg)?("url("+state._callCtx.bg+") center/cover"):"linear-gradient(180deg,#4a4a68,#222236)"};color:#fff;display:flex;flex-direction:column;align-items:center;padding:36px 16px 12px;box-sizing:border-box">
-      <div style="position:absolute;inset:0;background:rgba(20,20,30,.45);pointer-events:none"></div>
-      <div style="position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;width:100%;height:100%">
-      <div style="position:absolute;top:12px;right:12px;z-index:2">
-        <button type="button" onclick="state.fileTarget='callBg';document.getElementById('fileInput').accept='image/*';document.getElementById('fileInput').click()" style="border:none;background:rgba(0,0,0,.25);color:#fff;border-radius:12px;padding:6px 10px;font-size:11px;cursor:pointer">壁纸</button>
+  const isVideo = !!ctx.video;
+  const bgStyle = ctx.bg ? ('url('+ctx.bg+') center/cover') : (isVideo ? 'linear-gradient(180deg,#2a2a3a,#12121a)' : 'linear-gradient(180deg,#4a4a68,#222236)');
+  if (isVideo) {
+    openSubPage('', `
+      <div id="callScreenBg" style="position:absolute;inset:0;background:${bgStyle};color:#fff">
+        <div style="position:absolute;inset:0;background:rgba(0,0,0,.28);pointer-events:none"></div>
+        <div style="position:relative;z-index:1;height:100%;display:flex;flex-direction:column">
+          <div style="padding:48px 16px 8px;text-align:center">
+            <div style="font-size:13px;opacity:.8" id="callTimer">00:00</div>
+            <div style="font-size:18px;font-weight:600;margin-top:4px">${escapeHtml(display)}</div>
+            <div style="font-size:12px;opacity:.65;margin-top:2px">视频通话中</div>
+          </div>
+          <div style="flex:1;display:flex;align-items:center;justify-content:center;position:relative;min-height:0">
+            <div style="width:min(88vw,320px);height:min(58vh,400px);border-radius:16px;overflow:hidden;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.12)">
+              ${av?`<img src="${av}" style="width:100%;height:100%;object-fit:cover" alt="">`:'<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;opacity:.5">对方画面</div>'}
+            </div>
+            <div style="position:absolute;top:4px;right:14px;width:92px;height:122px;border-radius:12px;overflow:hidden;border:2px solid rgba(255,255,255,.4);background:rgba(0,0,0,.45);box-shadow:0 4px 16px rgba(0,0,0,.35)">
+              <img src="${avatarUrl(state.user)}" style="width:100%;height:100%;object-fit:cover" alt="">
+            </div>
+          </div>
+          <div id="callChatLog" style="max-height:20vh;overflow-y:auto;padding:6px 14px;font-size:13px;line-height:1.5"></div>
+          <div style="padding:10px 16px 28px;display:flex;justify-content:center;gap:26px;align-items:flex-end">
+            <div style="text-align:center"><button type="button" onclick="state.fileTarget='callBg';document.getElementById('fileInput').accept='image/*';document.getElementById('fileInput').click()" style="width:52px;height:52px;border-radius:50%;border:none;background:rgba(255,255,255,.18);color:#fff;cursor:pointer;font-size:13px">背景</button><div style="font-size:11px;margin-top:6px;opacity:.8">上传</div></div>
+            <div style="text-align:center"><button type="button" onclick="callGenReply()" style="width:52px;height:52px;border-radius:50%;border:none;background:rgba(255,255,255,.18);color:#fff;cursor:pointer">○</button><div style="font-size:11px;margin-top:6px;opacity:.8">生成</div></div>
+            <div style="text-align:center"><button type="button" onclick="endCall(true)" style="width:64px;height:64px;border-radius:50%;border:none;background:#ff3b30;color:#fff;cursor:pointer"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button><div style="font-size:11px;margin-top:6px;opacity:.8">挂断</div></div>
+          </div>
+        </div>
       </div>
-      <div style="font-size:13px;opacity:.75" id="callTimer">00:00</div>
-      <div style="font-size:24px;font-weight:600;margin:6px 0 16px">${escapeHtml(display)}</div>
-      <div style="width:112px;height:112px;border-radius:50%;overflow:hidden;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.15);flex-shrink:0;margin-bottom:12px">
-        ${av?`<img src="${av}" style="width:100%;height:100%;object-fit:cover" alt="">`:'<div style="width:100%;height:100%;background:#666"></div>'}
-      </div>
-      <div id="callChatLog" style="flex:1;width:100%;max-width:360px;overflow-y:auto;font-size:14px;line-height:1.55;padding:8px 6px;text-align:center"></div>
-      <div style="width:100%;max-width:360px;display:flex;gap:8px;align-items:center;margin:8px 0 12px">
-        <input id="callInput" placeholder="说点什么…" style="flex:1;border:none;border-radius:20px;padding:10px 14px;background:rgba(255,255,255,.14);color:#fff;font-size:14px;outline:none">
-        <button type="button" onclick="callGenReply()" title="生成" style="border:none;background:rgba(255,255,255,.2);color:#fff;border-radius:50%;width:40px;height:40px;cursor:pointer;display:flex;align-items:center;justify-content:center">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+    `, '', { replace: true, backFn: function(){ endCall(true); } });
+  } else {
+    openSubPage('', `
+      <div id="callScreenBg" style="position:absolute;inset:0;background:${bgStyle};color:#fff;display:flex;flex-direction:column;align-items:center;padding:36px 16px 12px;box-sizing:border-box">
+        <div style="position:absolute;inset:0;background:rgba(20,20,30,.45);pointer-events:none"></div>
+        <div style="position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;width:100%;height:100%">
+        <div style="position:absolute;top:12px;right:12px;z-index:2">
+          <button type="button" onclick="state.fileTarget='callBg';document.getElementById('fileInput').accept='image/*';document.getElementById('fileInput').click()" style="border:none;background:rgba(0,0,0,.25);color:#fff;border-radius:12px;padding:6px 10px;font-size:11px;cursor:pointer">壁纸</button>
+        </div>
+        <div style="font-size:13px;opacity:.75" id="callTimer">00:00</div>
+        <div style="font-size:24px;font-weight:600;margin:6px 0 16px">${escapeHtml(display)}</div>
+        <div style="width:112px;height:112px;border-radius:50%;overflow:hidden;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.15);flex-shrink:0;margin-bottom:12px">
+          ${av?`<img src="${av}" style="width:100%;height:100%;object-fit:cover" alt="">`:'<div style="width:100%;height:100%;background:#666"></div>'}
+        </div>
+        <div id="callChatLog" style="flex:1;width:100%;max-width:360px;overflow-y:auto;font-size:14px;line-height:1.55;padding:8px 6px;text-align:center"></div>
+        <div style="width:100%;max-width:360px;display:flex;gap:8px;align-items:center;margin:8px 0 12px">
+          <input id="callInput" placeholder="说点什么…" style="flex:1;border:none;border-radius:20px;padding:10px 14px;background:rgba(255,255,255,.14);color:#fff;font-size:14px;outline:none">
+          <button type="button" onclick="callGenReply()" title="生成" style="border:none;background:rgba(255,255,255,.2);color:#fff;border-radius:50%;width:40px;height:40px;cursor:pointer;display:flex;align-items:center;justify-content:center">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          </button>
+          <button type="button" onclick="callSendUser()" title="发送" style="border:none;background:#34c759;color:#fff;border-radius:50%;width:40px;height:40px;cursor:pointer;display:flex;align-items:center;justify-content:center">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+          </button>
+        </div>
+        <button type="button" onclick="endCall(true)" style="width:64px;height:64px;border-radius:50%;border:none;background:#ff3b30;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;margin-bottom:8px">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
         </button>
-        <button type="button" onclick="callSendUser()" title="发送" style="border:none;background:#34c759;color:#fff;border-radius:50%;width:40px;height:40px;cursor:pointer;display:flex;align-items:center;justify-content:center">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
-        </button>
       </div>
-      <button type="button" onclick="endCall(true)" style="width:64px;height:64px;border-radius:50%;border:none;background:#ff3b30;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;margin-bottom:8px">
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
-      </button>
-    </div>
-  `, '', { replace: true, backFn: function(){ endCall(true); } });
+    `, '', { replace: true, backFn: function(){ endCall(true); } });
+  }
   try { document.getElementById('subNav').style.display = 'none'; } catch(e) {}
   if (state._callTimer) clearInterval(state._callTimer);
   state._callTimer = setInterval(function(){
@@ -16823,7 +16934,6 @@ async function answerCallAuto() {
     const s = Math.floor((Date.now()-ctx.started)/1000);
     el.textContent = String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
   }, 1000);
-  // 角色先开口
   await callGenReply();
 }
 function answerCall() { answerCallAuto(); }
@@ -16864,7 +16974,8 @@ async function callGenReply() {
       + '【输出格式铁律】必须严格两段，禁止方括号[]：\n'
       + '第一行只用中文圆括号（）写环境/声音描写，例如：（电话接通，背景里有一点风声，声音压得很低，清亮里带着点磨砂感。）\n'
       + '空一行后写口语对话，可用中文引号「」或英文引号包住，短句，像真人打电话。\n'
-      + '禁止 Markdown、禁止 OOC、禁止扮演 user、禁止客服腔。';
+      + '禁止 Markdown、禁止 OOC、禁止扮演 user、禁止客服腔。\n'
+      + '【禁止表情包】禁止输出任何 emoji、颜文字、表情符号、表情包描述；纯文字口语与（）描写即可。';
     const raw = await apiChat([
       { role:'system', content: sys },
       { role:'user', content: hist || '（电话刚接通）请先按格式自然开口' }
@@ -16874,6 +16985,13 @@ async function callGenReply() {
     if (text) {
       text = text.replace(/^[ \t]*\[([^\]]+)\]/m, '（$1）');
       text = text.replace(/\n[ \t]*\[([^\]]+)\]/g, '\n（$1）');
+      // 去掉 emoji / 常见颜文字
+      try {
+        text = text.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '');
+        text = text.replace(/(\^[._]?\^|[>＞][_．.]?[<＜]|[oO][_.．][oO]|（￣[▽～].*?￣）)/g, '');
+      } catch(e) {
+        text = text.replace(/[\uD83C-\uDBFF][\uDC00-\uDFFF]/g, '');
+      }
     }
     if (text && text !== '[object Object]') {
       ctx.logs.push({ role:'char', text: text });
@@ -20059,42 +20177,83 @@ function saveLockSettings() {
 
 /* ========== 世界 App（法式奶油风）========== */
 function ensureWorldState() {
-  if (!state.world) state.world = { maps: [], places: [], calendar: {}, schedules: {}, life: [], tab: 'map' };
-  if (!state.world.maps) state.world.maps = [];
-  if (!state.world.places) state.world.places = [];
-  if (!state.world.calendar) state.world.calendar = {};
-  if (!state.world.schedules) state.world.schedules = {};
-  if (!state.world.life) state.world.life = [];
+  if (!state.world) state.world = { byChar: {}, currentCharId: null };
+  if (!state.world.byChar) state.world.byChar = {};
   return state.world;
 }
+function ensureCharWorld(charId) {
+  ensureWorldState();
+  if (!charId) return null;
+  if (!state.world.byChar[charId]) {
+    state.world.byChar[charId] = { places: [], calendar: {}, schedule: '', life: [], tab: 'map' };
+  }
+  var w = state.world.byChar[charId];
+  if (!w.places) w.places = [];
+  if (!w.calendar) w.calendar = {};
+  if (!w.life) w.life = [];
+  if (!w.tab) w.tab = 'map';
+  return w;
+}
 function openWorldApp(tab) {
+  // 入口：角色列表（各角色世界互不互通）
   ensureWorldState();
   state._homeRoot = 'world';
   state._subKind = 'world';
-  tab = tab || state.world.tab || 'map';
-  state.world.tab = tab;
-  const cream = '#f7f0e8';
-  const cream2 = '#efe4d6';
-  const ink = '#4a3f35';
-  const soft = '#8a7a6a';
-  const accent = '#c4a484';
+  state.world.currentCharId = null;
+  const ink = '#2a4a55';
+  const soft = '#6a8a95';
+  const accent = '#5eb8b0';
+  const chars = state.chars || [];
+  const list = chars.length ? chars.map(function(c) {
+    const w = ensureCharWorld(c.id);
+    const nPlace = (w.places || []).length;
+    const nLife = (w.life || []).length;
+    return '<div onclick="openWorldChar(\''+c.id+'\')" style="display:flex;align-items:center;gap:12px;padding:14px;margin:0 12px 10px;border-radius:16px;background:rgba(255,255,255,.75);border:1px solid rgba(94,184,176,.2);cursor:pointer">'
+      + '<img src="'+avatarUrl(c)+'" style="width:48px;height:48px;border-radius:14px;object-fit:cover;flex-shrink:0">'
+      + '<div style="flex:1;min-width:0"><div style="font-weight:600;color:'+ink+'">'+escapeHtml(c.nick||c.realName||'')+'</div>'
+      + '<div style="font-size:12px;color:'+soft+';margin-top:4px">地点 '+nPlace+' · 随笔 '+nLife+(w.schedule?' · 已有日程':'')+'</div></div>'
+      + '<span style="color:#c7c7cc">›</span></div>';
+  }).join('') : '<div style="text-align:center;color:'+soft+';padding:48px 16px">请先在角色库添加角色<br>每位角色拥有独立世界</div>';
+  openSubPage('世界', `
+    <div style="height:100%;background:linear-gradient(180deg,#e8f6f4,#d4ebea);overflow-y:auto;-webkit-overflow-scrolling:touch">
+      <div style="padding:16px 16px 8px">
+        <div style="font-size:18px;font-weight:700;color:${ink}">选择角色世界</div>
+        <div style="font-size:12px;color:${soft};margin-top:4px;line-height:1.5">每位角色的地图 / 日历 / 日程 / 生活互不共享</div>
+      </div>
+      <div style="padding-bottom:32px">${list}</div>
+    </div>
+  `, '', { replace: true, fromHome: true, backFn: function(){ goHome(); } });
+}
+function openWorldChar(charId, tab) {
+  ensureWorldState();
+  const ch = (state.chars || []).find(c => c.id === charId);
+  if (!ch) { showToast('角色不存在'); return; }
+  const w = ensureCharWorld(charId);
+  state.world.currentCharId = charId;
+  state._homeRoot = 'world';
+  state._subKind = 'world';
+  tab = tab || w.tab || 'map';
+  w.tab = tab;
+  const ink = '#2a4a55';
+  const soft = '#6a8a95';
+  const accent = '#5eb8b0';
+  const card = 'rgba(255,255,255,.78)';
   const dockBtn = function(id, lab) {
-    return '<button type="button" onclick="openWorldApp(\''+id+'\')" style="flex:1;border:none;background:transparent;padding:12px 4px;font-size:12px;font-weight:'+(tab===id?'700':'400')+';color:'+(tab===id?ink:soft)+';cursor:pointer">'+lab+'</button>';
+    return '<button type="button" onclick="openWorldChar(\''+charId+'\',\''+id+'\')" style="flex:1;border:none;background:transparent;padding:12px 4px;font-size:12px;font-weight:'+(tab===id?'700':'400')+';color:'+(tab===id?accent:soft)+';cursor:pointer">'+lab+'</button>';
   };
   let main = '';
   if (tab === 'map') {
-    const places = state.world.places || [];
+    const places = w.places || [];
     main = '<div style="padding:16px 14px 100px">'
-      + '<div style="font-size:18px;font-weight:700;color:'+ink+';margin-bottom:4px">地图</div>'
-      + '<div style="font-size:12px;color:'+soft+';margin-bottom:14px">添加角色所在世界与地点描述</div>'
-      + '<button type="button" class="btn btn-primary" style="width:100%;margin-bottom:14px;background:'+accent+';border:none;color:#fff" onclick="worldAddPlace()">＋ 添加地点</button>'
+      + '<div style="font-size:17px;font-weight:700;color:'+ink+';margin-bottom:4px">地图 · '+escapeHtml(ch.nick||'')+'</div>'
+      + '<div style="font-size:12px;color:'+soft+';margin-bottom:14px">仅属于该角色的地点</div>'
+      + '<button type="button" style="width:100%;margin-bottom:14px;border:none;border-radius:14px;padding:12px;background:'+accent+';color:#fff;font-weight:600;cursor:pointer" onclick="worldAddPlace()">＋ 添加地点</button>'
       + (places.length ? places.map(function(p,i){
-          return '<div style="background:rgba(255,255,255,.72);border-radius:16px;padding:14px;margin-bottom:10px;border:1px solid rgba(196,164,132,.25)">'
+          return '<div style="background:'+card+';border-radius:16px;padding:14px;margin-bottom:10px;border:1px solid rgba(94,184,176,.2)">'
             + '<div style="display:flex;justify-content:space-between;align-items:center"><div style="font-weight:600;color:'+ink+'">'+escapeHtml(p.name||'地点')+'</div>'
-            + '<button type="button" onclick="state.world.places.splice('+i+',1);save();openWorldApp(\'map\')" style="border:none;background:transparent;color:#c0392b;font-size:12px;cursor:pointer">删</button></div>'
-            + '<div style="font-size:12px;color:'+soft+';margin-top:4px">角色：'+escapeHtml(p.charName||'公共')+'</div>'
+            + '<button type="button" onclick="ensureCharWorld(\''+charId+'\').places.splice('+i+',1);save();openWorldChar(\''+charId+'\',\'map\')" style="border:none;background:transparent;color:#e74c3c;font-size:12px;cursor:pointer">删</button></div>'
             + '<div style="font-size:13px;color:'+ink+';margin-top:8px;line-height:1.5;white-space:pre-wrap">'+escapeHtml(p.desc||'')+'</div></div>';
-        }).join('') : '<div style="text-align:center;color:'+soft+';padding:40px 0">还没有地点，点上方添加</div>')
+        }).join('') : '<div style="text-align:center;color:'+soft+';padding:40px 0">还没有地点</div>')
       + '</div>';
   } else if (tab === 'calendar') {
     const now = new Date();
@@ -20102,86 +20261,86 @@ function openWorldApp(tab) {
     const keyPrefix = y + '-' + String(m+1).padStart(2,'0') + '-';
     const daysInMonth = new Date(y, m+1, 0).getDate();
     let cells = '';
+    const marked = [];
     for (var d=1; d<=daysInMonth; d++) {
       const key = keyPrefix + String(d).padStart(2,'0');
-      const mark = state.world.calendar[key];
-      cells += '<div onclick="worldEditDay(\''+key+'\')" style="aspect-ratio:1;border-radius:12px;background:'+(mark?'rgba(196,164,132,.35)':'rgba(255,255,255,.65)')+';display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;border:1px solid rgba(196,164,132,.2)">'
-        + '<div style="font-size:13px;font-weight:600;color:'+ink+'">'+d+'</div>'
-        + (mark?'<div style="font-size:9px;color:'+soft+';margin-top:2px;max-width:90%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escapeHtml((mark.text||'·').slice(0,6))+'</div>':'')
-        + '</div>';
+      const mark = w.calendar[key];
+      if (mark) marked.push({ key: key, text: mark.text || '', d: d });
+      cells += '<div onclick="worldEditDay(\''+key+'\')" style="aspect-ratio:1;border-radius:12px;background:'+(mark?'rgba(94,184,176,.35)':card)+';display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;border:1px solid rgba(94,184,176,.18)">'
+        + '<div style="font-size:13px;font-weight:600;color:'+ink+'">'+d+'</div></div>';
     }
     main = '<div style="padding:16px 14px 100px">'
-      + '<div style="font-size:18px;font-weight:700;color:'+ink+';margin-bottom:4px">日历 · '+(m+1)+'月 '+y+'</div>'
-      + '<div style="font-size:12px;color:'+soft+';margin-bottom:14px">点日期可标注重点 / 待办</div>'
-      + '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">'+cells+'</div></div>';
-  } else if (tab === 'schedule') {
-    const chars = state.chars || [];
-    main = '<div style="padding:16px 14px 100px">'
-      + '<div style="font-size:18px;font-weight:700;color:'+ink+';margin-bottom:4px">日程</div>'
-      + '<div style="font-size:12px;color:'+soft+';margin-bottom:14px">生成角色每日生活安排</div>'
-      + (chars.length ? chars.map(function(c){
-          const sch = (state.world.schedules||{})[c.id];
-          return '<div style="background:rgba(255,255,255,.72);border-radius:16px;padding:14px;margin-bottom:10px;border:1px solid rgba(196,164,132,.25)">'
-            + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'
-            + '<img src="'+avatarUrl(c)+'" style="width:36px;height:36px;border-radius:10px;object-fit:cover">'
-            + '<div style="flex:1;font-weight:600;color:'+ink+'">'+escapeHtml(c.nick||c.realName||'')+'</div>'
-            + '<button type="button" onclick="worldGenSchedule(\''+c.id+'\')" style="border:none;background:'+accent+';color:#fff;border-radius:12px;padding:6px 12px;font-size:12px;cursor:pointer">生成</button></div>'
-            + '<div style="font-size:13px;color:'+ink+';line-height:1.55;white-space:pre-wrap">'+(sch?escapeHtml(sch):'<span style="color:'+soft+'">尚未生成日程</span>')+'</div></div>';
-        }).join('') : '<div style="text-align:center;color:'+soft+';padding:40px 0">请先添加角色</div>')
+      + '<div style="font-size:17px;font-weight:700;color:'+ink+';margin-bottom:4px">日历 · '+(m+1)+'月</div>'
+      + '<div style="font-size:12px;color:'+soft+';margin-bottom:14px">点日期标注；标注内容显示在下方</div>'
+      + '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:18px">'+cells+'</div>'
+      + '<div style="font-size:14px;font-weight:600;color:'+ink+';margin-bottom:10px">本月标注</div>'
+      + (marked.length ? marked.map(function(m){
+          return '<div onclick="worldEditDay(\''+m.key+'\')" style="background:'+card+';border-radius:14px;padding:12px 14px;margin-bottom:8px;border:1px solid rgba(94,184,176,.2);cursor:pointer">'
+            + '<div style="font-size:12px;color:'+accent+';font-weight:600">'+m.key+'</div>'
+            + '<div style="font-size:13px;color:'+ink+';margin-top:4px;white-space:pre-wrap">'+escapeHtml(m.text)+'</div></div>';
+        }).join('') : '<div style="color:'+soft+';font-size:13px;padding:12px 0">暂无标注，点上方日期添加</div>')
       + '</div>';
-  } else {
-    /* life */
-    const notes = state.world.life || [];
+  } else if (tab === 'schedule') {
     main = '<div style="padding:16px 14px 100px">'
       + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'
-      + '<div><div style="font-size:18px;font-weight:700;color:'+ink+'">生活</div><div style="font-size:12px;color:'+soft+';margin-top:2px">角色随笔 · 遇见与心事</div></div>'
+      + '<div><div style="font-size:17px;font-weight:700;color:'+ink+'">日程</div><div style="font-size:12px;color:'+soft+';margin-top:2px">'+escapeHtml(ch.nick||'')+' 的一天</div></div>'
+      + '<button type="button" onclick="worldGenSchedule(\''+charId+'\')" style="border:none;background:'+accent+';color:#fff;border-radius:14px;padding:8px 14px;font-size:13px;cursor:pointer">生成</button></div>'
+      + '<div style="background:'+card+';border-radius:16px;padding:16px;border:1px solid rgba(94,184,176,.2);font-size:14px;color:'+ink+';line-height:1.65;white-space:pre-wrap;min-height:120px">'
+      + (w.schedule ? escapeHtml(w.schedule) : '<span style="color:'+soft+'">尚未生成日程</span>')+'</div></div>';
+  } else {
+    const notes = w.life || [];
+    main = '<div style="padding:16px 14px 100px">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'
+      + '<div><div style="font-size:17px;font-weight:700;color:'+ink+'">生活</div><div style="font-size:12px;color:'+soft+';margin-top:2px">仅该角色的随笔</div></div>'
       + '<button type="button" onclick="worldGenLife()" style="border:none;background:'+accent+';color:#fff;border-radius:14px;padding:8px 14px;font-size:13px;cursor:pointer">生成今日</button></div>'
       + (notes.length ? notes.slice().reverse().map(function(n,ri){
           const i = notes.length - 1 - ri;
-          return '<div style="background:rgba(255,255,255,.72);border-radius:16px;padding:14px;margin-bottom:10px;border:1px solid rgba(196,164,132,.25)">'
-            + '<div style="font-size:12px;color:'+soft+';margin-bottom:6px">'+escapeHtml(n.charName||'')+' · '+(n.ts?new Date(n.ts).toLocaleString():'')+'</div>'
+          return '<div style="background:'+card+';border-radius:16px;padding:14px;margin-bottom:10px;border:1px solid rgba(94,184,176,.2)">'
+            + '<div style="font-size:12px;color:'+soft+';margin-bottom:6px">'+(n.ts?new Date(n.ts).toLocaleString():'')+'</div>'
             + '<div style="font-size:14px;color:'+ink+';line-height:1.6;white-space:pre-wrap">'+escapeHtml(n.text||'')+'</div>'
-            + '<button type="button" onclick="state.world.life.splice('+i+',1);save();openWorldApp(\'life\')" style="margin-top:8px;border:none;background:transparent;color:#c0392b;font-size:12px;cursor:pointer">删除</button></div>';
+            + '<button type="button" onclick="ensureCharWorld(\''+charId+'\').life.splice('+i+',1);save();openWorldChar(\''+charId+'\',\'life\')" style="margin-top:8px;border:none;background:transparent;color:#e74c3c;font-size:12px;cursor:pointer">删除</button></div>';
         }).join('') : '<div style="text-align:center;color:'+soft+';padding:40px 0">还没有生活随笔</div>')
       + '</div>';
   }
-  openSubPage('世界', `
-    <div style="height:100%;display:flex;flex-direction:column;background:linear-gradient(180deg,${cream},${cream2});color:${ink}">
+  openSubPage(ch.nick || '世界', `
+    <div style="height:100%;display:flex;flex-direction:column;background:linear-gradient(180deg,#e8f6f4,#d4ebea);color:${ink}">
       <div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch">${main}</div>
-      <div style="display:flex;background:rgba(255,248,240,.92);backdrop-filter:blur(12px);border-top:1px solid rgba(196,164,132,.25);padding-bottom:env(safe-area-inset-bottom,8px)">
+      <div style="display:flex;background:rgba(232,246,244,.95);backdrop-filter:blur(12px);border-top:1px solid rgba(94,184,176,.25);padding-bottom:env(safe-area-inset-bottom,8px)">
         ${dockBtn('map','地图')}${dockBtn('calendar','日历')}${dockBtn('schedule','日程')}${dockBtn('life','生活')}
       </div>
     </div>
-  `, '', { replace: true, fromHome: true, backFn: function(){ goHome(); } });
+  `, '', { replace: true, backFn: function(){ openWorldApp(); } });
 }
 function worldAddPlace() {
-  const chars = state.chars || [];
+  const charId = state.world && state.world.currentCharId;
+  if (!charId) { showToast('请先选择角色'); return; }
   openModal('添加地点', `
     <div class="form-group"><label>地点名称</label><input id="wpName" placeholder="例如：咖啡馆 / 学校天台"></div>
-    <div class="form-group"><label>关联角色（可空=公共）</label>
-      <select id="wpChar"><option value="">公共</option>${chars.map(c=>'<option value="'+c.id+'">'+escapeHtml(c.nick||c.realName||'')+'</option>').join('')}</select></div>
     <div class="form-group"><label>描述</label><textarea id="wpDesc" style="min-height:90px" placeholder="这个地方的氛围、故事…"></textarea></div>
   `, `<button class="btn btn-secondary" onclick="closeModal()">取消</button>
       <button class="btn btn-primary" onclick="worldSavePlace()">保存</button>`);
 }
 function worldSavePlace() {
-  ensureWorldState();
+  const charId = state.world && state.world.currentCharId;
+  if (!charId) return;
+  const w = ensureCharWorld(charId);
   const name = ((document.getElementById('wpName')||{}).value||'').trim() || '未命名地点';
-  const charId = ((document.getElementById('wpChar')||{}).value||'').trim();
   const desc = ((document.getElementById('wpDesc')||{}).value||'').trim();
-  const ch = (state.chars||[]).find(c=>c.id===charId);
-  state.world.places.push({ id:'pl'+Date.now(), name, charId, charName: ch?(ch.nick||ch.realName):'', desc, ts: Date.now() });
-  save(); closeModal(); openWorldApp('map');
+  w.places.push({ id:'pl'+Date.now(), name, desc, ts: Date.now() });
+  save(); closeModal(); openWorldChar(charId, 'map');
 }
 function worldEditDay(key) {
-  ensureWorldState();
-  const cur = state.world.calendar[key] || { text: '' };
+  const charId = state.world && state.world.currentCharId;
+  if (!charId) return;
+  const w = ensureCharWorld(charId);
+  const cur = w.calendar[key] || { text: '' };
   openModal('标注 · '+key, `
     <div class="form-group"><label>重点 / 待办</label><textarea id="wdText" style="min-height:100px">${escapeHtml(cur.text||'')}</textarea></div>
   `, `<button class="btn btn-secondary" onclick="closeModal()">取消</button>
-      <button class="btn btn-primary" onclick="(function(){ensureWorldState();var t=((document.getElementById('wdText')||{}).value||'').trim();if(t)state.world.calendar['${key}']={text:t,ts:Date.now()};else delete state.world.calendar['${key}'];save();closeModal();openWorldApp('calendar');})()">保存</button>`);
+      <button class="btn btn-primary" onclick="(function(){var w=ensureCharWorld('${charId}');var t=((document.getElementById('wdText')||{}).value||'').trim();if(t)w.calendar['${key}']={text:t,ts:Date.now()};else delete w.calendar['${key}'];save();closeModal();openWorldChar('${charId}','calendar');})()">保存</button>`);
 }
 async function worldGenSchedule(charId) {
+  charId = charId || (state.world && state.world.currentCharId);
   const c = (state.chars||[]).find(x=>x.id===charId);
   if (!c) return;
   showToast('生成日程中…');
@@ -20190,39 +20349,49 @@ async function worldGenSchedule(charId) {
       { role:'system', content:'你是角色「'+(c.nick||'')+'」的日程助手。根据人设写今天的日常生活时间表，条目简洁，用时间段+事项，共6-10条。人设：'+(c.persona||'普通人')+'。只输出日程正文。' },
       { role:'user', content:'请生成今天的日程表。' }
     ], { max_tokens: 600, temperature: 0.8 });
+    const w = ensureCharWorld(charId);
+    w.schedule = (text||'').trim() || '（空）';
+    // 兼容旧 autonomy 读取
     ensureWorldState();
     if (!state.world.schedules) state.world.schedules = {};
-    state.world.schedules[charId] = (text||'').trim() || '（空）';
-    save(); openWorldApp('schedule');
+    state.world.schedules[charId] = w.schedule;
+    save(); openWorldChar(charId, 'schedule');
   } catch(e) { showToast('生成失败：'+(e.message||e)); }
 }
 async function worldGenLife() {
-  const chars = state.chars || [];
-  if (!chars.length) { showToast('请先添加角色'); return; }
-  const c = chars[Math.floor(Math.random()*chars.length)];
+  const charId = state.world && state.world.currentCharId;
+  const c = (state.chars||[]).find(x=>x.id===charId);
+  if (!c) { showToast('请先选择角色'); return; }
   showToast('生成生活随笔…');
   try {
     const { text } = await apiChat([
       { role:'system', content:'你是角色「'+(c.nick||'')+'」，写一段今日生活随笔（80-150字）：可能遇见的趣事/糟心小事/忽然想起和对方有关的事。第一人称，自然口语，不要标题。人设：'+(c.persona||'') },
       { role:'user', content:'写今天的生活随笔。' }
     ], { max_tokens: 400, temperature: 0.9 });
-    ensureWorldState();
-    state.world.life.push({ charId: c.id, charName: c.nick||c.realName||'', text: (text||'').trim(), ts: Date.now() });
-    if (state.world.life.length > 80) state.world.life = state.world.life.slice(-80);
-    save(); openWorldApp('life');
+    const w = ensureCharWorld(charId);
+    w.life.push({ text: (text||'').trim(), ts: Date.now() });
+    if (w.life.length > 80) w.life = w.life.slice(-80);
+    save(); openWorldChar(charId, 'life');
   } catch(e) { showToast('生成失败：'+(e.message||e)); }
 }
 
 // 启动：从 IndexedDB 恢复（主界面美化 / 短信 / IG 等大体积数据）
 (async function bootEenook() {
   try { await loadFromIDB(); } catch (e) { console.warn('boot idb', e); }
+  try {
+    ensureHomeState();
+    var gs = state.home.glassStrength;
+    if (gs == null) {
+      try { gs = +(localStorage.getItem('eenok_glass_str') || 0); } catch(e) { gs = 0; }
+    }
+    if (typeof setGlassStrength === 'function') setGlassStrength(+gs || 0);
+  } catch (e) {}
   try { showLockScreen(); } catch (e) {}
   try {
     if (typeof applyFullscreenFromStore === 'function') applyFullscreenFromStore();
   } catch (e) {}
   try {
     if (typeof goHome === 'function') {
-      // 若当前在 home 页则刷新布局
       const home = document.getElementById('page-home');
       if (home && home.classList.contains('active')) goHome();
     }
