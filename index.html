@@ -1732,7 +1732,11 @@ body.night .loc-addr { color: #a1a1a6 !important; }
   </div>
   <style>
   @keyframes msgBannerIn { from { opacity:0; transform:translateY(-12px); } to { opacity:1; transform:translateY(0); } }
-  .msg-translation { font-size:11px; color:var(--sub,#8e8e93); margin-top:4px; line-height:1.4; opacity:.9; }
+  .msg-translation {
+    font-size: 11px; color: var(--sub,#8e8e93); margin-top: 6px; padding-top: 6px;
+    border-top: 1px solid rgba(0,0,0,.08); line-height: 1.45; opacity: .92;
+  }
+  .msg-row.me .msg-translation { border-top-color: rgba(0,0,0,.12); }
   </style>
 
   <input type="file" id="emojiFileInput" accept="image/*" style="display:none" onchange="onEmojiFile(event)">
@@ -1744,7 +1748,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-18n';
+const EENOK_BUILD = '2026-08-18p';
 function checkAppUpdate() {
   try {
     const prev = localStorage.getItem('eenook_build');
@@ -6107,15 +6111,36 @@ function toggleAutoTranslate() {
   if (sw) sw.classList.toggle('on', !!chat.autoTranslate);
   showToast(chat.autoTranslate ? '已开启自动翻译' : '已关闭自动翻译');
 }
+function isMostlyProperName(text) {
+  const t = String(text || '').trim();
+  if (!t) return true;
+  // 很短、几乎全是名字/称呼，不翻译
+  if (t.length <= 12 && !/[。！？.!?，,；;：:]/.test(t)) {
+    // 纯英文名 / 中文姓名 / 叠词称呼
+    if (/^[A-Za-z][A-Za-z\s\-']{0,20}$/.test(t)) return true;
+    if (/^[\u4e00-\u9fff]{1,6}$/.test(t)) return true;
+    if (/^(哥|姐|弟|妹|宝|亲|亲爱的|老公|老婆|宝宝|妈咪|爸爸|妈妈|哥哥|姐姐|弟弟|妹妹)+$/.test(t)) return true;
+  }
+  // 只有「名字 + 语气词」
+  if (/^[\u4e00-\u9fffA-Za-z\s]{1,10}(啊|呀|呢|哦|噢|嘛|啦|哈)*$/.test(t) && t.length <= 10) return true;
+  return false;
+}
 async function autoTranslateText(text, fromLang) {
   if (!text || !String(text).trim()) return '';
+  const src = String(text).trim();
+  // 明显人名/称呼不翻译
+  if (isMostlyProperName(src)) return '';
   // 已是中文且源语言是中文则不译
-  if ((!fromLang || fromLang === 'zh') && /[\u4e00-\u9fff]/.test(text) && !/[a-zA-Z]{4,}/.test(text)) return '';
+  if ((!fromLang || fromLang === 'zh') && /[\u4e00-\u9fff]/.test(src) && !/[a-zA-Z]{6,}/.test(src)) return '';
   try {
     const { text: tr } = await apiChat([
-      { role: 'user', content: '将下面内容翻译成简体中文，只输出译文，不要解释：\n' + String(text).slice(0, 500) }
-    ], { max_tokens: 300, temperature: 0.2 });
-    return (tr || '').trim().replace(/^["「]|["」]$/g, '');
+      { role: 'user', content: '将下面内容翻译成简体中文。规则：若整句主要是人名、昵称、称呼（如哥哥/姐/英文名），原样返回不要翻译；专有名词可保留原文。只输出译文或原文，不要解释：\n' + src.slice(0, 500) }
+    ], { max_tokens: 300, temperature: 0.15 });
+    let out = (tr || '').trim().replace(/^["「]|["」]$/g, '');
+    // 译文与原文几乎相同则不显示
+    if (!out || out === src || out.replace(/\s/g,'') === src.replace(/\s/g,'')) return '';
+    if (isMostlyProperName(out)) return '';
+    return out;
   } catch(e) { return ''; }
 }
 async function translateBubbleMsg(idx) {
@@ -12970,6 +12995,11 @@ function editHomePolaroid() {
 function openChangelog() {
   const ver = (typeof EENOK_BUILD !== 'undefined') ? EENOK_BUILD : '';
   const logs = [
+    { v: '2026-08-18p', items: [
+      '译文与正文用分界线隔开；明显人名/称呼不翻译',
+      'Dock 拖动 rAF 更顺滑；桌面编辑可＋界面 / 删本页',
+      'Instagram 搜索生成改为帖子样式；动态自动配占位图（无需生图 API）'
+    ]},
     { v: '2026-08-18n', items: [
       '时间感知：日期/季节/时区/间隔全写入聊天设置开关；对方说隔了几天必须承认',
       '聊天设置：角色语言（8种）+ 自动翻译；气泡菜单可翻译；译文在气泡下',
@@ -15021,9 +15051,10 @@ async function doIgGenFeed() {
         const j = JSON.parse(caption.replace(/```json|```/g,'').trim());
         caption = j.caption || caption; imgDesc = j.imgDesc || '';
       } catch(e) {}
+      const placeImg = igMakePlaceholderImg(imgDesc || caption, (c && c.id) || i);
       f.posts.unshift({
-        nick: c ? c.nick : 'explore', avatar: c && c.avatar || '', charId: c && c.id || '',
-        caption, imgDesc, img: '', ts: Date.now(), likes: Math.floor(Math.random()*200), comments: [], mine: false
+        nick: c ? (c.realName || c.nick) : 'explore', avatar: c && c.avatar || '', charId: c && c.id || '',
+        caption, imgDesc, img: placeImg, ts: Date.now(), likes: Math.floor(Math.random()*200), comments: [], mine: false
       });
     }
     save(); openForumIG('home');
@@ -15178,7 +15209,8 @@ async function igGenCharPosts(id) {
       ], { max_tokens: 100, temperature: 0.85 });
       let caption = (text||'').trim(), imgDesc = '';
       try { const j = JSON.parse(caption.replace(/```json|```/g,'').trim()); caption=(j.caption||caption).slice(0,60); imgDesc=(j.imgDesc||'').slice(0,40); } catch(e) { caption = caption.slice(0,60); }
-      f.posts.unshift({ nick: c.nick||id, avatar: c.avatar||'', charId: id, caption, imgDesc, img:'', ts:Date.now(), likes:Math.floor(Math.random()*80), comments:[], mine:false });
+      const placeImg = igMakePlaceholderImg(imgDesc || caption, id + i);
+      f.posts.unshift({ nick: c.realName||c.nick||id, avatar: c.avatar||'', charId: id, caption, imgDesc, img: placeImg, ts:Date.now(), likes:Math.floor(Math.random()*80), comments:[], mine:false });
     }
     if (f.profiles && f.profiles[id]) f.profiles[id].postsCount = (f.posts||[]).filter(x=>x.charId===id).length;
     save(); showToast('已生成'); igViewUserPosts(id);
@@ -15689,29 +15721,68 @@ function igFollowSuggest(nick) {
     <div class="setting-item" onclick="closeModal();openIgDm('${sid}')">发消息</div>
   `, `<button class="btn btn-secondary" onclick="closeModal()">关闭</button>`);
 }
+/** 无需生图 API：根据描述生成好看的占位图（SVG data URL） */
+function igMakePlaceholderImg(desc, seed) {
+  const s = String(desc || 'photo') + String(seed || '');
+  let h = 0;
+  for (var i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  const hues = [200, 280, 340, 30, 150, 190, 220, 260];
+  const h1 = hues[Math.abs(h) % hues.length];
+  const h2 = hues[Math.abs(h >> 3) % hues.length];
+  const c1 = 'hsl(' + h1 + ',55%,72%)';
+  const c2 = 'hsl(' + h2 + ',48%,58%)';
+  const c3 = 'hsl(' + ((h1 + 40) % 360) + ',40%,88%)';
+  const line = String(desc || '').slice(0, 28).replace(/[<>&"']/g, '');
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800" viewBox="0 0 800 800">'
+    + '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="'+c1+'"/><stop offset="100%" stop-color="'+c2+'"/></linearGradient></defs>'
+    + '<rect width="800" height="800" fill="url(#g)"/>'
+    + '<circle cx="620" cy="180" r="120" fill="'+c3+'" opacity=".45"/>'
+    + '<circle cx="160" cy="640" r="160" fill="#fff" opacity=".12"/>'
+    + '<text x="40" y="720" font-size="28" fill="rgba(0,0,0,.35)" font-family="system-ui,sans-serif">' + line + '</text>'
+    + '</svg>';
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+}
 async function igSearchGen() {
   const q = (document.getElementById('igSearchQ')||{}).value || '日常';
   showToast('生成中…');
-  ensureIG().explore = ensureIG().explore || [];
+  const f = ensureIG();
+  f.explore = f.explore || [];
+  f.posts = f.posts || [];
   try {
-    const prompt = '为 Instagram 探索页生成6条短视频/图文卡片，主题：「'+q+'」。只返回 JSON 数组：[{"caption":"画面文字描述20字内","text":"配文一句话","tag":"标签"}]。不要markdown。';
-    const raw = await apiChat([{ role:'user', content: prompt }], { temperature: 0.9, max_tokens: 600 });
+    const { text: raw } = await apiChat([
+      { role:'user', content: '为 Instagram 探索页生成 6 条「帖子样式」内容，主题：「'+q+'」。只返回 JSON 数组：[{"nick":"用户名","caption":"配文一句话","imgDesc":"画面内容描述20字内","tag":"标签"}]。不要 markdown。' }
+    ], { temperature: 0.9, max_tokens: 700 });
     let arr = [];
     try { arr = JSON.parse(String(raw||'').replace(/```json|```/g,'').trim()); } catch(e) {}
     if (!Array.isArray(arr) || !arr.length) {
-      arr = [1,2,3,4,5,6].map(function(n){ return { caption: q+' 画面 '+n, text: q+' · 随手记', tag: q }; });
+      arr = [1,2,3,4,5,6].map(function(n){ return { nick: 'user_'+n, caption: q+' · 随手拍', imgDesc: q+' 画面 '+n, tag: q }; });
     }
-    arr.slice(0,9).forEach(function(it) {
-      ensureIG().explore.unshift({
-        img: '',
-        caption: (it.caption || it.text || q).toString(),
-        text: (it.text || it.caption || '').toString(),
+    arr.slice(0,9).forEach(function(it, idx) {
+      const imgDesc = (it.imgDesc || it.caption || q).toString();
+      const nick = (it.nick || ('explore_'+idx)).toString();
+      const caption = (it.caption || it.text || q).toString();
+      const img = igMakePlaceholderImg(imgDesc, nick + idx);
+      f.explore.unshift({
+        img: img,
+        caption: imgDesc,
+        text: caption,
         tag: it.tag || q,
+        nick: nick,
+        imgDesc: imgDesc,
         ts: Date.now()
+      });
+      // 同时写入信息流，风格与帖子一致
+      f.posts.unshift({
+        nick: nick, avatar: '', charId: '', caption: caption, imgDesc: imgDesc, img: img,
+        ts: Date.now() - idx, likes: Math.floor(Math.random()*120), comments: [], mine: false
       });
     });
   } catch(e) {
-    for (let i=0;i<6;i++) ensureIG().explore.unshift({ img: '', caption: q+' · 画面'+(i+1), text: q, ts: Date.now() });
+    for (let i=0;i<6;i++) {
+      const imgDesc = q + ' · 画面' + (i+1);
+      const img = igMakePlaceholderImg(imgDesc, i);
+      f.explore.unshift({ img: img, caption: imgDesc, text: q, tag: q, nick: 'explore', imgDesc: imgDesc, ts: Date.now() });
+    }
   }
   save(); openForumIG('search');
 }
@@ -15722,10 +15793,15 @@ function igViewExplore(i) {
   function renderOne(idx) {
     const v = list[idx];
     if (!v) return '';
+    const bg = v.img
+      ? ('url('+v.img+') center/cover')
+      : 'linear-gradient(180deg,#1a1a1c,#0d0d0f)';
     return '<div style="height:100%;display:flex;flex-direction:column;background:#000;color:#fff">'
-      + '<div style="flex:1;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;background:linear-gradient(180deg,#1a1a1c,#0d0d0f)">'
-      + '<div style="font-size:16px;line-height:1.6;opacity:.9">'+escapeHtml(v.caption||v.text||'画面')+'</div></div>'
+      + '<div style="flex:1;background:'+bg+';position:relative">'
+      + (!v.img ? ('<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center"><div style="font-size:16px;line-height:1.6;opacity:.9">'+escapeHtml(v.caption||v.text||'画面')+'</div></div>') : '')
+      + '</div>'
       + '<div style="padding:16px;background:rgba(0,0,0,.85)">'
+      + (v.nick ? ('<div style="font-size:13px;font-weight:600;margin-bottom:4px">'+escapeHtml(v.nick)+'</div>') : '')
       + '<div style="font-size:14px;margin-bottom:6px">'+escapeHtml(v.text||v.caption||'')+'</div>'
       + '<div style="font-size:12px;opacity:.6">#'+escapeHtml(v.tag||'')+' · 上下滑切换</div></div></div>';
   }
@@ -21061,8 +21137,8 @@ if (t === 'badge3d') {
       + widgetHtml + appHtml + '' /*sq removed*/
       + '</div></div>'
       + '<div style="position:absolute;left:0;right:0;bottom:96px;text-align:center;z-index:5;pointer-events:none">'+dots+'</div>'
-      + (editMode ? '<div style="position:absolute;top:10px;left:0;right:0;text-align:center;z-index:20"><button type="button" id="homeEditDone" style="border:none;background:rgba(0,0,0,.55);color:#fff;border-radius:16px;padding:8px 18px;font-size:13px">完成</button> <button type="button" id="homeEditAdd" style="border:none;background:rgba(255,255,255,.9);border-radius:16px;padding:8px 14px;font-size:13px">＋App</button></div>' : '')
-      + '<div class="home-bottom-dock" id="homeDock" style="position:absolute;z-index:12;display:flex;justify-content:space-evenly;align-items:center;padding:10px 12px;border-radius:28px;background:'+dockBarBg+';backdrop-filter:'+dockBarBlur+';-webkit-backdrop-filter:'+dockBarBlur+';border:'+dockBarBorder+';box-shadow:'+dockBarShadow+';min-height:64px;min-width:180px;'
+      + (editMode ? '<div style="position:absolute;top:10px;left:0;right:0;text-align:center;z-index:20;display:flex;justify-content:center;gap:8px;flex-wrap:wrap;padding:0 8px"><button type="button" id="homeEditDone" style="border:none;background:rgba(0,0,0,.55);color:#fff;border-radius:16px;padding:8px 16px;font-size:13px">完成</button> <button type="button" id="homeEditAdd" style="border:none;background:rgba(255,255,255,.9);border-radius:16px;padding:8px 12px;font-size:13px">＋App</button> <button type="button" id="homeEditAddPage" style="border:none;background:rgba(255,255,255,.9);border-radius:16px;padding:8px 12px;font-size:13px">＋界面</button> <button type="button" id="homeEditDelPage" style="border:none;background:rgba(255,255,255,.85);border-radius:16px;padding:8px 12px;font-size:13px;color:#c0392b">删本页</button></div>' : '')
+      + '<div class="home-bottom-dock" id="homeDock" style="position:absolute;z-index:12;display:flex;justify-content:space-evenly;align-items:center;padding:10px 12px;border-radius:28px;background:'+dockBarBg+';backdrop-filter:'+dockBarBlur+';-webkit-backdrop-filter:'+dockBarBlur+';border:'+dockBarBorder+';box-shadow:'+dockBarShadow+';min-height:64px;min-width:180px;touch-action:none;will-change:left,top;'
       + (function(){
           var dp = state.home.layout && state.home.layout.dock;
           var ih = (document.getElementById('homeInner')||{}).clientHeight || 600;
@@ -21199,12 +21275,21 @@ if (t === 'badge3d') {
         save(); renderHome();
       };
     });
-    // Dock 自由拖动
+    // Dock 自由拖动（rAF 跟手更顺）
     (function(){
       var dock = document.getElementById('homeDock');
       if (!dock || dock.dataset.dragBound) return;
       dock.dataset.dragBound = '1';
-      var dragging=false,sx=0,sy=0,ox=0,oy=0,moved=0;
+      var dragging=false,sx=0,sy=0,ox=0,oy=0,moved=0,curX=0,curY=0,raf=0;
+      var apply = function(){
+        raf = 0;
+        if (!dragging) return;
+        dock.style.left = Math.max(0, curX) + 'px';
+        dock.style.right = 'auto';
+        dock.style.bottom = 'auto';
+        dock.style.top = Math.max(0, curY) + 'px';
+        dock.style.transform = 'none';
+      };
       var start = function(e){
         if (e.target.closest && (e.target.closest('.home-dock-item') || e.target.closest('.dock-del') || e.target.closest('#homeDockAdd'))) return;
         var t = e.touches ? e.touches[0] : e;
@@ -21212,24 +21297,23 @@ if (t === 'badge3d') {
         var r = dock.getBoundingClientRect();
         var pr = (dock.parentElement||dock).getBoundingClientRect();
         ox = r.left - pr.left; oy = r.top - pr.top;
+        curX = ox; curY = oy;
       };
       var move = function(e){
         if (!dragging) return;
         var t = e.touches ? e.touches[0] : e;
         var dx=t.clientX-sx, dy=t.clientY-sy;
         moved = Math.max(moved, Math.abs(dx)+Math.abs(dy));
-        if (moved > 6) {
+        if (moved > 4) {
           if (e.cancelable) e.preventDefault();
-          dock.style.left = Math.max(0, ox+dx) + 'px';
-          dock.style.right = 'auto';
-          dock.style.bottom = 'auto';
-          dock.style.top = Math.max(0, oy+dy) + 'px';
-          dock.style.transform = 'none';
+          curX = ox + dx; curY = oy + dy;
+          if (!raf) raf = requestAnimationFrame(apply);
         }
       };
       var end = function(){
         if (!dragging) return; dragging=false;
-        if (moved > 8) {
+        if (raf) { cancelAnimationFrame(raf); raf=0; apply(); }
+        if (moved > 6) {
           if (!state.home.layout) state.home.layout = {};
           state.home.layout.dock = { x: parseFloat(dock.style.left)||0, y: parseFloat(dock.style.top)||0 };
           save();
@@ -21238,6 +21322,7 @@ if (t === 'badge3d') {
       dock.addEventListener('touchstart', start, {passive:true});
       dock.addEventListener('touchmove', move, {passive:false});
       dock.addEventListener('touchend', end);
+      dock.addEventListener('touchcancel', end);
     })();
 
     // 小组件：始终可拖；点击空白/透明上传图
@@ -21345,6 +21430,43 @@ if (t === 'badge3d') {
     if (add) add.onclick = function(){ openHomeAddApp(); };
     var dadd = document.getElementById('homeDockAdd');
     if (dadd) dadd.onclick = function(){ openHomeDockPick(); };
+    var addPg = document.getElementById('homeEditAddPage');
+    if (addPg) addPg.onclick = function(){
+      var p = state.home.pages || 2;
+      if (p >= 8) { showToast('最多 8 个界面'); return; }
+      state.home.pages = p + 1;
+      if (!state.home.pageWidgets) state.home.pageWidgets = {};
+      var ni = p;
+      if (!state.home.pageWidgets[ni]) state.home.pageWidgets[ni] = [];
+      state.home.page = ni;
+      save(); renderHome(); showToast('已增加第 ' + (ni+1) + ' 页');
+    };
+    var delPg = document.getElementById('homeEditDelPage');
+    if (delPg) delPg.onclick = function(){
+      var p = state.home.pages || 2;
+      if (p <= 1) { showToast('至少保留 1 页'); return; }
+      var cur = state.home.page || 0;
+      if (!confirm('删除第 ' + (cur+1) + ' 页？该页组件会清空')) return;
+      if (state.home.pageWidgets) delete state.home.pageWidgets[cur];
+      // 把更高页码前移
+      var nextWidgets = {};
+      Object.keys(state.home.pageWidgets || {}).forEach(function(k){
+        var ki = +k;
+        if (ki < cur) nextWidgets[ki] = state.home.pageWidgets[k];
+        else if (ki > cur) nextWidgets[ki - 1] = state.home.pageWidgets[k];
+      });
+      state.home.pageWidgets = nextWidgets;
+      // layout 里的 page 字段同步
+      Object.keys(state.home.layout || {}).forEach(function(id){
+        var lay = state.home.layout[id];
+        if (!lay || lay.page == null) return;
+        if (lay.page === cur) { delete state.home.layout[id]; }
+        else if (lay.page > cur) lay.page = lay.page - 1;
+      });
+      state.home.pages = p - 1;
+      state.home.page = Math.min(cur, state.home.pages - 1);
+      save(); renderHome(); showToast('已删除');
+    };
 
     /* 捏捏已移除 */
 
