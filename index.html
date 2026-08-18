@@ -1739,7 +1739,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-18j';
+const EENOK_BUILD = '2026-08-18k';
 function checkAppUpdate() {
   try {
     const prev = localStorage.getItem('eenook_build');
@@ -5448,6 +5448,8 @@ function ensureAutonomy(chat) {
       linkWorldSchedule: true,
       moments: true,
       wechatMsg: false,
+      callVoice: false,
+      callVideo: false,
       instagram: false,
       shop: false,
       takeout: false,
@@ -5460,6 +5462,8 @@ function ensureAutonomy(chat) {
       worldLife: true
     };
   }
+  if (chat.autonomy.callVoice == null) chat.autonomy.callVoice = false;
+  if (chat.autonomy.callVideo == null) chat.autonomy.callVideo = false;
   return chat.autonomy;
 }
 function openCharAutonomySettings() {
@@ -5481,6 +5485,8 @@ function openCharAutonomySettings() {
     ${row('linkWorldSchedule','关联世界日程表','生成时参考世界 App 里该角色的日程')}
     ${row('moments','自己发布朋友圈','写入微信朋友圈，from=角色')}
     ${row('wechatMsg','给 user 发微信消息','写入当前会话')}
+    ${row('callVoice','主动打语音电话','会弹来电界面，可在聊天中提起')}
+    ${row('callVideo','主动打视频电话','会弹视频来电，双方默认可见')}
     ${row('instagram','去 Instagram 发动态','写入 IG 动态流')}
     ${row('shop','去商城买东西','记录一条购物行为到记忆')}
     ${row('takeout','去外卖买东西','记录外卖行为到记忆')}
@@ -5499,8 +5505,7 @@ function saveCharAutonomy() {
   const chat = state.chats[state.currentChatId];
   if (!chat) return;
   const a = ensureAutonomy(chat);
-  const keys = ['enabled','linkWorldSchedule','moments','wechatMsg','instagram','shop','takeout','sms','galgame','divination','scriptkill','countdown','memory','worldLife'];
-  // 先读 DOM，再写回对象（避免 closeModal 后读不到）
+  const keys = ['enabled','linkWorldSchedule','moments','wechatMsg','callVoice','callVideo','instagram','shop','takeout','sms','galgame','divination','scriptkill','countdown','memory','worldLife'];
   const snap = {};
   keys.forEach(function(k) {
     const el = document.getElementById('au_' + k);
@@ -5509,7 +5514,6 @@ function saveCharAutonomy() {
   keys.forEach(function(k) {
     if (snap[k] !== undefined) a[k] = snap[k];
   });
-  // 总开关再读一次，防止漏绑
   const enEl = document.getElementById('au_enabled');
   if (enEl) a.enabled = !!enEl.checked;
   chat.autonomy = Object.assign({}, a);
@@ -5538,6 +5542,19 @@ async function runCharAutonomyOnce() {
   } catch(e) {}
   const persona = (ch.persona || '').slice(0, 220);
   const nick = ch.nick || ch.realName || '角色';
+  const userNick = (state.user && (state.user.nick || state.user.realName)) || '对方';
+  function writeWorldLifeTrace(text) {
+    try {
+      if (typeof ensureCharWorld === 'function') {
+        const w = ensureCharWorld(charId);
+        if (w) {
+          if (!w.life) w.life = [];
+          w.life.push({ text: String(text || '').slice(0, 200), ts: Date.now(), from: 'autonomy' });
+          if (w.life.length > 80) w.life = w.life.slice(-80);
+        }
+      }
+    } catch(e) {}
+  }
   async function ask(sys, user) {
     const { text } = await apiChat([
       { role: 'system', content: sys },
@@ -5548,12 +5565,13 @@ async function runCharAutonomyOnce() {
   try {
     if (a.moments) {
       const t = await ask(
-        '你是「'+nick+'」，发一条微信朋友圈。符合人设，禁止OOC。只输出文案15-60字。人设：'+persona+(scheduleHint?(' 今日日程参考：'+scheduleHint):''),
+        '你是「'+nick+'」，发一条微信朋友圈。符合人设，禁止OOC。只输出文案15-60字。禁止第二人称「你/您」；若提到重要的人用第三人称或爱称「'+userNick+'」。人设：'+persona+(scheduleHint?(' 今日日程参考：'+scheduleHint):''),
         '发一条日常朋友圈。'
       );
       if (t) {
         state.moments.push({ from: 'char', fromId: ch.id, text: t.replace(/^["「『]|["」』]$/g,''), images: [], group: '公开', likes: 0, likedBy: [], comments: [], ts: Date.now() });
         logs.push('朋友圈');
+        writeWorldLifeTrace('发了朋友圈：' + t.slice(0, 80));
       }
     }
     if (a.wechatMsg) {
@@ -5565,7 +5583,21 @@ async function runCharAutonomyOnce() {
         if (!chat.messages) chat.messages = [];
         chat.messages.push({ from: 'char', type: 'text', content: t.replace(/^["「『]|["」』]$/g,''), ts: Date.now() });
         logs.push('微信');
+        writeWorldLifeTrace('给对方发了微信：' + t.slice(0, 80));
       }
+    }
+    // 主动打电话 / 视频（在聊天里可被提起；会弹来电界面）
+    if (a.callVoice || a.callVideo) {
+      const isVid = !!a.callVideo && (!a.callVoice || Math.random() > 0.45);
+      logs.push(isVid ? '视频通话' : '语音通话');
+      writeWorldLifeTrace('想给对方打一通' + (isVid ? '视频' : '语音') + '电话');
+      try {
+        if (!chat.messages) chat.messages = [];
+        chat.messages.push({ from: 'char', type: 'text', content: isVid ? '（发起了视频通话）' : '（发起了语音通话）', ts: Date.now() });
+        setTimeout(function() {
+          try { showIncomingCall(charId, nick, { video: isVid }); } catch(e) {}
+        }, 600);
+      } catch(e) {}
     }
     if (a.instagram) {
       const t = await ask(
@@ -5579,6 +5611,7 @@ async function runCharAutonomyOnce() {
             f.posts = f.posts || [];
             f.posts.unshift({ nick: nick, avatar: ch.avatar || '', charId: ch.id, caption: t.replace(/^["「『]|["」』]$/g,''), img: '', ts: Date.now(), likes: Math.floor(Math.random()*30), comments: [], mine: false });
             logs.push('Instagram');
+            writeWorldLifeTrace('在 Instagram 发了动态：' + t.slice(0, 80));
           }
         } catch(e) {}
       }
@@ -5596,6 +5629,7 @@ async function runCharAutonomyOnce() {
           if (!state.sms.threads[tid]) state.sms.threads[tid] = { id: tid, charId: charId, name: nick, messages: [] };
           state.sms.threads[tid].messages.push({ from: 'char', text: t.replace(/^["「『]|["」』]$/g,''), ts: Date.now() });
           logs.push('短信');
+          writeWorldLifeTrace('给对方发了短信：' + t.slice(0, 80));
         } catch(e) {}
       }
     }
@@ -5609,14 +5643,16 @@ async function runCharAutonomyOnce() {
         if (!chat.shortMemory) chat.shortMemory = [];
         chat.shortMemory.push({ content: '（自主）去'+kind+'：'+t.slice(0,120), ts: Date.now(), from: 'autonomy' });
         logs.push(kind);
+        writeWorldLifeTrace('去'+kind+'：' + t.slice(0, 100));
       }
     }
     if (a.galgame) {
-      const t = await ask('你是「'+nick+'」，用一句话记录自己玩 galgame 时对 user 的攻略想法，符合人设。','写一句攻略随记。');
+      const t = await ask('你是「'+nick+'」，用一句话记录自己玩 galgame 时的想法，符合人设。','写一句攻略随记。');
       if (t) {
         if (!chat.shortMemory) chat.shortMemory = [];
         chat.shortMemory.push({ content: '（自主·gal）'+t.slice(0,120), ts: Date.now(), from: 'autonomy' });
         logs.push('galgame');
+        writeWorldLifeTrace('玩了 galgame：' + t.slice(0, 80));
       }
     }
     if (a.divination) {
@@ -5625,6 +5661,7 @@ async function runCharAutonomyOnce() {
         if (!chat.shortMemory) chat.shortMemory = [];
         chat.shortMemory.push({ content: '（自主·占卜）'+t.slice(0,120), ts: Date.now(), from: 'autonomy' });
         logs.push('占卜');
+        writeWorldLifeTrace('算了占卜：' + t.slice(0, 80));
       }
     }
     if (a.scriptkill) {
@@ -5633,6 +5670,7 @@ async function runCharAutonomyOnce() {
         if (!chat.shortMemory) chat.shortMemory = [];
         chat.shortMemory.push({ content: '（自主·剧本杀）'+t.slice(0,120), ts: Date.now(), from: 'autonomy' });
         logs.push('剧本杀');
+        writeWorldLifeTrace('玩了剧本杀：' + t.slice(0, 80));
       }
     }
     if (a.countdown) {
@@ -5642,6 +5680,7 @@ async function runCharAutonomyOnce() {
         const day = new Date(); day.setDate(day.getDate() + 7 + Math.floor(Math.random()*20));
         state.countdowns.push({ id: 'cd_auto_'+Date.now(), title: title, date: day.toISOString().slice(0,10), note: '角色自主添加', charId: ch.id, ts: Date.now() });
         logs.push('倒数日');
+        writeWorldLifeTrace('添加了倒数日：' + title);
       } catch(e) {}
     }
     if (a.memory) {
@@ -5655,21 +5694,17 @@ async function runCharAutonomyOnce() {
           state.memoryApp[charId].push({ text: t.slice(0,120), ts: Date.now(), from: 'autonomy' });
         } catch(e) {}
         logs.push('记忆');
+        writeWorldLifeTrace('记了一笔：' + t.slice(0, 80));
       }
     }
     if (a.worldLife) {
       const t = await ask(
-        '你是「'+nick+'」，写今日生活随笔80-120字：遇见的事或忽然想起对方。第一人称。人设：'+persona+(scheduleHint?(' 日程：'+scheduleHint):''),
+        '你是「'+nick+'」，写今日生活随笔80-120字：遇见的事或忽然想起某人。第一人称。禁止第二人称「你」。人设：'+persona+(scheduleHint?(' 日程：'+scheduleHint):''),
         '写今天的生活随笔。'
       );
       if (t) {
-        try {
-          if (typeof ensureWorldState === 'function') ensureWorldState();
-          if (!state.world) state.world = { life: [] };
-          if (!state.world.life) state.world.life = [];
-          state.world.life.push({ charId: ch.id, charName: nick, text: t, ts: Date.now() });
-          logs.push('世界·生活');
-        } catch(e) {}
+        writeWorldLifeTrace(t);
+        logs.push('世界·生活');
       }
     }
     if (chat.shortMemory && chat.shortMemory.length > 30) chat.shortMemory = chat.shortMemory.slice(-30);
@@ -6292,8 +6327,9 @@ async function doGenCharMoments() {
     for (var i = 0; i < n; i++) {
       const ch = cid ? pool.find(c => c.id === cid) : pool[Math.floor(Math.random() * pool.length)];
       if (!ch) continue;
+      const userNick = (state.user && (state.user.nick || state.user.realName)) || '对方';
       const { text } = await apiChat([
-        { role: 'system', content: '你是「'+(ch.nick||ch.realName||'角色')+'」，正在发微信朋友圈。必须符合人设，禁止OOC。只输出一条简短朋友圈文案（15-60字），口语自然，可带一点点情绪，不要引号、不要标题、不要署名。人设：'+(ch.persona||'普通人').slice(0,200) },
+        { role: 'system', content: '你是「'+(ch.nick||ch.realName||'角色')+'」，正在发微信朋友圈。必须符合人设，禁止OOC。只输出一条简短朋友圈文案（15-60字），口语自然。\n【铁律】这是公开动态，不是私聊。禁止使用第二人称「你/您」对谁说话；若提到重要的人，用第三人称、小名或爱称（如「'+userNick+'」/「那人」），像在自言自语或对网友说，不要写成在跟对方对话。不要引号、不要标题、不要署名。人设：'+(ch.persona||'普通人').slice(0,200) },
         { role: 'user', content: '发一条朋友圈'+(theme?('，主题：'+theme):'，日常即可')+'。' }
       ], { max_tokens: 120, temperature: 0.9 });
       const body = (text || '').trim().replace(/^["「『]|["」』]$/g, '');
@@ -11774,10 +11810,23 @@ function setPhoneAppData(contactId, appId, data) {
   try { save(); } catch(e) {}
 }
 
+function ensureCharPhoneObj(ch) {
+  if (!ch) return { apps: { wechat: true, browser: true, notes: true } };
+  // ch.phone 可能是电话号码字符串，不能当对象用
+  if (typeof ch.phone === 'string') {
+    ch.phoneNumber = ch.phoneNumber || ch.phone;
+    ch.phone = { notes: [], browser: [], apps: { wechat: true, browser: true, notes: true }, number: ch.phoneNumber };
+  } else if (!ch.phone || typeof ch.phone !== 'object' || Array.isArray(ch.phone)) {
+    ch.phone = { notes: [], browser: [], apps: { wechat: true, browser: true, notes: true } };
+  }
+  if (!ch.phone.apps || typeof ch.phone.apps !== 'object') {
+    ch.phone.apps = { wechat: true, browser: true, notes: true };
+  }
+  return ch.phone;
+}
 function openCharPhone(cid) {
   let ch = (state.chars || []).find(c => c && c.id === cid);
   if (!ch) {
-    // 兼容：id 不一致时用列表兜底
     ch = (state._phoneCheckList || []).find(c => c && (c.id === cid || c === cid));
   }
   if (!ch) { showToast('角色不存在或数据损坏'); return; }
@@ -11791,9 +11840,8 @@ function openCharPhone(cid) {
   state._subBackFn = function(){ openPhoneCheck(); };
   state._clickGuardUntil = 0;
   try { ensurePhoneData(cid); } catch(e) {}
-  if (!ch.phone) ch.phone = { notes: [], browser: [], apps: { wechat:true, browser:true, notes:true } };
-  if (!ch.phone.apps) ch.phone.apps = { wechat:true, browser:true, notes:true };
-  const apps = ch.phone.apps;
+  const phoneObj = ensureCharPhoneObj(ch);
+  const apps = phoneObj.apps || { wechat: true, browser: true, notes: true };
   const dark = state.theme && state.theme.mode === 'dark';
   const bg = dark ? 'linear-gradient(180deg,#1a1a1c,#0d0d0f)' : 'linear-gradient(180deg,#e8f4f8,#d4ebea)';
   const fg = dark ? '#f5f5f7' : '#1c1c1e';
@@ -11843,7 +11891,7 @@ function openPhoneWechat(tab) {
   state._clickGuardUntil = 0;
   const ch = state.chars.find(c=>c.id===state._phoneChar);
   if (!ch) { showToast('请先选择角色'); return; }
-  if (!ch.phone) ch.phone = { notes: [], browser: [], apps: { wechat:true, browser:true, notes:true }, wechatData: {} };
+  ensureCharPhoneObj(ch);
   if (!ch.phone.wechatData) ch.phone.wechatData = {};
   const wd = ch.phone.wechatData;
   tab = tab || 'chats';
@@ -12014,7 +12062,7 @@ function backPhoneHome() {
 }
 function savePhoneApps() {
   const ch = state.chars.find(c=>c.id===state._phoneChar);
-  if (!ch.phone) ch.phone = {};
+  ensureCharPhoneObj(ch);
   ch.phone.apps = {
     wechat: document.getElementById('pa_wechat').checked,
     browser: document.getElementById('pa_browser').checked,
@@ -12024,8 +12072,8 @@ function savePhoneApps() {
 }
 async function genPhoneContent() {
   const ch = state.chars.find(c=>c.id===state._phoneChar);
-  if (!ch.phone) ch.phone = { notes:[] };
-  // 简单生成几条备忘录
+  if (!ch) return;
+  ensureCharPhoneObj(ch);
   ch.phone.notes = ch.phone.notes || [];
   ch.phone.notes.unshift({ title:'今日待办', body:'记得回消息\n晚上早点休息', ts:Date.now() });
   save(); alert('已生成示例内容'); openPhoneApp('notes');
@@ -12034,7 +12082,7 @@ function openPhoneApp(app) {
   state._clickGuardUntil = 0;
   const ch = state.chars.find(c=>c.id===state._phoneChar);
   if (!ch) { showToast('未选择角色手机'); return; }
-  if (!ch.phone) ch.phone = { notes: [], browser: [], apps: { wechat:true, browser:true, notes:true } };
+  ensureCharPhoneObj(ch);
   state._homeRoot = 'phonecheck';
   state._homeDepth = 2;
   state._subBackFn = function(){ openCharPhone(state._phoneChar); };
@@ -12088,7 +12136,7 @@ function openPhoneApp(app) {
     return;
   }
   if (app === 'settings') {
-    if (!ch.phone.apps) ch.phone.apps = { wechat:true, browser:true, notes:true };
+    ensureCharPhoneObj(ch);
     const apps = ch.phone.apps;
     const dark = state.theme && state.theme.mode === 'dark';
     const bg = dark ? '#000' : '#f2f2f7';
@@ -12616,6 +12664,13 @@ function editHomePolaroid() {
 function openChangelog() {
   const ver = (typeof EENOK_BUILD !== 'undefined') ? EENOK_BUILD : '';
   const logs = [
+    { v: '2026-08-18k', items: [
+      '查手机：ch.phone 为电话字符串时不再读 wechat 报错',
+      '玻璃强度 0 时主屏图标与 Dock 背景完全透明',
+      '视频通话补输入框与发送；角色可主动来电（语音/视频）',
+      '自主活动每项写入该角色「世界·生活」痕迹',
+      '角色公开动态禁止「你」，改用第三人称/小名/爱称'
+    ]},
     { v: '2026-08-18j', items: [
       '世界：先选角色，每位角色独立世界（地图/日历/日程/生活不互通）；水色 UI；日历标注显示在下方',
       '玻璃质感可滑动调节 0–100%，默认 0 完全透明',
@@ -12965,10 +13020,13 @@ function setGlassStrength(v, live) {
   if (!live) {
     try { save(); } catch(e) {}
     try { localStorage.setItem('eenok_glass_str', String(v)); } catch(e) {}
+    try { if (typeof renderHome === 'function') renderHome(); } catch(e) {}
   } else {
-    // 拖动时节流保存
     clearTimeout(window._glassSaveT);
-    window._glassSaveT = setTimeout(function(){ try { save(); localStorage.setItem('eenok_glass_str', String(v)); } catch(e) {} }, 400);
+    window._glassSaveT = setTimeout(function(){
+      try { save(); localStorage.setItem('eenok_glass_str', String(v)); } catch(e) {}
+      try { if (typeof renderHome === 'function') renderHome(); } catch(e) {}
+    }, 400);
   }
 }
 function applyGlassUI(on) {
@@ -14362,8 +14420,9 @@ async function doIcityGen() {
       } else {
         nick = npcNames[Math.floor(Math.random()*npcNames.length)] + Math.floor(Math.random()*20);
       }
+      const userNick = (state.user && (state.user.nick || state.user.realName)) || '';
       const { text } = await apiChat([
-        { role:'user', content: '写一条社交广场短动态（40-90字），口语自然有活人感。发布者叫「'+nick+'」。'+(personaHint?('人设参考：'+personaHint+'。'):'')+'主题：'+(theme||'日常')+'。'+(hint||'')+'。只输出正文，不要署名。' }
+        { role:'user', content: '写一条社交广场短动态（40-90字），口语自然有活人感。发布者叫「'+nick+'」。'+(personaHint?('人设参考：'+personaHint+'。'):'')+'主题：'+(theme||'日常')+'。'+(hint||'')+'。\n【铁律】这是公开动态不是私聊。禁止使用第二人称「你/您」对读者说话；若提到熟人，用第三人称或小名/爱称'+(userNick?('（如「'+userNick+'」）'):'')+'，不要写成在跟某个人对话。只输出正文，不要署名。' }
       ], { max_tokens: 140, temperature: 0.9 });
       state.icity.posts.unshift({
         nick, avatar, charId, content: (text||'').trim(), tags, likes:[], comments:[], ts:Date.now() - i*1000, isUser: false
@@ -16860,6 +16919,38 @@ async function startCall(charId, name, opts) {
 function startVideoCall(charId, name) {
   return startCall(charId, name, { video: true });
 }
+/** 角色主动来电（语音/视频） */
+function showIncomingCall(charId, name, opts) {
+  opts = opts || {};
+  const isVideo = !!opts.video;
+  const c = charId ? (state.chars || []).find(x => x.id === charId) : null;
+  const display = name || (c && (c.nick || c.realName)) || '未知';
+  const av = c ? avatarUrl(c) : '';
+  openSubPage('', `
+    <div style="position:absolute;inset:0;background:linear-gradient(180deg,#3d3d55,#1a1a28);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 24px;box-sizing:border-box">
+      <div style="font-size:13px;opacity:.75;margin-bottom:8px">${isVideo?'视频来电':'语音来电'}</div>
+      <div style="font-size:28px;font-weight:600;margin-bottom:28px">${escapeHtml(display)}</div>
+      <div style="width:120px;height:120px;border-radius:50%;overflow:hidden;background:rgba(255,255,255,.12);margin-bottom:48px;border:2px solid rgba(255,255,255,.2)">
+        ${av?`<img src="${av}" style="width:100%;height:100%;object-fit:cover">`:'<div style="width:100%;height:100%;background:#555"></div>'}
+      </div>
+      <div style="display:flex;gap:48px;align-items:center">
+        <div style="text-align:center">
+          <button type="button" onclick="endCall(false)" style="width:64px;height:64px;border-radius:50%;border:none;background:#ff3b30;color:#fff;cursor:pointer">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+          <div style="font-size:12px;margin-top:8px;opacity:.8">拒绝</div>
+        </div>
+        <div style="text-align:center">
+          <button type="button" onclick="(function(){state._callCtx={charId:'${charId||''}',name:'${escapeHtml(display).replace(/'/g,"\\'")}',logs:[],answered:false,started:Date.now(),video:${isVideo?'true':'false'},bg:''};answerCallAuto();})()" style="width:64px;height:64px;border-radius:50%;border:none;background:#34c759;color:#fff;cursor:pointer">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+          </button>
+          <div style="font-size:12px;margin-top:8px;opacity:.8">接听</div>
+        </div>
+      </div>
+    </div>
+  `, '', { replace: false, backFn: function(){ try { endCall(false); } catch(e) {} } });
+  try { document.getElementById('subNav').style.display = 'none'; } catch(e) {}
+}
 async function answerCallAuto() {
   const ctx = state._callCtx;
   if (!ctx || ctx.answered) return;
@@ -16888,10 +16979,16 @@ async function answerCallAuto() {
               <img src="${avatarUrl(state.user)}" style="width:100%;height:100%;object-fit:cover" alt="">
             </div>
           </div>
-          <div id="callChatLog" style="max-height:20vh;overflow-y:auto;padding:6px 14px;font-size:13px;line-height:1.5"></div>
-          <div style="padding:10px 16px 28px;display:flex;justify-content:center;gap:26px;align-items:flex-end">
-            <div style="text-align:center"><button type="button" onclick="state.fileTarget='callBg';document.getElementById('fileInput').accept='image/*';document.getElementById('fileInput').click()" style="width:52px;height:52px;border-radius:50%;border:none;background:rgba(255,255,255,.18);color:#fff;cursor:pointer;font-size:13px">背景</button><div style="font-size:11px;margin-top:6px;opacity:.8">上传</div></div>
-            <div style="text-align:center"><button type="button" onclick="callGenReply()" style="width:52px;height:52px;border-radius:50%;border:none;background:rgba(255,255,255,.18);color:#fff;cursor:pointer">○</button><div style="font-size:11px;margin-top:6px;opacity:.8">生成</div></div>
+          <div id="callChatLog" style="max-height:16vh;overflow-y:auto;padding:6px 14px;font-size:13px;line-height:1.5"></div>
+          <div style="width:100%;padding:0 14px 8px;box-sizing:border-box;display:flex;gap:8px;align-items:center">
+            <input id="callInput" placeholder="说点什么…" style="flex:1;border:none;border-radius:20px;padding:10px 14px;background:rgba(255,255,255,.16);color:#fff;font-size:14px;outline:none">
+            <button type="button" onclick="callGenReply()" style="border:none;background:rgba(255,255,255,.2);color:#fff;border-radius:50%;width:40px;height:40px;cursor:pointer;flex-shrink:0">○</button>
+            <button type="button" onclick="callSendUser()" style="border:none;background:#34c759;color:#fff;border-radius:50%;width:40px;height:40px;cursor:pointer;flex-shrink:0">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+            </button>
+          </div>
+          <div style="padding:6px 16px 24px;display:flex;justify-content:center;gap:26px;align-items:flex-end">
+            <div style="text-align:center"><button type="button" onclick="state.fileTarget='callBg';document.getElementById('fileInput').accept='image/*';document.getElementById('fileInput').click()" style="width:52px;height:52px;border-radius:50%;border:none;background:rgba(255,255,255,.18);color:#fff;cursor:pointer;font-size:12px">背景</button><div style="font-size:11px;margin-top:6px;opacity:.8">上传</div></div>
             <div style="text-align:center"><button type="button" onclick="endCall(true)" style="width:64px;height:64px;border-radius:50%;border:none;background:#ff3b30;color:#fff;cursor:pointer"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button><div style="font-size:11px;margin-top:6px;opacity:.8">挂断</div></div>
           </div>
         </div>
@@ -20499,8 +20596,14 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
       } else {
         iconInner = (typeof homeAppIconSvg === 'function' ? homeAppIconSvg(a.id) : a.name.slice(0,2));
       }
+      var gStr = (state.home && state.home.glassStrength != null) ? +state.home.glassStrength : 0;
+      var iconBg = gStr > 0
+        ? ('rgba(255,255,255,' + (0.12 + gStr / 100 * 0.55).toFixed(2) + ')')
+        : 'transparent';
+      var iconBlur = gStr > 0 ? ('blur(' + (gStr * 0.2).toFixed(1) + 'px)') : 'none';
+      var iconShadow = gStr > 0 ? '0 2px 10px rgba(100,160,180,.12)' : 'none';
       return '<div class="home-app" data-key="'+a.id+'" data-open="'+a.open+'" style="left:'+x+'px;top:'+y+'px;width:72px">'
-        + '<div class="ha-icon" style="width:56px;height:56px;margin:0 auto;border-radius:'+radius+'px;background:rgba(255,255,255,.7);backdrop-filter:blur(10px);box-shadow:0 2px 10px rgba(100,160,180,.12);display:flex;align-items:center;justify-content:center;overflow:hidden">'+iconInner+'</div>'
+        + '<div class="ha-icon" style="width:56px;height:56px;margin:0 auto;border-radius:'+radius+'px;background:'+iconBg+';backdrop-filter:'+iconBlur+';-webkit-backdrop-filter:'+iconBlur+';box-shadow:'+iconShadow+';display:flex;align-items:center;justify-content:center;overflow:hidden">'+iconInner+'</div>'
         + '<div class="ha-name" style="text-align:center;font-size:11px;margin-top:4px;color:#333">'+a.name+'</div>'
         + (editMode ? '<span class="home-app-del" data-del="'+a.id+'" style="position:absolute;top:-4px;right:4px;width:20px;height:20px;border-radius:50%;background:#ff3b30;color:#fff;font-size:14px;line-height:20px;text-align:center;z-index:3">−</span>' : '')
         + '</div>';
@@ -20567,6 +20670,12 @@ if (t === 'badge3d') {
       dots += '<span style="width:'+(di===page?14:6)+'px;height:6px;border-radius:3px;background:'+(di===page?'rgba(60,120,140,.75)':'rgba(0,0,0,.18)')+';display:inline-block;margin:0 3px"></span>';
     }
 
+    var gStrDock = (state.home && state.home.glassStrength != null) ? +state.home.glassStrength : 0;
+    var dockIconBg = gStrDock > 0 ? ('rgba(255,255,255,' + (0.12 + gStrDock / 100 * 0.55).toFixed(2) + ')') : 'transparent';
+    var dockBarBg = gStrDock > 0 ? ('rgba(255,255,255,' + (0.2 + gStrDock / 100 * 0.45).toFixed(2) + ')') : 'transparent';
+    var dockBarBlur = gStrDock > 0 ? ('blur(' + (8 + gStrDock * 0.2).toFixed(1) + 'px)') : 'none';
+    var dockBarBorder = gStrDock > 0 ? '0.5px solid rgba(255,255,255,.55)' : 'none';
+    var dockBarShadow = gStrDock > 0 ? '0 8px 28px rgba(80,140,160,.12)' : 'none';
     var dockHtml = dockIds.map(function(id) {
       var a = allApps.find(function(x){ return x.id===id; }) || { id:id, name:id, open:'' };
       var custom = icons[id];
@@ -20574,7 +20683,7 @@ if (t === 'badge3d') {
         ? '<img src="'+custom+'" draggable="false" onerror="this.style.display=\'none\'" style="width:100%;height:100%;object-fit:cover;border-radius:inherit">'
         : (typeof homeAppIconSvg === 'function' ? homeAppIconSvg(id) : (a.name||'?').slice(0,1));
       return '<div class="home-dock-item" data-open="'+(a.open||'')+'" data-key="'+id+'" style="position:relative;width:56px;text-align:center">'
-        + '<div class="ha-icon" style="width:52px;height:52px;margin:0 auto;border-radius:'+radius+'px;background:rgba(255,255,255,.7);display:flex;align-items:center;justify-content:center;overflow:hidden">'+iconInner+'</div>'
+        + '<div class="ha-icon" style="width:52px;height:52px;margin:0 auto;border-radius:'+radius+'px;background:'+dockIconBg+';display:flex;align-items:center;justify-content:center;overflow:hidden">'+iconInner+'</div>'
         + (editMode ? '<span class="dock-del" data-del="'+id+'" style="position:absolute;top:-6px;right:0;width:18px;height:18px;border-radius:50%;background:#ff3b30;color:#fff;font-size:12px;line-height:18px;text-align:center">−</span>' : '')
         + '</div>';
     }).join('');
@@ -20587,7 +20696,7 @@ if (t === 'badge3d') {
       + '</div></div>'
       + '<div style="position:absolute;left:0;right:0;bottom:96px;text-align:center;z-index:5;pointer-events:none">'+dots+'</div>'
       + (editMode ? '<div style="position:absolute;top:10px;left:0;right:0;text-align:center;z-index:20"><button type="button" id="homeEditDone" style="border:none;background:rgba(0,0,0,.55);color:#fff;border-radius:16px;padding:8px 18px;font-size:13px">完成</button> <button type="button" id="homeEditAdd" style="border:none;background:rgba(255,255,255,.9);border-radius:16px;padding:8px 14px;font-size:13px">＋App</button></div>' : '')
-      + '<div class="home-bottom-dock" id="homeDock" style="position:absolute;z-index:12;display:flex;justify-content:space-evenly;align-items:center;padding:10px 12px;border-radius:28px;background:rgba(255,255,255,.55);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:0.5px solid rgba(255,255,255,.6);box-shadow:0 8px 28px rgba(80,140,160,.12);min-height:64px;min-width:180px;'
+      + '<div class="home-bottom-dock" id="homeDock" style="position:absolute;z-index:12;display:flex;justify-content:space-evenly;align-items:center;padding:10px 12px;border-radius:28px;background:'+dockBarBg+';backdrop-filter:'+dockBarBlur+';-webkit-backdrop-filter:'+dockBarBlur+';border:'+dockBarBorder+';box-shadow:'+dockBarShadow+';min-height:64px;min-width:180px;'
       + (function(){
           var dp = state.home.layout && state.home.layout.dock;
           var ih = (document.getElementById('homeInner')||{}).clientHeight || 600;
