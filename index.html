@@ -1748,7 +1748,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-18p';
+const EENOK_BUILD = '2026-08-19a';
 function checkAppUpdate() {
   try {
     const prev = localStorage.getItem('eenook_build');
@@ -2682,7 +2682,7 @@ function closeSubPage() {
         if (root === 'beauty') { openHomeBeauty(); return; }
         if (root === 'settings') { openHomeSettingsPage(); return; }
         if (root === 'forum') { openForumIG(state._igTab||'home'); return; }
-        if (root === 'world') { openWorldApp(state.world && state.world.tab || 'map'); return; }
+        if (root === 'world') { state.world.currentCharId = null; state._homeDepth = 0; openWorldApp(); return; }
       } catch(e) { console.warn(e); }
       try { goHome(); } catch(e) { showPage('home'); }
       return;
@@ -3075,7 +3075,16 @@ function renderMessages(opts) {
       content = q + escapeHtml(m.content);
       if (m.translation) content += `<div class="msg-translation">${escapeHtml(m.translation)}</div>`;
     } else if (m.type === 'image') {
-      content = `<img class="msg-img" src="${m.content}" onclick="event.stopPropagation();onImageClick(${idx})">`;
+      let imgSrc = m.content || '';
+      if (!imgSrc || imgSrc === 'undefined' || imgSrc === 'null') {
+        imgSrc = (typeof igMakePlaceholderImg === 'function')
+          ? igMakePlaceholderImg(m.desc || m.hiddenText || '图片', idx)
+          : '';
+      }
+      const cap = escapeHtml(m.desc || m.hiddenText || '');
+      content = imgSrc
+        ? `<img class="msg-img" src="${imgSrc}" alt="${cap}" onclick="event.stopPropagation();onImageClick(${idx})" onerror="this.onerror=null;this.src='';this.style.display='none';this.insertAdjacentHTML('afterend','<div style=padding:12px;background:#f0f0f0;border-radius:8px;font-size:13px;color:#666>📷 ${cap||'图片'}</div>')">`
+        : `<div style="padding:12px 14px;background:#f0f0f0;border-radius:10px;font-size:13px;color:#555;max-width:200px">📷 ${cap||'图片'}</div>`;
     } else if (m.type === 'emoji') {
       content = `<img class="msg-emoji-img" src="${m.content}" onclick="event.stopPropagation();onImageClick(${idx})">`;
     } else if (m.type === 'redpacket') {
@@ -3793,10 +3802,14 @@ function parseCharRichContent(raw) {
     return '';
   });
   t = t.replace(/\[图片[:：]([^\]]+)\]/g, function(_, desc) {
-    const colors = ['#f5e6d3','#e8f0e8','#e8eaf6','#fce4ec','#e0f7fa'];
-    const bg = colors[Math.floor(Math.random()*colors.length)];
-    const svg = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="280" height="200"><rect fill="'+bg+'" width="280" height="200" rx="10"/><text x="140" y="100" font-size="15" fill="#666" text-anchor="middle">'+String(desc).slice(0,18)+'</text></svg>');
-    extras.push({ type: 'image', content: svg, desc: desc.trim(), hiddenText: desc.trim() });
+    const d = String(desc || '').trim() || '图片';
+    // 始终先给虚拟图（不依赖生图 API），避免裂图
+    const svg = (typeof igMakePlaceholderImg === 'function')
+      ? igMakePlaceholderImg(d, d)
+      : ('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="480" height="360"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#e8f4f8"/><stop offset="100%" stop-color="#d4ebea"/></linearGradient></defs><rect width="480" height="360" fill="url(#g)" rx="12"/><text x="240" y="180" font-size="20" fill="#4a6670" text-anchor="middle" font-family="system-ui,sans-serif">'+d.slice(0,20)+'</text></svg>'
+        ));
+    extras.push({ type: 'image', content: svg, desc: d, hiddenText: d });
     return '';
   });
   t = t.replace(/\[表情[:：]([^\]]+)\]/g, function(_, e) {
@@ -3873,16 +3886,21 @@ async function pushSentences(chat, sentences, fromMeta) {
         if (fromMeta.thought && i === 0) msg.thought = fromMeta.thought;
       }
       if (!msg.thought && state._lastThought && i === 0) msg.thought = state._lastThought;
-      // 自动翻译
-      try {
-        if (chat && chat.autoTranslate && typeof autoTranslateText === 'function') {
-          msg.translation = await autoTranslateText(cleaned[i], chat.replyLang || 'zh');
-        }
-      } catch(e) {}
       chat.messages.push(msg);
       save();
       try { renderMessages({ forceBottom: true }); } catch(e) {}
       if (away) showMsgBanner(bannerName, cleaned[i], bannerAv);
+      // 自动翻译：不阻塞气泡出现，后台翻译完再刷新
+      if (chat && chat.autoTranslate && typeof autoTranslateText === 'function') {
+        (function(msgRef, lang) {
+          autoTranslateText(msgRef.content, lang).then(function(tr) {
+            if (tr) {
+              msgRef.translation = tr;
+              try { save(); renderMessages({ forceBottom: false }); } catch(e) {}
+            }
+          }).catch(function(){});
+        })(msg, chat.replyLang || 'zh');
+      }
     }
   } finally {
     setTyping(false);
@@ -3972,12 +3990,15 @@ function genderPronouns(g) {
 function normalizeApiBase(url) {
   if (!url) return '';
   let u = String(url).trim();
+  // 去掉误粘贴的引号/空格
+  u = u.replace(/^["']|["']$/g, '').trim();
   // 若用户直接填了完整 chat/completions，去掉末尾便于统一拼接
   u = u.replace(/\/chat\/completions\/?$/i, '');
   u = u.replace(/\/+$/, '');
-  // 只填域名或根路径时自动补 /v1
-  if (u && !/\/(v1|v3|openai)(\/|$)/i.test(u)) {
-    u = u + '/v1';
+  // 只填域名或根路径时自动补 /v1（已含 /api 等路径的不乱加）
+  if (u && !/\/(v1|v3|openai|api)(\/|$)/i.test(u) && !/\/v1$/i.test(u)) {
+    // 纯域名或仅到端口
+    if (/^https?:\/\/[^\/]+$/i.test(u)) u = u + '/v1';
   }
   return u;
 }
@@ -4041,14 +4062,21 @@ async function apiChat(messages, opts) {
   const key = (state.api && state.api.key) || '';
   if (!base || !key) throw new Error('请先在「我的 → API」配置 Base URL 和 Key');
   const endpoint = /\/chat\/completions$/i.test(base) ? base : (base.replace(/\/+$/, '') + '/chat/completions');
-  // 清洗 messages：去掉空 content，避免部分接口直接 400/空回
+  // 清洗 messages：去掉空 content（含空 system），避免 400 contents field required
   const cleanMsgs = (messages || []).map(function(m) {
     let c = m && m.content;
     if (c == null) c = '';
-    if (typeof c !== 'string') c = String(c);
+    if (typeof c !== 'string') {
+      try { c = JSON.stringify(c); } catch(e) { c = String(c); }
+    }
+    c = c.replace(/\u0000/g, '').trim();
     return { role: (m.role || 'user'), content: c };
-  }).filter(function(m) { return m.content.trim().length > 0 || m.role === 'system'; });
-  if (!cleanMsgs.length) throw new Error('没有可发送的消息内容');
+  }).filter(function(m) { return m.content.length > 0; });
+  if (!cleanMsgs.length) throw new Error('没有可发送的消息内容（messages 全空）');
+  // 保证至少有一条 user/assistant，部分网关（Gemini 兼容层）要求 contents 非空
+  if (!cleanMsgs.some(function(m){ return m.role === 'user' || m.role === 'assistant'; })) {
+    cleanMsgs.push({ role: 'user', content: '请继续。' });
+  }
 
   // 仅在极端超长时截断（约 20 万字），正常世界书+记忆不会碰
   cleanMsgs.forEach(function(m) {
@@ -4106,8 +4134,11 @@ async function apiChat(messages, opts) {
         detail = (data && (data.error && (data.error.message || data.error.code || data.error)) ) || data.message || data.msg || '';
         if (typeof detail === 'object') detail = JSON.stringify(detail);
       } catch(e) { detail = ''; }
-      detail = String(detail || '').slice(0, 120);
-      // 简洁报错：状态码 + 原文，不误报「没钱」
+      detail = String(detail || '');
+      if (/contents field is required|at least one contents/i.test(detail)) {
+        detail = '消息体为空或网关要 contents 字段。请确认 Base URL 是 OpenAI 兼容地址（通常以 /v1 结尾），且模型名正确。' + detail.slice(0, 60);
+      }
+      detail = detail.slice(0, 160);
       throw new Error(res.status + (detail ? (' · ' + detail) : ''));
     }
     if (data && data.error) {
@@ -4460,7 +4491,7 @@ ${userP.charKnows===false?'（对方可能使用了小号，你不一定知道�
     }
     // 角色语言
     try {
-      const langMap = { zh:'中文', ja:'日语', en:'英语', fr:'法语', de:'德语', ru:'俄语', yue:'粤语', sv:'瑞典语' };
+      const langMap = { zh:'中文', ja:'日语', en:'英语', fr:'法语', de:'德语', ru:'俄语', ko:'韩语', yue:'粤语', sv:'瑞典语' };
       const rl = chat.replyLang || 'zh';
       if (rl && rl !== 'zh') {
         system += '\n【语言·强制】你必须全程使用「' + (langMap[rl]||rl) + '」回复，不要混用中文（专有名词除外）。';
@@ -4491,11 +4522,24 @@ ${userP.charKnows===false?'（对方可能使用了小号，你不一定知道�
     if (chat.longMemory && chat.longMemory.length) {
       system += '\n【长期记忆】' + chat.longMemory.slice(-3).map(m => (m.content || m.text || '').slice(0, 200)).join('\n');
     }
-    // 互通挂载的其它会话记忆
+    // 互通挂载的其它会话记忆（短期/长期 + 近聊原文）
     (chat.linkedMemIds || []).forEach(lid => {
       const oc = state.chats[lid];
       if (!oc) return;
       const label = (state.chars.find(x=>x.id===lid)||{}).nick || (state.groups.find(x=>x.id===lid)||{}).name || lid;
+      try {
+        const recentLink = (oc.messages || []).filter(function(m){ return !m.recalled && m.type !== 'system' && m.type !== 'recall'; }).slice(-6);
+        if (recentLink.length) {
+          system += '\n【互通近聊·'+label+'】' + recentLink.map(function(m){
+            const who = m.from === 'user' ? '我' : '对方';
+            let t = '';
+            if (m.type === 'text') t = m.content || '';
+            else if (m.type === 'voice') t = '[语音]' + (m.content||'');
+            else t = '['+(m.type||'消息')+']';
+            return who + '：' + String(t).slice(0, 60);
+          }).join('；');
+        }
+      } catch(e) {}
       if (oc.shortMemory && oc.shortMemory.length) {
         system += '\n【互通短期·'+label+'】' + oc.shortMemory.slice(-4).map(m => m.content||m.text||'').join('；');
       }
@@ -4567,15 +4611,31 @@ ${userP.charKnows===false?'（对方可能使用了小号，你不一定知道�
           msg.userNick = c.nick || c.realName || '对方';
           msg.content = ex.content || '扫码向我付款';
         }
-        if (ex.type === 'image' && (ex.desc || ex.hiddenText)) {
-          // 有生图 API 时按预设词 + 描述生成真实图
+        if (ex.type === 'image') {
+          // 无图或裂图时用虚拟占位图；有生图 API 时再尝试真实图，失败仍保留虚拟图
+          if (!msg.content || msg.content === 'undefined' || msg.content === 'null') {
+            const d = ex.desc || ex.hiddenText || '图片';
+            msg.content = (typeof igMakePlaceholderImg === 'function') ? igMakePlaceholderImg(d, d) : msg.content;
+            msg.desc = d; msg.hiddenText = d;
+          }
           try {
             if (state.api && (state.api.imgUrl || state.api.baseUrl) && (state.api.imgKey || state.api.key)) {
               showToast('角色图片生成中…');
               const url = await apiGenImage(ex.desc || ex.hiddenText || '');
-              if (url) { msg.content = url; msg.desc = ex.desc || ex.hiddenText; msg.hiddenText = ex.hiddenText || ex.desc; }
+              if (url && String(url).length > 8) {
+                msg.content = url;
+                msg.desc = ex.desc || ex.hiddenText;
+                msg.hiddenText = ex.hiddenText || ex.desc;
+              }
             }
-          } catch(imgErr) { console.warn('char img gen', imgErr); }
+          } catch(imgErr) {
+            console.warn('char img gen', imgErr);
+            // 保留已有虚拟图，不裂图
+            if (!msg.content) {
+              const d = ex.desc || ex.hiddenText || '图片';
+              msg.content = (typeof igMakePlaceholderImg === 'function') ? igMakePlaceholderImg(d, d) : '';
+            }
+          }
         }
         if (ex.type === 'transfer') {
           try { recordWalletFlow(parseFloat(ex.amount) || 0, '收到转账 · ' + (ex.desc || ''), id); } catch(e) {}
@@ -5568,7 +5628,7 @@ function openChatSettings() {
       <div class="setting-item" onclick="openSocialAccounts()">社交账号 <span class="right">${(chat.socialLink)?'已关联':'关闭'} ›</span></div>
       <div class="setting-item" onclick="toggleTimeAware()">时间感知 <span class="right"><div class="switch ${chat.timeAware !== false ? 'on' : ''}" id="swTime"></div></span></div>
       <div class="setting-item text-sub" style="font-size:11px;opacity:.75;line-height:1.45;padding-top:0">开启后强制：真实日期/时刻、季节、时区、距上一段对话间隔；跨天禁止当成刚聊完</div>
-      <div class="setting-item" onclick="openChatLangSettings()">角色语言 · ${({zh:'中文',ja:'日语',en:'英语',fr:'法语',de:'德语',ru:'俄语',yue:'粤语',sv:'瑞典语'})[chat.replyLang||'zh']||'中文'} <span class="right">›</span></div>
+      <div class="setting-item" onclick="openChatLangSettings()">角色语言 · ${({zh:'中文',ja:'日语',en:'英语',fr:'法语',de:'德语',ru:'俄语',ko:'韩语',yue:'粤语',sv:'瑞典语'})[chat.replyLang||'zh']||'中文'} <span class="right">›</span></div>
       <div class="setting-item" onclick="toggleAutoTranslate()">自动翻译 <span class="right"><div class="switch ${chat.autoTranslate ? 'on' : ''}" id="swTrans"></div></span></div>
       <div class="setting-item text-sub" style="font-size:11px;opacity:.75;padding-top:0">开启后每轮生成的气泡下方自动显示译文</div>
       <div class="setting-item" onclick="openBeautify()">聊天美化 <span class="right">›</span></div>
@@ -6083,7 +6143,7 @@ function openChatLangSettings() {
   const cur = chat.replyLang || 'zh';
   const opts = [
     ['zh','中文'],['ja','日语'],['en','英语'],['fr','法语'],
-    ['de','德语'],['ru','俄语'],['yue','粤语'],['sv','瑞典语']
+    ['de','德语'],['ru','俄语'],['ko','韩语'],['yue','粤语'],['sv','瑞典语']
   ];
   openModal('角色语言', `
     <div class="text-sub" style="font-size:12px;margin-bottom:12px;line-height:1.5">角色将用所选语言回复。可同时开启「自动翻译」在气泡下显示中文译文。</div>
@@ -6877,12 +6937,9 @@ function openBeautifyCenter() {
   const t = state.theme;
   const resetBtn = (key) => `<button type="button" onclick="resetThemeItem('${key}')" style="background:none;border:1.5px solid var(--text);border-radius:50%;width:26px;height:26px;padding:0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;margin-left:8px" title="还原"><span class="icon" style="width:14px;height:14px"><svg viewBox="0 0 24 24"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg></span></button>`;
   openModal('美化中心', `
-    <div class="form-group"><label style="display:flex;align-items:center">日间 / 夜间 ${resetBtn('mode')}</label>
-      <select id="thMode">
-        <option value="light" ${(!t.mode||t.mode==='light')?'selected':''}>日间模式</option>
-        <option value="dark" ${t.mode==='dark'?'selected':''}>夜间模式</option>
-      </select>
-      <button class="btn btn-secondary" style="width:100%;margin-top:8px" onclick="state.theme.mode=document.getElementById('thMode').value;save();applyTheme();">立即应用日夜模式</button>
+    <div class="form-group"><label>界面模式</label>
+      <div class="text-sub" style="font-size:12px;line-height:1.5">已去除夜间模式，统一日间水色风格</div>
+      <input type="hidden" id="thMode" value="light">
     </div>
     <div class="form-group"><label style="display:flex;align-items:center">界面风格 ${resetBtn('ui')}</label>
       <select id="thUI">
@@ -6950,24 +7007,22 @@ function saveTheme() {
   if (!state.theme) state.theme = {};
   state.theme.dockStyle = document.getElementById('thDock').value;
   state.theme.globalCss = document.getElementById('thCss').value;
-  state.theme.mode = document.getElementById('thMode').value;
+  state.theme.mode = 'light';
+  try { document.body.classList.remove('night'); document.documentElement.removeAttribute('data-theme'); } catch(e) {}
   state.theme.ui = document.getElementById('thUI').value;
   state.theme.fontUrl = document.getElementById('thFont').value.trim();
   save(); applyTheme(); closeModal();
 }
 function applyTheme() {
   if (!state.theme) state.theme = {};
-  // mode 优先；切回日间时强制 night=false
-  if (state.theme.mode === 'light') state.theme.night = false;
-  if (state.theme.mode === 'dark') state.theme.night = true;
-  const isNight = state.theme.mode === 'dark' || state.theme.night === true;
-  document.body.classList.toggle('night', !!isNight);
-  document.documentElement.setAttribute('data-theme', isNight ? 'dark' : 'light');
-
-  state.theme.night = isNight;
-  document.body.classList.toggle('night', isNight);
+  // 强制日间：已去除夜间模式
+  state.theme.mode = 'light';
+  state.theme.night = false;
+  const isNight = false;
+  document.body.classList.remove('night');
+  document.documentElement.setAttribute('data-theme', 'light');
   const phone = document.getElementById('phone');
-  if (phone) phone.classList.toggle('night', isNight);
+  if (phone) phone.classList.remove('night');
   document.querySelectorAll('#page-sub, #subNav, #subBody, .modal-mask, .modal, .modal-box').forEach(el => {
     if (el) el.classList.toggle('night', isNight);
   });
@@ -8420,19 +8475,29 @@ function showPage(name) {
   }
 }
 
+function visibleChars() {
+  return (state.chars || []).filter(function(c){ return c && !c.galOnly; });
+}
 function renderContacts() {
   const list = document.getElementById('contactsList');
   if (!list) return;
-  if (!state.contactGroups) state.contactGroups = [{ id:'g_default', name:'好友', members: state.chars.map(c=>c.id) }];
-  // sync: ensure all chars in some group
+  if (!state.contactGroups) state.contactGroups = [{ id:'g_default', name:'好友', members: visibleChars().map(c=>c.id) }];
+  // sync: ensure all 非 gal 专用角色 in some group
   const allInGroups = new Set();
   state.contactGroups.forEach(g => (g.members||[]).forEach(id => allInGroups.add(id)));
-  state.chars.forEach(ch => {
+  visibleChars().forEach(ch => {
     if (!allInGroups.has(ch.id)) {
       let def = state.contactGroups.find(g => g.id==='g_default');
       if (!def) { def = { id:'g_default', name:'好友', members:[] }; state.contactGroups.unshift(def); }
       def.members.push(ch.id);
     }
+  });
+  // 从通讯录剔除 galOnly
+  state.contactGroups.forEach(function(g){
+    if (g.members) g.members = g.members.filter(function(id){
+      const c = (state.chars||[]).find(function(x){ return x.id===id; });
+      return c && !c.galOnly;
+    });
   });
   let html = `
     <div class="setting-item" onclick="openPhoneCheck()" style="border-radius:16px;margin:8px 12px;border:1px solid var(--line)">
@@ -12995,6 +13060,16 @@ function editHomePolaroid() {
 function openChangelog() {
   const ver = (typeof EENOK_BUILD !== 'undefined') ? EENOK_BUILD : '';
   const logs = [
+    { v: '2026-08-18q', items: [
+      '世界：从主屏进入强制角色列表，防点击穿透进单个角色页',
+      '记忆互通：挂载其它会话时带上近聊原文；API Base 规范化更稳'
+    ]},
+    { v: '2026-08-19a', items: [
+      '角色发图无生图API也用虚拟图，避免裂图；IG占位图带文字描述',
+      '翻译改为后台异步不挡气泡；语言加韩语；去除夜间模式',
+      'icity广场详情返回广场；gal生成角色不进微信/角色库',
+      'API空消息清洗，解释 contents field required 报错'
+    ]},
     { v: '2026-08-18p', items: [
       '译文与正文用分界线隔开；明显人名/称呼不翻译',
       'Dock 拖动 rAF 更顺滑；桌面编辑可＋界面 / 删本页',
@@ -13555,7 +13630,7 @@ function openCharLib() {
   state._subKind = 'homeApp';
   state._openFromHome = true;
   armClickGuard(900);
-  const cards = (state.chars||[]).map((c) => `
+  const cards = (typeof visibleChars==='function'?visibleChars():(state.chars||[])).map((c) => `
     <div onclick="if(window.clickGuarded&&clickGuarded())return;openCharLibDetail('${c.id}')" style="border-radius:16px;border:1px solid var(--line);background:var(--card);overflow:hidden;cursor:pointer">
       <div style="height:120px;background:linear-gradient(145deg,#f5f5f7,#ebe8f0);overflow:hidden">
         <img src="${avatarUrl(c)}" style="width:100%;height:100%;object-fit:cover;object-position:center">
@@ -14386,7 +14461,11 @@ function openIcityDiaryDetail(kind, idx) {
   state._homeDepth = 1;
   state._homeRoot = 'icity';
   state._subKind = 'icity';
-  state._subBackFn = function(){ openIcityDiaryList(state._icityDiaryFilter||'all'); };
+  // 广场帖子详情 → 回广场；日记详情 → 回日记列表
+  state._subBackFn = function(){
+    if (kind === 'diary') openIcityDiaryList(state._icityDiaryFilter||'all');
+    else openIcityApp('square');
+  };
 }
 function delIcityComment(kind, idx, ci) {
   var d = kind === 'diary' ? (state.icity.diaries||[])[idx] : (state.icity.posts||[])[idx];
@@ -14488,12 +14567,14 @@ function openIcityApp(tab) {
   ensureHomeState();
   if (!state.icity) state.icity = { posts: [], myPosts: [], profile: {} };
   if (!state.icity.profile) state.icity.profile = { nick: '', id: '', sign: '', location: '', avatar: '', bg: '' };
-  // 从主屏进入默认广场，不掉进旧的日记详情
-  if (tab == null || tab === '') tab = 'square';
+  // 从主屏 / 返回：始终广场，不掉进日记详情
+  if (tab == null || tab === '' || state._openFromHome) tab = 'square';
   state._icityTab = tab;
   state._homeRoot = 'icity';
   state._homeDepth = 0;
+  state._subStack = [];
   state._subBackFn = function(){ goHome(); };
+  state._openFromHome = false;
   if (tab === 'mine') {
     const u = state.user || {};
     const p = state.icity.profile;
@@ -14916,7 +14997,14 @@ function openForumIG(tab) {
         <button type="button" onclick="igSearchGen()" style="border:none;background:transparent;padding:6px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="1.8"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg></button>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px" id="igSearchGrid">
-        ${(f.explore||[]).map((v,i)=>`<div onclick="igViewExplore(${i})" style="aspect-ratio:1;background:${v.img?('url('+v.img+') center/cover'):'linear-gradient(135deg,#ddd,#bbb)'}"></div>`).join('')||'<div class="empty" style="grid-column:1/-1;padding:40px">点搜索图标生成内容</div>'}
+        ${(f.explore||[]).map((v,i)=>{
+          var src = v.img || (typeof igMakePlaceholderImg==='function' ? igMakePlaceholderImg(v.imgDesc||v.caption||v.text||'photo', i) : '');
+          return '<div onclick="igViewExplore('+i+')" style="aspect-ratio:1;overflow:hidden;background:#eee;position:relative">'
+            + (src ? '<img src="'+src+'" style="width:100%;height:100%;object-fit:cover;display:block" alt="">' : '')
+            + '<div style="position:absolute;left:0;right:0;bottom:0;padding:4px 6px;background:linear-gradient(transparent,rgba(0,0,0,.45));color:#fff;font-size:10px;line-height:1.3;max-height:40%;overflow:hidden">'
+            + escapeHtml((v.imgDesc||v.caption||v.text||'').toString().slice(0,24))
+            + '</div></div>';
+        }).join('')||'<div class="empty" style="grid-column:1/-1;padding:40px">点搜索图标生成内容</div>'}
       </div>
     </div>`;
   } else {
@@ -14994,14 +15082,20 @@ function openForumIG(tab) {
 function igPostCard(p, i) {
   const likes = p.likes||0;
   const cid = p.charId || '';
+  // 旧帖无图时现场补占位图（带文字描述）
+  let img = p.img || '';
+  if (!img || img === 'undefined') {
+    img = igMakePlaceholderImg(p.imgDesc || p.caption || p.nick || 'photo', (p.nick||'') + i);
+    try { p.img = img; } catch(e) {}
+  }
   return `<div style="border-top:0.5px solid #efefef;padding-bottom:12px">
     <div style="display:flex;align-items:center;gap:10px;padding:10px 12px">
       <div onclick="igViewUserPosts('${cid}')" style="width:32px;height:32px;border-radius:50%;background:${p.avatar?('url('+p.avatar+') center/cover'):'#ddd'};cursor:pointer"></div>
       <div onclick="igViewUserPosts('${cid}')" style="flex:1;font-weight:600;font-size:14px;cursor:pointer">${escapeHtml(p.nick||'user')}</div>
       <span onclick="igPostMenu(${i})" style="font-size:18px;padding:4px 8px;cursor:pointer">···</span>
     </div>
-    <div style="width:100%;aspect-ratio:1;background:${p.img?('url('+p.img+') center/cover'):'#f0f0f0'};display:flex;align-items:center;justify-content:center;position:relative">
-      ${(!p.img && p.imgDesc) ? `<div style="padding:20px;text-align:center;color:#666;font-size:14px;line-height:1.5">📷 ${escapeHtml(p.imgDesc)}</div>` : ''}
+    <div style="width:100%;aspect-ratio:1;background:#f0f0f0;position:relative;overflow:hidden">
+      <img src="${img}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none';this.parentNode.style.background='linear-gradient(135deg,#e8f4f8,#d4ebea)'">
     </div>
     <div style="display:flex;gap:14px;padding:10px 12px;align-items:center">
       <span onclick="igLike(${i})" style="cursor:pointer"><svg width="24" height="24" viewBox="0 0 24 24" fill="${p.liked?'#ed4956':'none'}" stroke="${p.liked?'#ed4956':'#111'}" stroke-width="1.7"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></span>
@@ -15726,19 +15820,28 @@ function igMakePlaceholderImg(desc, seed) {
   const s = String(desc || 'photo') + String(seed || '');
   let h = 0;
   for (var i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
-  const hues = [200, 280, 340, 30, 150, 190, 220, 260];
+  const hues = [200, 280, 340, 30, 150, 190, 220, 260, 12, 170];
   const h1 = hues[Math.abs(h) % hues.length];
   const h2 = hues[Math.abs(h >> 3) % hues.length];
-  const c1 = 'hsl(' + h1 + ',55%,72%)';
-  const c2 = 'hsl(' + h2 + ',48%,58%)';
-  const c3 = 'hsl(' + ((h1 + 40) % 360) + ',40%,88%)';
-  const line = String(desc || '').slice(0, 28).replace(/[<>&"']/g, '');
+  const c1 = 'hsl(' + h1 + ',58%,74%)';
+  const c2 = 'hsl(' + h2 + ',50%,56%)';
+  const c3 = 'hsl(' + ((h1 + 40) % 360) + ',42%,90%)';
+  // 多行文字描述，居中显示
+  const raw = String(desc || '瞬间').replace(/[<>&"']/g, '').slice(0, 48);
+  const lines = [];
+  for (var li = 0; li < raw.length; li += 12) lines.push(raw.slice(li, li + 12));
+  if (!lines.length) lines.push('photo');
+  const textY0 = 400 - (lines.length - 1) * 18;
+  const textSvg = lines.map(function(ln, idx) {
+    return '<text x="400" y="' + (textY0 + idx * 36) + '" font-size="28" fill="rgba(30,40,50,.72)" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif">' + ln + '</text>';
+  }).join('');
   const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800" viewBox="0 0 800 800">'
     + '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="'+c1+'"/><stop offset="100%" stop-color="'+c2+'"/></linearGradient></defs>'
     + '<rect width="800" height="800" fill="url(#g)"/>'
-    + '<circle cx="620" cy="180" r="120" fill="'+c3+'" opacity=".45"/>'
-    + '<circle cx="160" cy="640" r="160" fill="#fff" opacity=".12"/>'
-    + '<text x="40" y="720" font-size="28" fill="rgba(0,0,0,.35)" font-family="system-ui,sans-serif">' + line + '</text>'
+    + '<circle cx="620" cy="160" r="130" fill="'+c3+'" opacity=".5"/>'
+    + '<circle cx="140" cy="660" r="170" fill="#fff" opacity=".14"/>'
+    + '<rect x="80" y="80" width="640" height="640" rx="28" fill="rgba(255,255,255,.18)" stroke="rgba(255,255,255,.35)" stroke-width="2"/>'
+    + textSvg
     + '</svg>';
   return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
 }
@@ -16610,9 +16713,9 @@ async function doGalAdd() {
     let data = {};
     try { data = JSON.parse((text||'').replace(/```json|```/g,'').trim()); } catch(e) { data = { nick:'新角色', persona:desc }; }
     const id = 'gal'+Date.now();
-    state.chars.push({ id, nick: data.nick||'新角色', persona: data.persona||desc, gender: data.gender||'', signature:'', avatar:'' });
+    // galOnly：只存在于 galgame，不进微信/角色库/通讯录
+    state.chars.push({ id, nick: data.nick||'新角色', persona: data.persona||desc, gender: data.gender||'', signature:'', avatar:'', galOnly: true });
     state.gal.chars[id] = { youToThem:0, themToYou:0, mode, log:[], play:'text' };
-    if (!state.chats[id]) state.chats[id] = { messages:[], pinned:false, blockedByMe:false, blockedByChar:false, worldBookIds:[], timeAware:true };
     save(); openGalApp('targets');
   } catch(e) { alert('失败：'+(e.message||e)); }
 }
@@ -20690,11 +20793,14 @@ function ensureCharWorld(charId) {
   return w;
 }
 function openWorldApp(tab) {
-  // 入口：角色列表（各角色世界互不互通）
+  // 入口：始终先角色列表（禁止穿透进某个角色页）
   ensureWorldState();
   state._homeRoot = 'world';
   state._subKind = 'world';
+  state._homeDepth = 0;
   state.world.currentCharId = null;
+  state._subBackFn = function(){ goHome(); };
+  armClickGuard(520);
   const ink = '#2a4a55';
   const soft = '#6a8a95';
   const accent = '#5eb8b0';
@@ -20703,23 +20809,39 @@ function openWorldApp(tab) {
     const w = ensureCharWorld(c.id);
     const nPlace = (w.places || []).length;
     const nLife = (w.life || []).length;
-    return '<div onclick="openWorldChar(\''+c.id+'\')" style="display:flex;align-items:center;gap:12px;padding:14px;margin:0 12px 10px;border-radius:16px;background:rgba(255,255,255,.75);border:1px solid rgba(94,184,176,.2);cursor:pointer">'
-      + '<img src="'+avatarUrl(c)+'" style="width:48px;height:48px;border-radius:14px;object-fit:cover;flex-shrink:0">'
-      + '<div style="flex:1;min-width:0"><div style="font-weight:600;color:'+ink+'">'+escapeHtml(c.nick||c.realName||'')+'</div>'
+    return '<div data-world-char="'+c.id+'" style="display:flex;align-items:center;gap:12px;padding:14px;margin:0 12px 10px;border-radius:16px;background:rgba(255,255,255,.75);border:1px solid rgba(94,184,176,.2);cursor:pointer;-webkit-tap-highlight-color:transparent">'
+      + '<img src="'+avatarUrl(c)+'" style="width:48px;height:48px;border-radius:14px;object-fit:cover;flex-shrink:0;pointer-events:none">'
+      + '<div style="flex:1;min-width:0;pointer-events:none"><div style="font-weight:600;color:'+ink+'">'+escapeHtml(c.nick||c.realName||'')+'</div>'
       + '<div style="font-size:12px;color:'+soft+';margin-top:4px">地点 '+nPlace+' · 随笔 '+nLife+(w.schedule?' · 已有日程':'')+'</div></div>'
-      + '<span style="color:#c7c7cc">›</span></div>';
+      + '<span style="color:#c7c7cc;pointer-events:none">›</span></div>';
   }).join('') : '<div style="text-align:center;color:'+soft+';padding:48px 16px">请先在角色库添加角色<br>每位角色拥有独立世界</div>';
   openSubPage('世界', `
-    <div style="height:100%;background:linear-gradient(180deg,#e8f6f4,#d4ebea);overflow-y:auto;-webkit-overflow-scrolling:touch">
+    <div id="worldCharListRoot" style="height:100%;background:linear-gradient(180deg,#e8f6f4,#d4ebea);overflow-y:auto;-webkit-overflow-scrolling:touch;pointer-events:none">
       <div style="padding:16px 16px 8px">
         <div style="font-size:18px;font-weight:700;color:${ink}">选择角色世界</div>
         <div style="font-size:12px;color:${soft};margin-top:4px;line-height:1.5">每位角色的地图 / 日历 / 日程 / 生活互不共享</div>
       </div>
       <div style="padding-bottom:32px">${list}</div>
     </div>
-  `, '', { replace: true, fromHome: true, backFn: function(){ goHome(); } });
+  `, '', { replace: true, fromHome: true, softGuard: false, backFn: function(){ goHome(); } });
+  // 防手指穿透：先锁列表，再绑定点击
+  setTimeout(function() {
+    try {
+      var root = document.getElementById('worldCharListRoot');
+      if (root) root.style.pointerEvents = 'auto';
+      if (!root) return;
+      root.querySelectorAll('[data-world-char]').forEach(function(el) {
+        el.onclick = function(ev) {
+          if (clickGuarded()) { if (ev) { ev.preventDefault(); ev.stopPropagation(); } return; }
+          var id = el.getAttribute('data-world-char');
+          if (id) openWorldChar(id);
+        };
+      });
+    } catch(e) {}
+  }, 480);
 }
 function openWorldChar(charId, tab) {
+  if (clickGuarded()) return;
   ensureWorldState();
   const ch = (state.chars || []).find(c => c.id === charId);
   if (!ch) { showToast('角色不存在'); return; }
@@ -20727,6 +20849,7 @@ function openWorldChar(charId, tab) {
   state.world.currentCharId = charId;
   state._homeRoot = 'world';
   state._subKind = 'world';
+  state._homeDepth = 1;
   tab = tab || w.tab || 'map';
   w.tab = tab;
   const ink = '#2a4a55';
@@ -20806,7 +20929,7 @@ function openWorldChar(charId, tab) {
         ${dockBtn('map','地图')}${dockBtn('calendar','日历')}${dockBtn('schedule','日程')}${dockBtn('life','生活')}
       </div>
     </div>
-  `, '', { replace: true, backFn: function(){ openWorldApp(); } });
+  `, '', { replace: true, backFn: function(){ state._homeDepth = 0; openWorldApp(); } });
 }
 function worldAddPlace() {
   const charId = state.world && state.world.currentCharId;
