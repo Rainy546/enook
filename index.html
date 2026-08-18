@@ -920,10 +920,9 @@ body.night .add-menu, [data-theme="dark"] .add-menu {
   background: transparent !important; color: var(--sub) !important; font-size: 12px !important;
   box-shadow: none !important; max-width: 90%; text-align: center; padding: 4px 8px !important;
 }
-.redpacket {
-  background: linear-gradient(145deg, #e74c3c, #c0392b) !important;
-  color: #fff !important; min-width: 170px; padding: 12px !important;
-  border-radius: 8px !important;
+.redpacket, .rp-card {
+  width: 248px !important; min-width: 248px !important; max-width: 248px !important;
+  min-height: 88px !important; box-sizing: border-box !important;
 }
 .redpacket .rp-icon { font-size: 20px; margin-bottom: 4px; opacity: .9; }
 .redpacket .rp-title { font-size: 13px; opacity: .9; }
@@ -931,10 +930,9 @@ body.night .add-menu, [data-theme="dark"] .add-menu {
 .redpacket .rp-desc { font-size: 12px; opacity: .8; }
 
 /* 转账 */
-.transfer {
-  background: #fff !important; color: var(--text) !important;
-  min-width: 170px; padding: 12px !important;
-  border: 1px solid var(--line) !important; border-radius: 8px !important;
+.transfer, .tf-card {
+  width: 248px !important; min-width: 248px !important; max-width: 248px !important;
+  min-height: 88px !important; box-sizing: border-box !important;
 }
 .transfer .tf-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .transfer .tf-icon {
@@ -1714,7 +1712,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-18a';
+const EENOK_BUILD = '2026-08-18b';
 function checkAppUpdate() {
   try {
     const prev = localStorage.getItem('eenook_build');
@@ -2581,7 +2579,7 @@ function closeSubPage() {
   if (subNav) subNav.style.display = '';
   const kind = state._subKind;
   // 从主屏幕打开的 App：优先回主屏（避免掉进通讯录）
-  const homeKinds = ['homeApp','bookstore','pomodoro','icity','gal','sk','countdown','memory','offline','charlib','divination','worldbook','forum','sms','phone','beauty','settings','tomato','scriptkill'];
+  const homeKinds = ['homeApp','bookstore','pomodoro','icity','gal','sk','countdown','memory','offline','charlib','divination','worldbook','forum','sms','phone','beauty','settings','tomato','scriptkill','melo','meloPlay','phonecheck','pickup'];
   if (state._homeRoot || homeKinds.indexOf(kind) >= 0) {
     // 有自定义返回：优先执行（重新渲染，避免 HTML 快照导致评论/消息消失）
     if (typeof state._subBackFn === 'function') {
@@ -2592,6 +2590,15 @@ function closeSubPage() {
       return;
     }
     // 深层：回到该 App 根界面（不用过期 HTML 回放）
+    // melo 播放页：先回 Melo 主界面
+    if (kind === 'meloPlay' || (state._homeRoot === 'melo' && state._homeDepth > 0 && state._meloPlaying)) {
+      state._homeDepth = 0;
+      state._subStack = [];
+      state._subBackFn = null;
+      state._meloPlaying = false;
+      try { openMelo(state._meloTab || 'home', { replace: true }); } catch(e) { goHome(); }
+      return;
+    }
     if (state._homeDepth && state._homeDepth > 0) {
       state._homeDepth = 0;
       state._subStack = [];
@@ -2599,10 +2606,11 @@ function closeSubPage() {
       try {
         if (root === 'icity') { openIcityDiaryList(state._icityDiaryFilter||'all'); return; }
         if (root === 'charlib') { openCharLib(); return; }
-        if (root === 'memory') { state._memFilter = null; openMemoryApp(); return; }
+        if (root === 'memory') { state._memFilter = null; state._subBackFn = null; openMemoryApp(); return; }
         if (root === 'countdown') { openCountdownApp(state._cdTab||'all'); return; }
         if (root === 'sk' || kind === 'scriptkill') { state._skId=null; openScriptKill('scripts'); return; }
-        if (root === 'phone') { openPhonePad(state._phoneTab||'contacts'); return; }
+        if (root === 'melo') { openMelo(state._meloTab||'home', { replace: true }); return; }
+        if (root === 'phone' || root === 'phonecheck') { if (state._phoneChar) { openCharPhone(state._phoneChar); return; } openPhoneCheck(); return; }
         if (root === 'sms') { openSmsApp(); return; }
         if (root === 'gal') { openGalApp(state._galTab||'targets'); return; }
         if (root === 'offline') { openOfflineApp(); return; }
@@ -3004,12 +3012,12 @@ function renderMessages(opts) {
     } else if (m.type === 'emoji') {
       content = `<img class="msg-emoji-img" src="${m.content}" onclick="event.stopPropagation();onImageClick(${idx})">`;
     } else if (m.type === 'redpacket') {
-      content = `<div class="rp-card" style="display:flex;align-items:center;gap:12px;background:#f5a623;border-radius:10px;padding:16px 18px;width:min(260px,70vw);min-width:240px;box-sizing:border-box;color:#fff;position:relative">
+      content = `<div class="rp-card" style="display:flex;align-items:center;gap:12px;background:#fa9d3b;border-radius:10px;padding:14px 16px;width:248px;min-height:88px;box-sizing:border-box;color:#fff;position:relative">
         <div style="width:40px;height:48px;background:#e74c3c;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:inset 0 -6px 0 rgba(0,0,0,.08)">
           <span style="width:22px;height:22px;border-radius:50%;background:#f5c542;color:#c0392b;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center">¥</span>
         </div>
         <div style="flex:1;min-width:0">
-          <div style="font-size:16px;font-weight:600;line-height:1.3">${escapeHtml(m.desc || '恭喜发财，大吉大利')}</div>
+          <div style="font-size:15px;font-weight:600;line-height:1.3">${escapeHtml(m.desc || '恭喜发财，大吉大利')}</div>
           <div style="height:1px;background:rgba(255,255,255,.35);margin:10px 0 6px"></div>
           <div style="font-size:12px;opacity:.9">微信红包</div>
         </div>
@@ -3024,17 +3032,17 @@ function renderMessages(opts) {
         </div>
       </div>`;
     } else if (m.type === 'transfer') {
-      content = `<div class="tf-card" style="background:#f5a623;border-radius:10px;padding:16px 18px;width:min(260px,70vw);min-width:240px;box-sizing:border-box;color:#fff">
-        <div style="display:flex;align-items:center;gap:14px">
-          <div style="width:44px;height:44px;border-radius:50%;border:2px solid #fff;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M7 7h10v10"/><path d="M7 17L17 7"/></svg>
+      content = `<div class="tf-card" style="background:#fa9d3b;border-radius:10px;padding:14px 16px;width:248px;min-height:88px;box-sizing:border-box;color:#fff">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="width:40px;height:40px;border-radius:50%;border:2px solid #fff;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M7 7h10v10"/><path d="M7 17L17 7"/></svg>
           </div>
-          <div>
-            <div style="font-size:22px;font-weight:700;letter-spacing:.5px">¥${m.amount}</div>
-            <div style="font-size:14px;margin-top:2px;opacity:.95">收款方 ${escapeHtml(m.desc || '转账')}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:20px;font-weight:700;letter-spacing:.5px">¥${m.amount}</div>
+            <div style="font-size:13px;margin-top:2px;opacity:.95">${escapeHtml(m.desc || '转账')}</div>
           </div>
         </div>
-        <div style="margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,.3);font-size:13px;opacity:.9">转账</div>
+        <div style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.3);font-size:12px;opacity:.9">微信转账</div>
       </div>`;
     } else if (m.type === 'paycode') {
       const tip = m.from === 'user' ? '点击让角色扫码付款' : '点击扫码付款';
@@ -10845,8 +10853,13 @@ function editBookMeta(bi) {
 // ===== 查手机 =====
 function openPhoneCheck() {
   state._subStack = [];
+  state._homeRoot = 'phonecheck';
+  state._subKind = 'phonecheck';
+  state._homeDepth = 0;
+  state._subBackFn = null;
+  armClickGuard(400);
   const list = (state.chars||[]).map((ch,i)=>`
-    <div class="setting-item" onclick="openCharPhone('${ch.id}')" style="border-radius:14px;margin:8px 12px;border:1px solid var(--line)">
+    <div class="setting-item" onclick="if(window.clickGuarded&&clickGuarded())return;openCharPhone('${ch.id}')" style="border-radius:14px;margin:8px 12px;border:1px solid var(--line)">
       <img src="${avatarUrl(ch)}" style="width:40px;height:40px;border-radius:10px;margin-right:12px;object-fit:cover">
       <span>${escapeHtml(ch.nick||ch.realName)}</span>
       <span class="arrow">›</span>
@@ -10960,6 +10973,11 @@ function openCharPhone(cid) {
   if (!ch) return;
   state._phoneChar = cid;
   state.currentPhoneContactId = cid;
+  state._homeRoot = 'phonecheck';
+  state._subKind = 'phonecheck';
+  state._homeDepth = 1;
+  state._subBackFn = function(){ openPhoneCheck(); };
+  state._clickGuardUntil = 0;
   try { ensurePhoneData(cid); } catch(e) {}
   if (!ch.phone) ch.phone = { notes: [], browser: [], apps: { wechat:true, browser:true, notes:true } };
   if (!ch.phone.apps) ch.phone.apps = { wechat:true, browser:true, notes:true };
@@ -10977,25 +10995,25 @@ function openCharPhone(cid) {
       </div>
       <div style="flex:1;padding:20px 16px">
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:20px 12px">
-          ${(ch.phone.apps||{wechat:1,browser:1,notes:1}).wechat!==false?`<div onclick="openPhoneApp('wechat')" style="text-align:center;cursor:pointer">
+          ${(ch.phone.apps||{wechat:1,browser:1,notes:1}).wechat!==false?`<div onclick="event.stopPropagation();openPhoneApp('wechat')" style="text-align:center;cursor:pointer;pointer-events:auto;z-index:5;position:relative">
             <div style="width:54px;height:54px;margin:0 auto;border-radius:14px;background:${_picon};display:flex;align-items:center;justify-content:center;border:1px solid var(--line)">
               <span class="icon" style="width:26px;height:26px"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
             </div>
             <div style="font-size:11px;margin-top:6px">微信</div>
           </div>`:''}
-          ${(ch.phone.apps||{}).browser!==false?`<div onclick="openPhoneApp('browser')" style="text-align:center;cursor:pointer">
+          ${(ch.phone.apps||{}).browser!==false?`<div onclick="event.stopPropagation();openPhoneApp('browser')" style="text-align:center;cursor:pointer;pointer-events:auto;z-index:5;position:relative">
             <div style="width:54px;height:54px;margin:0 auto;border-radius:14px;background:${_picon};display:flex;align-items:center;justify-content:center;border:1px solid var(--line)">
               <span class="icon" style="width:26px;height:26px"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/></svg></span>
             </div>
             <div style="font-size:11px;margin-top:6px">浏览器</div>
           </div>`:''}
-          ${(ch.phone.apps||{}).notes!==false?`<div onclick="openPhoneApp('notes')" style="text-align:center;cursor:pointer">
+          ${(ch.phone.apps||{}).notes!==false?`<div onclick="event.stopPropagation();openPhoneApp('notes')" style="text-align:center;cursor:pointer;pointer-events:auto;z-index:5;position:relative">
             <div style="width:54px;height:54px;margin:0 auto;border-radius:14px;background:${_picon};display:flex;align-items:center;justify-content:center;border:1px solid var(--line)">
               <span class="icon" style="width:26px;height:26px"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span>
             </div>
             <div style="font-size:11px;margin-top:6px">备忘录</div>
           </div>`:''}
-          <div onclick="openPhoneApp('settings')" style="text-align:center;cursor:pointer">
+          <div onclick="event.stopPropagation();openPhoneApp('settings')" style="text-align:center;cursor:pointer;pointer-events:auto;z-index:5;position:relative">
             <div style="width:54px;height:54px;margin:0 auto;border-radius:14px;background:${_picon};display:flex;align-items:center;justify-content:center;border:1px solid var(--line)">
               <span class="icon" style="width:26px;height:26px"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2"/></svg></span>
             </div>
@@ -11199,10 +11217,14 @@ async function genPhoneContent() {
   save(); alert('已生成示例内容'); openPhoneApp('notes');
 }
 function openPhoneApp(app) {
+  state._clickGuardUntil = 0;
   const ch = state.chars.find(c=>c.id===state._phoneChar);
-  if (!ch) return;
-  if (!ch.phone) ch.phone = { notes: [], browser: [], apps: {} };
-  document.getElementById('subNav').style.display = 'none';
+  if (!ch) { showToast('未选择角色手机'); return; }
+  if (!ch.phone) ch.phone = { notes: [], browser: [], apps: { wechat:true, browser:true, notes:true } };
+  state._homeRoot = 'phonecheck';
+  state._homeDepth = 2;
+  state._subBackFn = function(){ openCharPhone(state._phoneChar); };
+  try { document.getElementById('subNav').style.display = 'none'; } catch(e) {}
   const gen = `<button type="button" id="phoneGenBtn" onclick="phoneApiGen('${app==='browser'?'browser':'notes'}','')" style="border:none;background:transparent;font-size:18px;width:28px;height:28px;cursor:pointer">○</button>`;
   if (app === 'wechat') { openPhoneWechat('chats'); return; }
   if (app === 'browser') {
@@ -11777,6 +11799,12 @@ function editHomePolaroid() {
 function openChangelog() {
   const ver = (typeof EENOK_BUILD !== 'undefined') ? EENOK_BUILD : '';
   const logs = [
+    { v: '2026-08-18b', items: [
+      '记忆主界面退出键可点；Melo 播放页返回 Melo 主界面',
+      '查手机微信/设置可点；转账与红包卡片同尺寸 248×88',
+      'Melo 播放器改为机壳框+透明屏区封面',
+      '对齐小手机引擎：角色数据主体 + PHONE_APPS 上下文'
+    ]},
     { v: '2026-08-18a', items: [
       '倒数日：Days Matter 详情卡 / 添加页 / 日期计算器 / 里程碑独立页',
       '主屏 App 穿透点击防护加强；详情不再被误触打开',
@@ -12319,6 +12347,10 @@ function openMemoryApp(filterCharId) {
   const chars = state.chars || [];
   // 未选角色：先选人
   if (!state._memFilter) {
+    state._homeDepth = 0;
+    state._subBackFn = null;
+    state._subKind = 'homeApp';
+    state._homeRoot = 'memory';
     const rows = chars.map(function(c) {
       return '<div onclick="if(window.clickGuarded&&clickGuarded())return;state._memFilter=\''+c.id+'\';openMemoryApp()" style="display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:0.5px solid #eee;cursor:pointer">'
         + '<img src="'+avatarUrl(c)+'" style="width:44px;height:44px;border-radius:50%;object-fit:cover">'
@@ -12332,6 +12364,24 @@ function openMemoryApp(filterCharId) {
           oninput="const q=this.value.trim().toLowerCase();document.querySelectorAll('[data-memchar]').forEach(el=>{el.style.display=!q||(el.dataset.memchar||'').includes(q)?'flex':'none'})">
       </div>
       <div id="memCharList">${rows}</div>`);
+    state._clickGuardUntil = 0;
+    state._subBackFn = null;
+    state._homeDepth = 0;
+    try {
+      const nav = document.getElementById('subNav');
+      if (nav) nav.style.display = '';
+      const backBtn = document.querySelector('#subNav .nav-btn');
+      if (backBtn) {
+        backBtn.onclick = function(e) {
+          if (e) { e.preventDefault(); e.stopPropagation(); }
+          state._memFilter = null;
+          state._subBackFn = null;
+          state._homeRoot = null;
+          state._homeDepth = 0;
+          goHome();
+        };
+      }
+    } catch(e) {}
     // attach data-memchar
     setTimeout(function(){
       document.querySelectorAll('#memCharList > div').forEach(function(el, i){
@@ -17415,42 +17465,64 @@ function openMeloNowPlaying() {
   const i = state.melo.current;
   if (i == null) return;
   const s = state.melo.songs[i];
-  const accent = state.melo.accent || '#3dd6c6';
+  const accent = state.melo.accent || '#5eb8d0';
   const liked = (state.melo.liked||[]).includes(i);
   const loopLabel = state.melo.loop==='one' ? '单曲' : state.melo.loop==='off' ? '顺序' : '列表';
-  const wp = s.playBg || s.cover || '';
+  const wp = s.playBg || '';
+  const cover = s.cover || '';
+  const frameUrl = 'https://nos.netease.com/ysf/67c27955f7b307df3281f14c7e300095.png';
   state._subKind = 'meloPlay';
+  state._homeRoot = 'melo';
+  state._homeDepth = 1;
+  state._meloPlaying = true;
+  state._subBackFn = function(){
+    state._meloPlaying = false;
+    state._homeDepth = 0;
+    openMelo(state._meloTab || 'home', { replace: true });
+  };
   const playing = !!state.melo.playing;
   openSubPage(s.name || '正在播放', `
-    <div style="height:100%;display:flex;flex-direction:column;background:${wp?`#1a1a1c url(${wp}) center/cover`:'linear-gradient(180deg,#2c2c2e,#1a1a1c)'};color:#fff;position:relative">
-      <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.05),rgba(0,0,0,.28));pointer-events:none"></div>
-      <div style="position:relative;z-index:1;flex:1;display:flex;flex-direction:column;padding:8px 24px 28px">
-        <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:4px">
-          <button type="button" onclick="state.fileTarget='meloPlayBg';state._meloSongIdx=${i};document.getElementById('fileInput').accept='image/*';document.getElementById('fileInput').click()" style="border:none;background:rgba(255,255,255,.18);border-radius:12px;padding:4px 10px;font-size:11px;color:#fff">壁纸</button>
-          <button type="button" onclick="clearMeloPlayBg(${i})" style="border:none;background:rgba(255,255,255,.18);border-radius:12px;padding:4px 10px;font-size:11px;color:#fff">还原</button>
+    <div style="height:100%;display:flex;flex-direction:column;background:${wp?`#0a1020 url(${wp}) center/cover`:'linear-gradient(180deg,#0e1a28,#1a2a3a)'};color:#fff;position:relative;overflow:hidden">
+      <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center,rgba(90,180,210,.15),transparent 70%);pointer-events:none"></div>
+      <div style="position:relative;z-index:1;padding:8px 16px;display:flex;justify-content:space-between;align-items:center">
+        <button type="button" onclick="closeSubPage()" style="border:none;background:rgba(255,255,255,.12);border-radius:14px;padding:6px 12px;color:#fff;font-size:14px;cursor:pointer">‹ 返回</button>
+        <div style="display:flex;gap:8px">
+          <button type="button" onclick="state.fileTarget='meloPlayBg';state._meloSongIdx=${i};document.getElementById('fileInput').accept='image/*';document.getElementById('fileInput').click()" style="border:none;background:rgba(255,255,255,.12);border-radius:12px;padding:4px 10px;font-size:11px;color:#fff">壁纸</button>
+          <button type="button" onclick="clearMeloPlayBg(${i})" style="border:none;background:rgba(255,255,255,.12);border-radius:12px;padding:4px 10px;font-size:11px;color:#fff">还原</button>
         </div>
-        <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center">
-          <div style="width:min(68vw,240px);height:min(68vw,240px);border-radius:8px;background:${s.cover?`url(${s.cover}) center/cover`:`linear-gradient(145deg,#444,#222)`};box-shadow:0 20px 50px rgba(0,0,0,.45);margin-bottom:32px"></div>
-          <div style="width:100%;max-width:320px;text-align:left">
-            <div style="font-size:20px;font-weight:700;margin-bottom:4px">${escapeHtml(s.name||'')}</div>
-            <div style="font-size:13px;opacity:.75;margin-bottom:18px">${escapeHtml(s.artist||'')}</div>
-            <input id="meloProgress" type="range" min="0" max="100" value="0" oninput="meloSeek(this.value)" style="width:100%;accent-color:${accent};height:4px">
-            <div style="display:flex;justify-content:space-between;font-size:11px;opacity:.65;margin-top:6px">
-              <span id="meloCurT">0:00</span><span id="meloDurT">0:00</span>
-            </div>
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px 20px 16px;position:relative;z-index:1">
+        <!-- 播放器机壳：透明屏区放封面 -->
+        <div style="position:relative;width:min(78vw,280px);aspect-ratio:1/1.12;max-height:52vh">
+          <div style="position:absolute;left:14%;right:14%;top:12%;bottom:38%;border-radius:10px;overflow:hidden;background:#000;z-index:1">
+            ${cover
+              ? `<img src="${cover}" style="width:100%;height:100%;object-fit:cover;display:block" alt="">`
+              : `<div style="width:100%;height:100%;background:linear-gradient(145deg,#2a3a4a,#1a2838);display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.35);font-size:13px">封面</div>`}
           </div>
-          <div style="display:flex;width:100%;max-width:320px;justify-content:space-between;align-items:center;margin-top:28px;padding:0 4px">
-            <button type="button" onclick="cycleMeloLoop(true)" style="border:none;background:transparent;color:rgba(255,255,255,.85);font-size:12px;min-width:40px">${loopLabel}</button>
-            <button type="button" onclick="meloPrev()" style="border:none;background:transparent;color:#fff;font-size:28px;line-height:1;padding:8px">‹‹</button>
-            <button type="button" id="meloPlayMainBtn" onclick="toggleMeloPlay()" style="width:64px;height:64px;border-radius:50%;border:none;background:#fff;color:#111;font-size:22px;box-shadow:0 4px 20px rgba(0,0,0,.3)">${playing?'❚❚':'▶'}</button>
-            <button type="button" onclick="meloNext()" style="border:none;background:transparent;color:#fff;font-size:28px;line-height:1;padding:8px">››</button>
-            <button type="button" onclick="toggleMeloLike(${i})" style="border:none;background:transparent;color:${liked?'#e74c3c':'rgba(255,255,255,.85)'};font-size:22px;min-width:40px">${liked?'♥':'♡'}</button>
+          <img src="${frameUrl}" alt="player" draggable="false" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none;z-index:2;filter:drop-shadow(0 12px 28px rgba(0,40,80,.45))">
+        </div>
+        <div style="width:100%;max-width:300px;margin-top:18px;text-align:center">
+          <div style="font-size:18px;font-weight:700;margin-bottom:4px;text-shadow:0 2px 8px rgba(0,0,0,.4)">${escapeHtml(s.name||'未知曲目')}</div>
+          <div style="font-size:13px;opacity:.75;margin-bottom:14px">${escapeHtml(s.artist||'未知歌手')}</div>
+          <input id="meloProgress" type="range" min="0" max="100" value="0" oninput="meloSeek(this.value)" style="width:100%;accent-color:${accent};height:4px">
+          <div style="display:flex;justify-content:space-between;font-size:11px;opacity:.65;margin-top:6px">
+            <span id="meloCurT">0:00</span><span id="meloDurT">0:00</span>
           </div>
+        </div>
+        <div style="display:flex;width:100%;max-width:300px;justify-content:space-between;align-items:center;margin-top:20px;padding:0 4px">
+          <button type="button" onclick="cycleMeloLoop(true)" style="border:none;background:transparent;color:rgba(255,255,255,.85);font-size:12px;min-width:40px">${loopLabel}</button>
+          <button type="button" onclick="meloPrev()" style="border:none;background:transparent;color:#fff;font-size:28px;line-height:1;padding:8px">‹‹</button>
+          <button type="button" id="meloPlayMainBtn" onclick="toggleMeloPlay()" style="width:64px;height:64px;border-radius:50%;border:none;background:linear-gradient(145deg,#e8f4f8,#b8dce8);color:#1a3a48;font-size:22px;box-shadow:0 4px 20px rgba(90,180,210,.35)">${playing?'❚❚':'▶'}</button>
+          <button type="button" onclick="meloNext()" style="border:none;background:transparent;color:#fff;font-size:28px;line-height:1;padding:8px">››</button>
+          <button type="button" onclick="toggleMeloLike(${i})" style="border:none;background:transparent;color:${liked?'#e74c3c':'rgba(255,255,255,.85)'};font-size:22px;min-width:40px">${liked?'♥':'♡'}</button>
         </div>
       </div>
     </div>
   `, '', { replace: false });
+  try { document.getElementById('subNav').style.display = ''; } catch(e) {}
 }
+
+
 function clearMeloPlayBg(i) {
   if (state.melo.songs[i]) { state.melo.songs[i].playBg = ''; save(); openMeloNowPlaying(); }
 }
