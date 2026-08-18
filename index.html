@@ -1712,7 +1712,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-18b';
+const EENOK_BUILD = '2026-08-18c';
 function checkAppUpdate() {
   try {
     const prev = localStorage.getItem('eenook_build');
@@ -10871,13 +10871,16 @@ function exitPhone() {
   state._phoneLayer = null;
   state._phoneChar = null;
   state._subStack = [];
-  const subNav = document.getElementById('subNav');
-  if (subNav) subNav.style.display = '';
-  const sub = document.getElementById('page-sub');
-  if (sub) { sub.style.display = 'none'; sub.classList.remove('active'); }
-  document.getElementById('dock').style.display = 'flex';
-  showPage('contacts');
-  renderContacts();
+  state._homeDepth = 0;
+  state._subBackFn = null;
+  try {
+    const subNav = document.getElementById('subNav');
+    if (subNav) subNav.style.display = '';
+  } catch(e) {}
+  // 回到查手机角色列表，不要掉进通讯录
+  try { openPhoneCheck(); } catch(e) {
+    try { goHome(); } catch(e2) {}
+  }
 }
 
 // ========== 小手机公共引擎（角色数据主体 + App 注册表）==========
@@ -10995,25 +10998,25 @@ function openCharPhone(cid) {
       </div>
       <div style="flex:1;padding:20px 16px">
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:20px 12px">
-          ${(ch.phone.apps||{wechat:1,browser:1,notes:1}).wechat!==false?`<div onclick="event.stopPropagation();openPhoneApp('wechat')" style="text-align:center;cursor:pointer;pointer-events:auto;z-index:5;position:relative">
+          ${(ch.phone.apps||{wechat:1,browser:1,notes:1}).wechat!==false?`<div data-phone-app="wechat" style="text-align:center;cursor:pointer;pointer-events:auto;z-index:5;position:relative">
             <div style="width:54px;height:54px;margin:0 auto;border-radius:14px;background:${_picon};display:flex;align-items:center;justify-content:center;border:1px solid var(--line)">
               <span class="icon" style="width:26px;height:26px"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
             </div>
             <div style="font-size:11px;margin-top:6px">微信</div>
           </div>`:''}
-          ${(ch.phone.apps||{}).browser!==false?`<div onclick="event.stopPropagation();openPhoneApp('browser')" style="text-align:center;cursor:pointer;pointer-events:auto;z-index:5;position:relative">
+          ${(ch.phone.apps||{}).browser!==false?`<div data-phone-app="browser" style="text-align:center;cursor:pointer;pointer-events:auto;z-index:5;position:relative">
             <div style="width:54px;height:54px;margin:0 auto;border-radius:14px;background:${_picon};display:flex;align-items:center;justify-content:center;border:1px solid var(--line)">
               <span class="icon" style="width:26px;height:26px"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/></svg></span>
             </div>
             <div style="font-size:11px;margin-top:6px">浏览器</div>
           </div>`:''}
-          ${(ch.phone.apps||{}).notes!==false?`<div onclick="event.stopPropagation();openPhoneApp('notes')" style="text-align:center;cursor:pointer;pointer-events:auto;z-index:5;position:relative">
+          ${(ch.phone.apps||{}).notes!==false?`<div data-phone-app="notes" style="text-align:center;cursor:pointer;pointer-events:auto;z-index:5;position:relative">
             <div style="width:54px;height:54px;margin:0 auto;border-radius:14px;background:${_picon};display:flex;align-items:center;justify-content:center;border:1px solid var(--line)">
               <span class="icon" style="width:26px;height:26px"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span>
             </div>
             <div style="font-size:11px;margin-top:6px">备忘录</div>
           </div>`:''}
-          <div onclick="event.stopPropagation();openPhoneApp('settings')" style="text-align:center;cursor:pointer;pointer-events:auto;z-index:5;position:relative">
+          <div data-phone-app="settings" style="text-align:center;cursor:pointer;pointer-events:auto;z-index:5;position:relative">
             <div style="width:54px;height:54px;margin:0 auto;border-radius:14px;background:${_picon};display:flex;align-items:center;justify-content:center;border:1px solid var(--line)">
               <span class="icon" style="width:26px;height:26px"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2"/></svg></span>
             </div>
@@ -11023,21 +11026,45 @@ function openCharPhone(cid) {
       </div>
     </div>
   `, '', { replace: true });
-  // hide default sub nav title bar look - already custom
-  document.getElementById('subNav').style.display = 'none';
-  const restore = closeSubPage;
-  // patch once
-  window._phoneClose = () => { document.getElementById('subNav').style.display = ''; closeSubPage(); };
+  try {
+    const sn = document.getElementById('subNav');
+    if (sn) sn.style.display = 'none';
+  } catch(e) {}
+  state._clickGuardUntil = 0;
+  // 用 JS 绑定，避免内联 onclick 被遮挡或防护拦截
+  setTimeout(function() {
+    try {
+      const body = document.getElementById('subBody');
+      if (!body) return;
+      body.querySelectorAll('[data-phone-app]').forEach(function(el) {
+        el.style.pointerEvents = 'auto';
+        el.style.cursor = 'pointer';
+        el.onclick = function(ev) {
+          if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+          state._clickGuardUntil = 0;
+          openPhoneApp(el.getAttribute('data-phone-app'));
+        };
+      });
+    } catch(e) { console.warn(e); }
+  }, 30);
+  window._phoneClose = function() {
+    try { document.getElementById('subNav').style.display = ''; } catch(e) {}
+    exitPhone();
+  };
 }
 function openPhoneWechat(tab) {
+  state._clickGuardUntil = 0;
   const ch = state.chars.find(c=>c.id===state._phoneChar);
-  if (!ch) return;
+  if (!ch) { showToast('请先选择角色'); return; }
   if (!ch.phone) ch.phone = { notes: [], browser: [], apps: { wechat:true, browser:true, notes:true }, wechatData: {} };
   if (!ch.phone.wechatData) ch.phone.wechatData = {};
   const wd = ch.phone.wechatData;
   tab = tab || 'chats';
   state._phoneLayer = 'wechat';
-  document.getElementById('subNav').style.display = 'none';
+  state._homeRoot = 'phonecheck';
+  state._homeDepth = 2;
+  state._subBackFn = function(){ openCharPhone(state._phoneChar); };
+  try { const sn=document.getElementById('subNav'); if(sn) sn.style.display='none'; } catch(e) {}
   const genBtn = `<button type="button" id="phoneGenBtn" onclick="phoneApiGen('wechat','${tab}')" style="border:none;background:transparent;width:28px;height:28px;border-radius:50%;font-size:18px;cursor:pointer;line-height:1">○</button>`;
   let main = '';
   if (tab === 'chats') {
@@ -11799,6 +11826,11 @@ function editHomePolaroid() {
 function openChangelog() {
   const ver = (typeof EENOK_BUILD !== 'undefined') ? EENOK_BUILD : '';
   const logs = [
+    { v: '2026-08-18c', items: [
+      '记忆从主屏固定进角色列表；查手机退出回角色列表非通讯录',
+      '查手机微信/设置用 data 绑定可点',
+      'Melo 大改：首页/搜索/笔记/我的 + 水色主题；播放器机壳加大露封面'
+    ]},
     { v: '2026-08-18b', items: [
       '记忆主界面退出键可点；Melo 播放页返回 Melo 主界面',
       '查手机微信/设置可点；转账与红包卡片同尺寸 248×88',
@@ -12335,15 +12367,16 @@ function openMemoryApp(filterCharId) {
   ensureHomeState();
   if (!state.memoryApp) state.memoryApp = { items: [] };
   state._homeRoot = 'memory';
-  state._homeDepth = 0;
   state._subKind = 'homeApp';
-  // 从主屏进入：强制角色列表；列表内点角色会传 filter 或先设 _memFilter 再调
+  // 只有显式传入角色 id 才进详情；主屏/返回一律角色列表
   if (filterCharId) {
     state._memFilter = filterCharId;
-  } else if (state._openFromHome) {
+    state._homeDepth = 1;
+  } else {
     state._memFilter = null;
+    state._homeDepth = 0;
+    state._subBackFn = null;
   }
-  // 列表点选：调用前已设置 state._memFilter，此处保留
   const chars = state.chars || [];
   // 未选角色：先选人
   if (!state._memFilter) {
@@ -12352,7 +12385,7 @@ function openMemoryApp(filterCharId) {
     state._subKind = 'homeApp';
     state._homeRoot = 'memory';
     const rows = chars.map(function(c) {
-      return '<div onclick="if(window.clickGuarded&&clickGuarded())return;state._memFilter=\''+c.id+'\';openMemoryApp()" style="display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:0.5px solid #eee;cursor:pointer">'
+      return '<div onclick="if(window.clickGuarded&&clickGuarded())return;openMemoryApp(\''+c.id+'\')" style="display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:0.5px solid #eee;cursor:pointer">'
         + '<img src="'+avatarUrl(c)+'" style="width:44px;height:44px;border-radius:50%;object-fit:cover">'
         + '<div style="flex:1"><div style="font-weight:600">'+escapeHtml(c.nick||c.realName||'角色')+'</div>'
         + '<div class="text-sub" style="font-size:12px;margin-top:2px">查看与TA的记忆</div></div></div>';
@@ -17170,135 +17203,120 @@ function meloFmt(sec) {
 function openMelo(tab, opts) {
   state._homeRoot = 'melo';
   state._subKind = 'melo';
+  state._meloPlaying = false;
+  state._homeDepth = 0;
+  state._subBackFn = null;
   opts = opts || {};
   tab = tab || state._meloTab || 'home';
   state._meloTab = tab;
-  state._subKind = 'melo';
-  state._subReturnPage = 'contacts';
-  if (!state.melo) state.melo = { songs: [], playlists: [], liked: [], history: [], current: null, playing: false, loop: 'all', accent: '#3dd6c6', profile: {} };
+  if (!state.melo) state.melo = { songs: [], playlists: [], liked: [], history: [], notes: [], current: null, playing: false, loop: 'all', accent: '#5eb8b0', profile: {} };
   if (!state.melo.profile) state.melo.profile = {};
+  if (!state.melo.notes) state.melo.notes = [];
+  if (!state.melo.songs) state.melo.songs = [];
+  if (!state.melo.playlists) state.melo.playlists = [];
+  if (!state.melo.liked) state.melo.liked = [];
+  if (!state.melo.history) state.melo.history = [];
   const melo = state.melo;
-  const accent = melo.accent || '#3dd6c6';
-  const songs = melo.songs || [];
+  const accent = melo.accent || '#5eb8b0';
+  const bg = 'linear-gradient(180deg,#e8f6f4 0%,#d4ebea 40%,#c5e8e4 100%)';
+  const card = 'rgba(255,255,255,.82)';
+  const fg = '#2a4a55';
+  const subc = '#6a8a90';
+  const dock = function(id, lab) {
+    return '<button type="button" onclick="openMelo(\''+id+'\')" style="flex:1;border:none;background:transparent;padding:10px 4px;font-size:12px;font-weight:'+(tab===id?'700':'400')+';color:'+(tab===id?accent:subc)+';cursor:pointer">'+lab+'</button>';
+  };
   let main = '';
-  if (tab === 'home') {
-    main = `
-      <div style="padding:12px 16px 80px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-          <div style="font-size:22px;font-weight:700">Melo</div>
-          <div style="display:flex;gap:8px">
-            <button type="button" onclick="importNeteasePlaylist()" style="border:1px solid var(--line);background:var(--card);border-radius:16px;padding:6px 10px;font-size:11px;cursor:pointer;color:var(--text)">网易云歌单</button>
-            <button type="button" onclick="importMeloSong()" style="border:1px solid var(--line);background:var(--card);border-radius:16px;padding:6px 12px;font-size:12px;cursor:pointer;color:var(--text)">＋ 导入</button>
-          </div>
-        </div>
-        <div id="meloList">${songs.length ? songs.map((s,i)=>`
-          <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)">
-            <div onclick="playMeloSong(${i})" style="width:48px;height:48px;border-radius:10px;background:${s.cover?`url(${s.cover}) center/cover`:`linear-gradient(135deg,${accent}66,#444)`};flex-shrink:0;cursor:pointer"></div>
-            <div onclick="playMeloSong(${i})" style="flex:1;min-width:0;cursor:pointer">
-              <div style="font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(s.name||'未命名')}</div>
-              <div style="font-size:12px;color:var(--sub)">${escapeHtml(s.artist||'本地')}</div>
-            </div>
-            <button type="button" onclick="editMeloSong(${i})" style="border:none;background:transparent;color:var(--sub);font-size:16px;padding:4px 8px;cursor:pointer">···</button>
-          </div>`).join('') : '<div class="empty" style="padding:40px 0">还没有歌曲<br>点击右上角导入</div>'}
-        </div>
-      </div>`;
-  } else if (tab === 'search') {
-    main = `<div style="padding:16px 16px 80px">
-      <input id="meloSearch" placeholder="搜索歌名 / 艺术家" oninput="filterMeloSearch()" style="width:100%;padding:10px 14px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--text);margin-bottom:12px">
-      <div id="meloSearchList"></div>
-    </div>`;
-  } else if (tab === 'list') {
-    const pls = melo.playlists || [];
-    main = `<div style="padding:16px 16px 80px">
-      <button class="btn btn-secondary" style="width:100%;margin-bottom:12px" onclick="createMeloPlaylist()">＋ 新建歌单</button>
-      <div onclick="openMeloLiked()" style="display:flex;gap:12px;padding:12px;border-radius:14px;background:var(--card);margin-bottom:8px;border:1px solid var(--line);cursor:pointer">
-        <div style="width:48px;height:48px;border-radius:10px;background:#e74c3c;color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px">♥</div>
-        <div style="flex:1"><div style="font-weight:600">我喜欢的音乐</div><div class="text-sub">${(melo.liked||[]).length} 首</div></div>
-      </div>
-      ${pls.map((p,i)=>`
-        <div style="display:flex;gap:12px;padding:12px;border-radius:14px;background:var(--card);margin-bottom:8px;border:1px solid var(--line)">
-          <div onclick="openMeloPlaylist(${i})" style="width:48px;height:48px;border-radius:10px;background:${p.cover?`url(${p.cover}) center/cover`:'#333'};flex-shrink:0;cursor:pointer"></div>
-          <div onclick="openMeloPlaylist(${i})" style="flex:1;cursor:pointer"><div style="font-weight:600">${escapeHtml(p.name)}</div><div class="text-sub">${(p.songs||[]).length} 首</div></div>
-          <button type="button" onclick="editMeloPlaylist(${i})" style="border:none;background:transparent;color:var(--sub)">···</button>
-        </div>`).join('')}
-    </div>`;
+  if (tab === 'search') {
+    const q = (state._meloQ || '').trim().toLowerCase();
+    const songs = (melo.songs || []).filter(function(s){ return !q || String(s.name||'').toLowerCase().indexOf(q)>=0 || String(s.artist||'').toLowerCase().indexOf(q)>=0; });
+    const cats = [{t:'国风',d:'古风 · 民乐'},{t:'流行',d:'华语流行'},{t:'轻音',d:'治愈钢琴'},{t:'摇滚',d:'能量满满'},{t:'情歌',d:'心动旋律'},{t:'热歌',d:'本周热播'}];
+    main = '<div style="padding:12px 14px 8px;display:flex;gap:10px;align-items:center">'
+      + '<div style="flex:1;display:flex;align-items:center;gap:8px;background:'+card+';border-radius:20px;padding:10px 14px;border:0.5px solid rgba(94,184,176,.25)">'
+      + '<span style="color:'+subc+'">⌕</span>'
+      + '<input id="meloSearchInp" value="'+escapeHtml(state._meloQ||'')+'" placeholder="搜索歌曲、歌手" style="flex:1;border:none;outline:none;background:transparent;font-size:14px;color:'+fg+'" onkeydown="if(event.key===\'Enter\'){state._meloQ=this.value;openMelo(\'search\')}"></div></div>'
+      + '<div style="padding:8px 14px 4px;font-size:15px;font-weight:600;color:'+fg+'">快速发现</div>'
+      + '<div style="display:flex;gap:10px;overflow-x:auto;padding:8px 14px 12px">'
+      + cats.slice(0,3).map(function(c){ return '<div style="flex-shrink:0;width:120px;height:140px;border-radius:14px;background:'+card+';box-shadow:0 4px 14px rgba(80,140,160,.1);padding:12px;display:flex;flex-direction:column;justify-content:flex-end"><div style="font-size:15px;font-weight:600;color:'+fg+'">'+c.t+'</div><div style="font-size:11px;color:'+subc+';margin-top:4px">'+c.d+'</div></div>'; }).join('')
+      + '</div><div style="padding:4px 14px 8px;font-size:15px;font-weight:600;color:'+fg+'">浏览全部</div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 14px 20px">'
+      + cats.map(function(c){ return '<div style="border-radius:14px;background:'+card+';padding:16px 12px;min-height:72px;box-shadow:0 2px 10px rgba(80,140,160,.08)"><div style="font-size:15px;font-weight:600;color:'+fg+'">'+c.t+'</div><div style="font-size:11px;color:'+subc+';margin-top:6px">'+c.d+'</div></div>'; }).join('')
+      + '</div>'
+      + (q ? '<div style="padding:0 14px 20px">'+songs.map(function(s){ var real=melo.songs.indexOf(s); return '<div onclick="playMeloSong('+real+')" style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:0.5px solid rgba(80,140,160,.1);cursor:pointer"><div style="width:44px;height:44px;border-radius:8px;background:'+(s.cover?('url('+s.cover+') center/cover'):'#c5e0e0')+'"></div><div style="flex:1;min-width:0"><div style="font-size:14px;color:'+fg+'">'+escapeHtml(s.name||'')+'</div><div style="font-size:12px;color:'+subc+'">'+escapeHtml(s.artist||'本地')+'</div></div></div>'; }).join('')||('<div class="empty" style="padding:24px;color:'+subc+'">没有匹配的歌曲</div>')+'</div>' : '');
+  } else if (tab === 'notes') {
+    var notes = melo.notes || [];
+    main = '<div style="padding:12px 14px;display:flex;align-items:center;justify-content:space-between"><div style="font-size:16px;font-weight:700;color:'+fg+'">笔记</div>'
+      + '<button type="button" onclick="openMeloNoteModal()" style="border:none;background:'+accent+';color:#fff;width:36px;height:36px;border-radius:50%;font-size:22px;line-height:1;cursor:pointer;box-shadow:0 4px 12px rgba(94,184,176,.35)">＋</button></div>'
+      + '<div style="padding:0 14px 80px">'
+      + (notes.length ? notes.map(function(n,ni){ return '<div style="background:'+card+';border-radius:14px;padding:14px;margin-bottom:10px;box-shadow:0 2px 10px rgba(80,140,160,.08)"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><div style="width:32px;height:32px;border-radius:50%;background:'+accent+'33;display:flex;align-items:center;justify-content:center;font-size:12px;color:'+accent+'">我</div><div style="flex:1"><div style="font-size:13px;font-weight:600;color:'+fg+'">'+escapeHtml(melo.profile.nick||state.user.nick||'我')+'</div><div style="font-size:11px;color:'+subc+'">'+(n.ts?new Date(n.ts).toLocaleDateString():'')+'</div></div><span onclick="delMeloNote('+ni+')" style="color:#ccc;cursor:pointer;padding:4px">×</span></div><div style="font-size:14px;color:'+fg+';line-height:1.55;white-space:pre-wrap">'+escapeHtml(n.text||'')+'</div>'+(n.songName?'<div style="margin-top:10px;padding:8px 10px;background:rgba(94,184,176,.12);border-radius:10px;font-size:12px;color:'+accent+'">♪ '+escapeHtml(n.songName)+'</div>':'')+'</div>'; }).join('') : '<div style="text-align:center;padding:48px 20px;color:'+subc+'">还没有笔记<br>点右上角 ＋ 写一条</div>')
+      + '</div>';
+  } else if (tab === 'mine') {
+    var p = melo.profile || {};
+    var nick = p.nick || state.user.nick || '我';
+    var sign = p.sign || state.user.sign || 'Hello Melo';
+    var av = p.avatar || state.user.avatar || '';
+    var subTab = state._meloMineTab || 'music';
+    var liked = (melo.liked || []).map(function(ix){ return melo.songs[ix]; }).filter(Boolean);
+    main = '<div style="padding:16px 14px 8px;text-align:center"><div style="width:72px;height:72px;border-radius:50%;margin:0 auto;overflow:hidden;border:3px solid rgba(255,255,255,.9);box-shadow:0 4px 16px rgba(80,140,160,.15);background:#c5e0e0">'
+      + (av?'<img src="'+av+'" style="width:100%;height:100%;object-fit:cover">':'')+'</div>'
+      + '<div style="margin-top:10px;font-size:17px;font-weight:700;color:'+fg+'">'+escapeHtml(nick)+'</div>'
+      + '<div style="font-size:12px;color:'+subc+';margin-top:4px">'+escapeHtml(sign)+'</div>'
+      + '<div style="display:flex;justify-content:center;gap:20px;margin-top:12px;font-size:12px;color:'+subc+'"><span><b style="color:'+fg+'">'+melo.songs.length+'</b> 本地</span><span><b style="color:'+fg+'">'+liked.length+'</b> 喜欢</span><span><b style="color:'+fg+'">'+(melo.notes||[]).length+'</b> 笔记</span></div>'
+      + '<button type="button" onclick="editMeloProfile()" style="margin-top:12px;border:1px solid rgba(94,184,176,.35);background:'+card+';border-radius:16px;padding:6px 16px;font-size:12px;color:'+accent+';cursor:pointer">编辑资料</button></div>'
+      + '<div style="display:flex;border-bottom:0.5px solid rgba(80,140,160,.15);margin-top:8px">'
+      + '<button type="button" onclick="state._meloMineTab=\'music\';openMelo(\'mine\')" style="flex:1;border:none;background:transparent;padding:12px;font-size:14px;font-weight:'+(subTab==='music'?'700':'400')+';color:'+(subTab==='music'?fg:subc)+';border-bottom:2px solid '+(subTab==='music'?accent:'transparent')+'">音乐</button>'
+      + '<button type="button" onclick="state._meloMineTab=\'notes\';openMelo(\'mine\')" style="flex:1;border:none;background:transparent;padding:12px;font-size:14px;font-weight:'+(subTab==='notes'?'700':'400')+';color:'+(subTab==='notes'?fg:subc)+';border-bottom:2px solid '+(subTab==='notes'?accent:'transparent')+'">笔记</button></div>'
+      + '<div style="padding:12px 14px 80px">'
+      + (subTab==='notes'
+        ? ((melo.notes||[]).map(function(n){ return '<div style="padding:12px 0;border-bottom:0.5px solid rgba(80,140,160,.1)"><div style="font-size:14px;color:'+fg+'">'+escapeHtml(n.text||'')+'</div><div style="font-size:11px;color:'+subc+';margin-top:4px">'+(n.ts?new Date(n.ts).toLocaleString():'')+'</div></div>'; }).join('') || '<div class="empty" style="color:'+subc+'">暂无笔记</div>')
+        : ('<div onclick="openMeloLiked()" style="display:flex;align-items:center;gap:12px;padding:12px;background:'+card+';border-radius:12px;margin-bottom:10px;cursor:pointer"><div style="width:48px;height:48px;border-radius:8px;background:linear-gradient(145deg,'+accent+',#7ec8c0);color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px">♥</div><div><div style="font-weight:600;color:'+fg+'">我喜欢的音乐</div><div style="font-size:12px;color:'+subc+'">'+liked.length+' 首</div></div></div>'
+          + '<div style="font-size:13px;color:'+subc+';margin:8px 0">本地歌曲 · '+melo.songs.length+'</div>'
+          + (melo.songs.map(function(s,idx){ return '<div onclick="playMeloSong('+idx+')" style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:0.5px solid rgba(80,140,160,.08);cursor:pointer"><div style="width:40px;height:40px;border-radius:6px;background:'+(s.cover?('url('+s.cover+') center/cover'):'#d0e8e6')+'"></div><div style="flex:1;min-width:0"><div style="font-size:14px;color:'+fg+'">'+escapeHtml(s.name||'')+'</div><div style="font-size:11px;color:'+subc+'">'+escapeHtml(s.artist||'本地')+'</div></div></div>'; }).join('') || '<div class="empty" style="color:'+subc+'">还没有导入歌曲</div>')))
+      + '</div>';
   } else {
-    const pf = melo.profile || {};
-    main = `<div style="padding:0 0 100px">
-      <div style="height:240px;background:${pf.bg?`url(${pf.bg}) center/cover`:'linear-gradient(160deg,#3a3a40,#1c1c1e)'};position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center">
-        <button type="button" onclick="pickMeloProfileBg()" style="position:absolute;right:10px;top:10px;border:none;background:rgba(0,0,0,.4);color:#fff;border-radius:12px;padding:4px 10px;font-size:11px">换背景</button>
-        <button type="button" onclick="editMeloProfile()" style="position:absolute;left:10px;top:10px;border:none;background:rgba(0,0,0,.4);color:#fff;border-radius:12px;padding:4px 10px;font-size:11px">编辑</button>
-        <img src="${pf.avatar||avatarUrl(state.user)}" onclick="pickMeloProfileAvatar()" style="width:76px;height:76px;border-radius:50%;object-fit:cover;border:3px solid rgba(255,255,255,.95);box-shadow:0 4px 16px rgba(0,0,0,.35);cursor:pointer">
-        <div style="margin-top:12px;font-size:18px;font-weight:700;color:${pf.nickColor||'#fff'};text-shadow:0 1px 6px rgba(0,0,0,.35)">${escapeHtml(pf.nick||state.user.nick||'我')}</div>
-        <div style="font-size:12px;color:${pf.idColor||'rgba(255,255,255,.75)'};margin-top:4px">ID ${escapeHtml(pf.id||'—')}</div>
-        <div style="font-size:12px;color:${pf.signColor||'rgba(255,255,255,.9)'};margin-top:8px;padding:0 28px;text-align:center;line-height:1.4">${escapeHtml(pf.sign||'这个人很懒，什么都没写')}</div>
-      </div>
-      <div style="padding:16px">
-        <div class="form-group"><label>强调色</label><input id="meloAccent" type="color" value="${accent}" onchange="state.melo.accent=this.value;save();openMelo('mine',{replace:1})"></div>
-      </div>
-    </div>`;
+    var songs = melo.songs || [];
+    main = '<div style="padding:10px 14px;display:flex;align-items:center;gap:10px">'
+      + '<button type="button" onclick="importMeloSongs()" style="border:none;background:'+card+';border-radius:14px;padding:8px 12px;font-size:13px;color:'+accent+';cursor:pointer;border:0.5px solid rgba(94,184,176,.3)">＋ 导入</button>'
+      + '<div style="flex:1"></div>'
+      + '<button type="button" onclick="openMelo(\'search\')" style="border:none;background:'+card+';border-radius:50%;width:36px;height:36px;font-size:16px;color:'+fg+';cursor:pointer">⌕</button></div>'
+      + '<div style="padding:4px 14px 8px;font-size:15px;font-weight:600;color:'+fg+'">快速发现</div>'
+      + '<div style="display:flex;gap:10px;overflow-x:auto;padding:4px 14px 14px">'
+      + '<div onclick="openMelo(\'search\')" style="flex-shrink:0;width:130px;height:150px;border-radius:16px;background:linear-gradient(160deg,#7ec8c0,#5eb8b0);color:#fff;padding:14px;display:flex;flex-direction:column;justify-content:flex-end;cursor:pointer;box-shadow:0 6px 18px rgba(94,184,176,.3)"><div style="font-size:15px;font-weight:700">每日推荐</div><div style="font-size:11px;opacity:.9;margin-top:4px">今日好歌</div></div>'
+      + '<div onclick="openMeloLiked()" style="flex-shrink:0;width:130px;height:150px;border-radius:16px;background:linear-gradient(160deg,#a8d4e6,#7eb8d0);color:#fff;padding:14px;display:flex;flex-direction:column;justify-content:flex-end;cursor:pointer"><div style="font-size:15px;font-weight:700">我喜欢的</div><div style="font-size:11px;opacity:.9;margin-top:4px">'+(melo.liked||[]).length+' 首</div></div>'
+      + '<div onclick="importMeloSongs()" style="flex-shrink:0;width:130px;height:150px;border-radius:16px;background:'+card+';padding:14px;display:flex;flex-direction:column;justify-content:flex-end;cursor:pointer;border:0.5px solid rgba(94,184,176,.2)"><div style="font-size:15px;font-weight:700;color:'+fg+'">导入本地</div><div style="font-size:11px;color:'+subc+';margin-top:4px">MP3 / AAC</div></div></div>'
+      + '<div style="padding:4px 14px;font-size:15px;font-weight:600;color:'+fg+'">本地歌曲</div>'
+      + '<div style="padding:8px 14px 90px">'
+      + (songs.length ? songs.map(function(s,idx){ return '<div onclick="playMeloSong('+idx+')" style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:0.5px solid rgba(80,140,160,.08);cursor:pointer"><div style="width:48px;height:48px;border-radius:10px;background:'+(s.cover?('url('+s.cover+') center/cover'):'linear-gradient(145deg,#c5e8e4,#a8d4e0)')+';flex-shrink:0"></div><div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:500;color:'+fg+'">'+escapeHtml(s.name||'未知')+'</div><div style="font-size:12px;color:'+subc+';margin-top:2px">'+escapeHtml(s.artist||'本地')+'</div></div><span style="color:'+accent+';font-size:18px">▶</span></div>'; }).join('') : '<div style="text-align:center;padding:40px 20px;color:'+subc+'">还没有歌曲<br>点左上角「导入」添加本地音乐</div>')
+      + '</div>';
   }
-  const cur = melo.current != null ? songs[melo.current] : null;
-  const loopIcon = melo.loop==='one' ? '①' : melo.loop==='off' ? '⇥' : '↻';
-  const mini = cur ? `
-    <div style="margin:0 12px 8px;padding:10px 12px;border-radius:16px;background:rgba(255,255,255,.72);backdrop-filter:blur(16px);border:1px solid var(--line);box-shadow:0 4px 16px rgba(0,0,0,.06)">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-        <button type="button" onclick="cycleMeloLoop(true)" style="border:none;background:transparent;font-size:14px;color:var(--sub);width:28px">${loopIcon}</button>
-        <div style="flex:1;min-width:0;cursor:pointer" onclick="openMeloNowPlaying()">
-          <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(cur.name||'')}</div>
-          <div style="font-size:11px;color:var(--sub)">${escapeHtml(cur.artist||'')}</div>
-        </div>
-        <button type="button" onclick="toggleMeloPlay()" style="border:none;background:${accent};color:#fff;width:36px;height:36px;border-radius:10px;font-size:14px">${melo.playing?'❚❚':'▶'}</button>
-      </div>
-    </div>` : '';
-  const dock = (id, lab) => `<button type="button" onclick="openMelo('${id}',{replace:1})" style="flex:1;border:none;background:transparent;padding:10px 4px;font-size:12px;font-weight:${tab===id?'600':'400'};color:${tab===id?accent:'var(--sub)'};cursor:pointer">${lab}</button>`;
-  openSubPage('Melo', `
-    <div style="display:flex;flex-direction:column;height:100%;background:var(--bg);color:var(--text);position:relative">
-      <div style="flex:1;overflow:auto">${main}</div>
-      <div style="position:absolute;left:0;right:0;bottom:0;padding-bottom:env(safe-area-inset-bottom);pointer-events:none">
-        <div style="pointer-events:auto">${mini}</div>
-        <div style="margin:0 12px 12px;display:flex;border-radius:22px;background:rgba(255,255,255,.8);backdrop-filter:blur(20px);border:1px solid var(--line);box-shadow:0 8px 28px rgba(0,0,0,.1);padding:4px;pointer-events:auto;min-height:52px;align-items:center">
-          ${dock('home','首页')}${dock('search','搜索')}${dock('list','歌单')}${dock('mine','我的')}
-        </div>
-      </div>
-    </div>
-  `, '', { replace: !!opts.replace });
-  ensureMeloAudio();
-  showMeloFloat(melo.current != null);
+  var mini = '';
+  if (melo.current != null && melo.songs[melo.current]) {
+    var s = melo.songs[melo.current];
+    mini = '<div onclick="openMeloNowPlaying()" style="position:absolute;left:12px;right:12px;bottom:62px;height:48px;border-radius:24px;background:rgba(255,255,255,.92);backdrop-filter:blur(12px);display:flex;align-items:center;gap:10px;padding:0 12px;z-index:15;box-shadow:0 4px 16px rgba(80,140,160,.15);cursor:pointer;border:0.5px solid rgba(255,255,255,.8)">'
+      + '<div style="width:36px;height:36px;border-radius:50%;background:'+(s.cover?('url('+s.cover+') center/cover'):'#c5e0e0')+';flex-shrink:0"></div>'
+      + '<div style="flex:1;min-width:0;font-size:13px;color:'+fg+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escapeHtml(s.name||'')+'</div>'
+      + '<button type="button" onclick="event.stopPropagation();toggleMeloPlay()" style="border:none;background:'+accent+';color:#fff;width:32px;height:32px;border-radius:50%;font-size:12px">'+(melo.playing?'❚❚':'▶')+'</button></div>';
+  }
+  openSubPage('Melo', '<div style="display:flex;flex-direction:column;height:100%;background:'+bg+';position:relative;color:'+fg+'"><div style="flex:1;overflow-y:auto;min-height:0">'+main+'</div>'+mini+'<div style="flex-shrink:0;padding:6px 12px 12px"><div style="display:flex;border-radius:22px;background:rgba(255,255,255,.75);backdrop-filter:blur(14px);border:0.5px solid rgba(255,255,255,.8);box-shadow:0 4px 20px rgba(80,140,160,.12);min-height:52px;align-items:center">'+dock('home','首页')+dock('search','搜索')+dock('notes','笔记')+dock('mine','我的')+'</div></div></div>', '', { replace: !!(opts && opts.replace) || !!state._openFromHome });
+  state._openFromHome = false;
+  try { document.getElementById('subNav').style.display = ''; } catch(e) {}
 }
-function cycleMeloLoop(stayPlay) {
-  const o = state.melo.loop;
-  state.melo.loop = o==='all' ? 'one' : o==='one' ? 'off' : 'all';
+
+function openMeloNoteModal() {
+  openModal('写笔记', '<div class="form-group"><label>内容</label><textarea id="meloNoteTxt" style="min-height:100px" placeholder="此刻想写点什么…"></textarea></div><div class="form-group"><label>关联歌曲（可选）</label><input id="meloNoteSong" placeholder="歌名"></div>',
+    '<button class="btn btn-secondary" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="(function(){var t=document.getElementById(\'meloNoteTxt\').value.trim();if(!t){showToast(\'写点内容吧\');return;}if(!state.melo.notes)state.melo.notes=[];state.melo.notes.unshift({text:t,songName:document.getElementById(\'meloNoteSong\').value.trim(),ts:Date.now()});save();closeModal();openMelo(\'notes\');})()">发布</button>', { center: true });
+}
+function delMeloNote(i) {
+  if (!state.melo || !state.melo.notes) return;
+  state.melo.notes.splice(i, 1);
   save();
-  if (state._subKind === 'meloPlay' || stayPlay) {
-    // 只更新循环文案，不整页重开也可
-    openMeloNowPlaying();
-    return;
-  }
-  openMelo(state._meloTab || 'home', { replace: true });
+  openMelo(state._meloTab === 'mine' ? 'mine' : 'notes');
 }
-function filterMeloSearch() {
-  const q = ((document.getElementById('meloSearch')||{}).value||'').toLowerCase();
-  const list = document.getElementById('meloSearchList');
-  if (!list) return;
-  const songs = (state.melo.songs||[]).map((s,i)=>({...s,i})).filter(s => !q || (s.name||'').toLowerCase().includes(q) || (s.artist||'').toLowerCase().includes(q));
-  list.innerHTML = songs.map(s => `<div onclick="playMeloSong(${s.i})" style="padding:10px 0;border-bottom:1px solid var(--line);cursor:pointer"><div>${escapeHtml(s.name)}</div><div class="text-sub">${escapeHtml(s.artist||'')}</div></div>`).join('') || '<div class="text-sub">无结果</div>';
+function editMeloProfile() {
+  var p = (state.melo && state.melo.profile) || {};
+  openModal('编辑资料', '<div class="form-group"><label>昵称</label><input id="mpNick" value="'+escapeHtml(p.nick||'')+'"></div><div class="form-group"><label>签名</label><input id="mpSign" value="'+escapeHtml(p.sign||'')+'"></div><button class="btn btn-secondary" style="width:100%;margin-top:8px" onclick="state.fileTarget=\'meloProfileAvatar\';document.getElementById(\'fileInput\').click()">换头像</button>',
+    '<button class="btn btn-secondary" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="state.melo.profile=state.melo.profile||{};state.melo.profile.nick=document.getElementById(\'mpNick\').value.trim();state.melo.profile.sign=document.getElementById(\'mpSign\').value.trim();save();closeModal();openMelo(\'mine\')">保存</button>');
 }
-function createMeloPlaylist() {
-  openModal('新建歌单', `<div class="form-group"><input id="plName" placeholder="歌单名"></div>`,
-    `<button class="btn btn-secondary" onclick="closeModal()">取消</button>
-     <button class="btn btn-primary" onclick="if(!state.melo.playlists)state.melo.playlists=[];state.melo.playlists.push({name:document.getElementById('plName').value.trim()||'未命名',songs:[]});save();closeModal();openMelo('list',{replace:1})">创建</button>`);
-}
-function editMeloPlaylist(i) {
-  const p = state.melo.playlists[i];
-  if (!p) return;
-  openModal('编辑歌单', `
-    <div class="form-group"><label>名称</label><input id="plName" value="${escapeHtml(p.name||'')}"></div>
-    <div class="form-group"><label>封面 URL</label><input id="plCover" value="${escapeHtml(p.cover||'')}" placeholder="可粘贴图片链接"></div>
-    <button class="btn btn-secondary" style="width:100%;margin-bottom:8px" onclick="state.fileTarget='meloPlCover';state._meloPlIdx=${i};document.getElementById('fileInput').accept='image/*';document.getElementById('fileInput').click()">上传封面</button>
-  `, `<button class="btn btn-secondary" onclick="closeModal()">取消</button>
-      <button class="btn btn-primary" onclick="state.melo.playlists[${i}].name=document.getElementById('plName').value.trim();state.melo.playlists[${i}].cover=document.getElementById('plCover').value.trim()||state.melo.playlists[${i}].cover;save();closeModal();openMelo('list',{replace:1})">保存</button>`);
-}
+
 function openMeloPlaylist(i) {
   const p = state.melo.playlists[i];
   if (!p) return;
@@ -17402,6 +17420,7 @@ function pickMeloProfileAvatar() {
   document.getElementById('fileInput').accept = 'image/*';
   document.getElementById('fileInput').click();
 }
+function importMeloSongs(){ return importMeloSong(); }
 function importMeloSong() {
   const input = document.createElement('input');
   input.type = 'file';
@@ -17493,8 +17512,8 @@ function openMeloNowPlaying() {
       </div>
       <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px 20px 16px;position:relative;z-index:1">
         <!-- 播放器机壳：透明屏区放封面 -->
-        <div style="position:relative;width:min(78vw,280px);aspect-ratio:1/1.12;max-height:52vh">
-          <div style="position:absolute;left:14%;right:14%;top:12%;bottom:38%;border-radius:10px;overflow:hidden;background:#000;z-index:1">
+        <div style="position:relative;width:min(92vw,340px);aspect-ratio:1/1.08;max-height:58vh">
+          <div style="position:absolute;left:12%;right:12%;top:11%;bottom:34%;border-radius:10px;overflow:hidden;background:#000;z-index:1">
             ${cover
               ? `<img src="${cover}" style="width:100%;height:100%;object-fit:cover;display:block" alt="">`
               : `<div style="width:100%;height:100%;background:linear-gradient(145deg,#2a3a4a,#1a2838);display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.35);font-size:13px">封面</div>`}
