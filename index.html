@@ -6131,7 +6131,6 @@ async function translateBubbleMsg(idx) {
     else showToast('无需翻译或失败');
   } catch(e) { showToast('翻译失败'); }
 }
-}
 function toggleBlockMe() {
   const chat = state.chats[state.currentChatId];
   chat.blockedByMe = !chat.blockedByMe; save();
