@@ -260,21 +260,21 @@ body.night .sms-bubble.other { background: rgba(255,255,255,.2); color: #fff; }
   --ice-cyan: #7ec8c0;
   --ice-bg: linear-gradient(165deg, #e8f4f8 0%, #d4ebea 45%, #c5e0e8 100%);
 
-  --bg: #faf6f8;
-  --card: rgba(255,255,255,.45);
-  --card-solid: rgba(255,255,255,.6);
-  --line: rgba(0,0,0,.05);
-  --text: #2c2c2e;
-  --sub: #9a9aa0;
-  --accent: #b8a0b0;
-  --bubble-me: rgba(0,122,255,.85);
-  --bubble-other: rgba(229,229,234,.92);
+  --bg: #e8f2f5;
+  --card: rgba(255,255,255,.55);
+  --card-solid: rgba(255,255,255,.72);
+  --line: rgba(80,140,160,.12);
+  --text: #2a4a55;
+  --sub: #6a8a95;
+  --accent: #5eb8b0;
+  --bubble-me: rgba(90,180,210,.88);
+  --bubble-other: rgba(255,255,255,.9);
   --danger: #ff3b30;
   --safe: #34c759;
   --radius: 14px;
   --dock-h: 56px;
-  --glass: blur(16px) saturate(140%);
-  --glass-bg: rgba(255,252,253,.42);
+  --glass: blur(18px) saturate(150%);
+  --glass-bg: rgba(232,244,248,.58);
 }
 [data-theme="dark"] {
   --bg: #2a2226;
@@ -341,10 +341,10 @@ body {
 .chat-list, #momentsList, #contactsList, #page-mine {
   background: transparent !important;
 }
-#msgArea { background: #ededed !important; }
+#msgArea { background: linear-gradient(180deg,#e8f4f8,#dceef2) !important; }
 #page-home { background: var(--bg); }
 #page-chat, #page-chats, #page-contacts {
-  background: #ededed !important;
+  background: linear-gradient(165deg,#e8f4f8 0%,#d4ebea 55%,#cfe8ec 100%) !important;
 }
 .chat-item, .setting-item, .mine-item, .moment-item, .add-menu {
   background: var(--card) !important;
@@ -1714,7 +1714,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-17z';
+const EENOK_BUILD = '2026-08-18a';
 function checkAppUpdate() {
   try {
     const prev = localStorage.getItem('eenook_build');
@@ -2538,7 +2538,10 @@ function openSubPage(title, bodyHtml, rightHtml, opts) {
   sub.style.setProperty('width', '100%', 'important');
   sub.style.setProperty('height', '100%', 'important');
   sub.style.setProperty('transform', 'none', 'important');
-  sub.style.setProperty('background', '#f5f5f7', 'important');
+  var aquaRoots = {countdown:1,memory:1,charlib:1,sk:1,scriptkill:1,worldbook:1,bookstore:1,tomato:1,pomodoro:1,offline:1,gal:1,melo:1,pickup:1,sms:1,settings:1,beauty:1,shop:1,takeout:1};
+  var hr = state._homeRoot || state._subKind || '';
+  var aquaBg = aquaRoots[hr] ? 'linear-gradient(165deg,#e8f4f8 0%,#d4ebea 50%,#c8e4e8 100%)' : '#f5f5f7';
+  sub.style.setProperty('background', aquaBg, 'important');
   sub.style.setProperty('overflow', 'hidden', 'important');
   // 微信底栏隐藏
   var dock = document.getElementById('dock');
@@ -4794,6 +4797,14 @@ function onFileSelected(e) {
       state.user.avatar = data; save(); renderMine(); renderMomentsHeader();
     } else if (state.fileTarget === 'momentsBg') {
       state.momentsBg = data; save(); renderMomentsHeader();
+    } else if (state.fileTarget && String(state.fileTarget).startsWith('cdBg_')) {
+      const idx = +String(state.fileTarget).replace('cdBg_', '');
+      if (state.countdown && state.countdown[idx]) {
+        try { data = await compressDataUrl(data, 1200, 0.75); } catch(e) {}
+        state.countdown[idx].bg = 'url('+JSON.stringify(data).slice(1,-1)+')';
+        save();
+        openCountdownDetail(idx);
+      }
     } else if (state.fileTarget === 'shopBanner') {
       ensureShop();
       if (!state.shop.banners) state.shop.banners = [];
@@ -6434,7 +6445,7 @@ function openWorldBook(tab) {
     <div style="margin-bottom:14px">
       <div style="font-weight:600;padding:8px 4px;color:${fg}">${escapeHtml(cat)} <span class="text-sub">${cats[cat].length}</span></div>
       ${cats[cat].map(w => `
-        <div onclick="editWorldBook(${w._i})" style="background:${card};border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:8px;cursor:pointer;color:${fg}">
+        <div onclick="if(window.clickGuarded&&clickGuarded())return;editWorldBook(${w._i})" style="background:${card};border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:8px;cursor:pointer;color:${fg}">
           <div style="display:flex;align-items:center;justify-content:space-between">
             <div style="font-weight:500">${escapeHtml(w.name||'未命名')}</div>
             <span class="text-sub" style="font-size:12px">${w.importance||'中'} · ${w.enabled!==false?'开':'关'} · ${w.scope==='global'?'全局':'局部'}</span>
@@ -6464,7 +6475,7 @@ function openWorldBook(tab) {
 function openWorldBookCat(cat) {
   const items = (state.worldBooks||[]).map((w,i)=>({...w,_i:i})).filter(w => (w.category||'默认')===cat);
   const list = items.map(w => `
-    <div class="setting-item" onclick="editWorldBook(${w._i})" style="cursor:pointer">
+    <div class="setting-item" onclick="if(window.clickGuarded&&clickGuarded())return;editWorldBook(${w._i})" style="cursor:pointer">
       <div style="flex:1">
         <div>${escapeHtml(w.name)} <span class="text-sub">[${w.importance}] ${w.enabled?'开':'关'}</span></div>
         <div class="text-sub" style="margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml((w.content||'').slice(0,40))}</div>
@@ -6520,6 +6531,7 @@ function saveWorldBook(editIdx) {
   save(); openWorldBook();
 }
 function editWorldBook(i) {
+  if (typeof clickGuarded === "function" && clickGuarded()) return;
   const w = state.worldBooks[i];
   openModal('编辑世界书', `
     <div class="form-group"><label>名称</label><input id="wbName" value="${escapeHtml(w.name)}"></div>
@@ -8031,6 +8043,7 @@ function getSKScript(id) {
   return (state.scriptKill.custom||[]).find(s => s.id === id);
 }
 function openSKDetail(id) {
+  if (typeof clickGuarded === "function" && clickGuarded()) return;
   state._skId = id; state._homeDepth = 1; state._homeRoot = state._homeRoot || 'sk';
 
   const s = getSKScript(id);
@@ -11416,7 +11429,7 @@ function homeAllApps() {
     { id:'melo', name:'Melo', open:'openMelo()' },
     { id:'divination', name:'占卜', open:'openDivination()' },
     { id:'worldbook', name:'世界书', open:'openWorldBook()' },
-    { id:'charlib', name:'角色库', open:'openCharLib()' },
+    { id:'charlib', name:'角色库', open:'openCharLib()' }, { id:'pickup', name:'捡手机', open:'openPickupPhone()' },
     { id:'settings', name:'设置', open:'openHomeSettingsPage()' },
     { id:'beauty', name:'美化', open:'openHomeBeauty()' },
     { id:'phone', name:'电话', open:'openPhonePad()' }
@@ -11554,7 +11567,7 @@ function homeEnsureDesktop() {
         { id:'melo', name:'Melo', open:'openMelo()' },
         { id:'divination', name:'占卜', open:'openDivination()' },
         { id:'worldbook', name:'世界书', open:'openWorldBook()' },
-        { id:'charlib', name:'角色库', open:'openCharLib()' },
+        { id:'charlib', name:'角色库', open:'openCharLib()' }, { id:'pickup', name:'捡手机', open:'openPickupPhone()' },
         { id:'settings', name:'设置', open:'openHomeSettingsPage()' },
         { id:'beauty', name:'美化', open:'openHomeBeauty()' },
         { id:'phone', name:'电话', open:'openPhonePad()' }
@@ -11618,7 +11631,7 @@ function renderHome() {
     { id:'melo', name:'Melo', open:'openMelo()' },
     { id:'divination', name:'占卜', open:'openDivination()' },
     { id:'worldbook', name:'世界书', open:'openWorldBook()' },
-    { id:'charlib', name:'角色库', open:'openCharLib()' }
+    { id:'charlib', name:'角色库', open:'openCharLib()' }, { id:'pickup', name:'捡手机', open:'openPickupPhone()' }
   ];
   const icons = state.home.appIcons || {};
   const polaroid = state.home.widgets.polaroid || {};
@@ -11764,6 +11777,12 @@ function editHomePolaroid() {
 function openChangelog() {
   const ver = (typeof EENOK_BUILD !== 'undefined') ? EENOK_BUILD : '';
   const logs = [
+    { v: '2026-08-18a', items: [
+      '倒数日：Days Matter 详情卡 / 添加页 / 日期计算器 / 里程碑独立页',
+      '主屏 App 穿透点击防护加强；详情不再被误触打开',
+      '全局水色毛玻璃主题（微信列表/聊天气泡同步偏蓝）',
+      '新增占位 App：捡手机'
+    ]},
     { v: '2026-08-17z', items: [
       '主屏 App 从入口进主界面（剧本杀/角色库/记忆/倒数日），不再直进详情',
       '长按图标进入布局编辑时不再误开 App',
@@ -12012,7 +12031,7 @@ function openHomeBeauty() {
   const appList = [
     {id:'wechat',name:'微信'},{id:'memory',name:'记忆',open:'openMemoryApp()'},{id:'offline',name:'线下'},{id:'icity',name:'icity'},
     {id:'forum',name:'论坛'},{id:'countdown',name:'倒数日'},{id:'gal',name:'galgame'},
-    {id:'sk',name:'剧本杀'},{id:'sms',name:'短信'},{id:'melo',name:'Melo'},{id:'charlib',name:'角色库'},
+    {id:'sk',name:'剧本杀'},{id:'sms',name:'短信'},{id:'melo',name:'Melo'},{id:'charlib',name:'角色库'},{id:'pickup',name:'捡手机'},
     {id:'settings',name:'设置(Dock)'},{id:'beauty',name:'美化(Dock)'},{id:'phone',name:'电话(Dock)'}
   ];
   const r = state.home.iconRadius;
@@ -12161,7 +12180,7 @@ function openCharLib() {
   state._openFromHome = true;
   armClickGuard(900);
   const cards = (state.chars||[]).map((c) => `
-    <div onclick="openCharLibDetail('${c.id}')" style="border-radius:16px;border:1px solid var(--line);background:var(--card);overflow:hidden;cursor:pointer">
+    <div onclick="if(window.clickGuarded&&clickGuarded())return;openCharLibDetail('${c.id}')" style="border-radius:16px;border:1px solid var(--line);background:var(--card);overflow:hidden;cursor:pointer">
       <div style="height:120px;background:linear-gradient(145deg,#f5f5f7,#ebe8f0);overflow:hidden">
         <img src="${avatarUrl(c)}" style="width:100%;height:100%;object-fit:cover;object-position:center">
       </div>
@@ -12177,6 +12196,7 @@ function openCharLib() {
   state._subKind = 'homeApp';
 }
 function openCharLibDetail(id) {
+  if (typeof clickGuarded === "function" && clickGuarded()) return;
   const c = state.chars.find(x=>x.id===id);
   if (!c) return;
   state._homeRoot = 'charlib';
@@ -12300,7 +12320,7 @@ function openMemoryApp(filterCharId) {
   // 未选角色：先选人
   if (!state._memFilter) {
     const rows = chars.map(function(c) {
-      return '<div onclick="state._memFilter=\''+c.id+'\';openMemoryApp()" style="display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:0.5px solid #eee;cursor:pointer">'
+      return '<div onclick="if(window.clickGuarded&&clickGuarded())return;state._memFilter=\''+c.id+'\';openMemoryApp()" style="display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:0.5px solid #eee;cursor:pointer">'
         + '<img src="'+avatarUrl(c)+'" style="width:44px;height:44px;border-radius:50%;object-fit:cover">'
         + '<div style="flex:1"><div style="font-weight:600">'+escapeHtml(c.nick||c.realName||'角色')+'</div>'
         + '<div class="text-sub" style="font-size:12px;margin-top:2px">查看与TA的记忆</div></div></div>';
@@ -14308,20 +14328,37 @@ function igSwitchAccount() { showToast('当前账号'); }
 function igFilterDm(q) {}
 function igViewStory() { showToast('快拍'); }
 
+
+function openPickupPhone() {
+  state._homeRoot = 'pickup';
+  state._homeDepth = 0;
+  state._subKind = 'homeApp';
+  state._subBackFn = null;
+  armClickGuard(800);
+  openSubPage('捡手机', `
+    <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(165deg,#e8f4f8,#d4ebea);padding:24px;text-align:center">
+      <div style="width:72px;height:72px;border-radius:20px;background:rgba(255,255,255,.7);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center;margin-bottom:16px;border:0.5px solid rgba(255,255,255,.8);box-shadow:0 8px 24px rgba(80,140,160,.12)">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#3a7a8a" stroke-width="1.6"><rect x="6" y="2" width="12" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18.01"/></svg>
+      </div>
+      <div style="font-size:18px;font-weight:600;color:#2a4a55;margin-bottom:8px">捡手机</div>
+      <div style="font-size:13px;color:#6a8a95;line-height:1.6;max-width:260px">占位 App · 后续可在这里模拟「捡到角色的手机」剧情与权限探索。</div>
+    </div>
+  `, '', { replace: true });
+  state._openFromHome = false;
+}
+
 function openCountdownApp(tab) {
-  // 从主屏进入：始终到列表，不进编辑页
+  if (typeof clickGuarded === 'function' && clickGuarded() && !state._openFromHome) { /* allow internal */ }
   if (state._openFromHome) {
     state._cdEditIdx = null;
-    tab = tab || state._cdTab || 'all';
-    if (tab !== 'all' && tab !== 'cat') tab = 'all';
+    state._cdDetailIdx = null;
+    tab = 'all';
   }
   state._homeRoot = 'countdown';
   state._homeDepth = 0;
   state._subKind = 'homeApp';
+  state._subBackFn = null;
   armClickGuard(800);
-
-  state._homeRoot = 'countdown';
-  state._subKind = 'countdown';
   ensureHomeState();
   if (!state.countdown) state.countdown = [];
   if (!state.countdownBooks) state.countdownBooks = [
@@ -14332,10 +14369,8 @@ function openCountdownApp(tab) {
   tab = tab || state._cdTab || 'all';
   state._cdTab = tab;
   const list = state.countdown || [];
-  const now = Date.now();
   const dayMs = 86400000;
   const weekNames = '日一二三四五六';
-
   function calcDays(dateStr) {
     const t = new Date(dateStr + 'T00:00:00').getTime();
     if (isNaN(t)) return null;
@@ -14343,31 +14378,23 @@ function openCountdownApp(tab) {
   }
   function weekLabel(dateStr) {
     const d = new Date(dateStr + 'T00:00:00');
-    if (isNaN(d.getTime())) return '';
-    return d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate() + ' 星期' + weekNames[d.getDay()];
+    if (isNaN(d.getTime())) return dateStr || '';
+    return d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate() + '星期' + weekNames[d.getDay()];
   }
 
-  // 顶栏
+  let body = '';
   const topBar = `
-    <div style="background:#4a90e2;color:#fff;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
-      <div style="display:flex;align-items:center;gap:10px">
-        <span onclick="goHome()" style="font-size:20px;cursor:pointer;padding:4px 6px">‹</span>
-        <span style="font-size:17px;font-weight:600">${tab==='cat'?'倒数本':'Days Matter · 倒数日'}</span>
-      </div>
-      <div style="display:flex;gap:14px;align-items:center">
-        ${tab==='all'?'<span onclick="state._cdTab=\'cat\';openCountdownApp(\'cat\')" style="font-size:18px;cursor:pointer">▦</span>':''}
-        <span onclick="addCountdown()" style="font-size:22px;cursor:pointer;line-height:1">＋</span>
-      </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:rgba(255,255,255,.72);backdrop-filter:blur(14px);border-bottom:0.5px solid rgba(80,140,160,.15);flex-shrink:0">
+      <span style="font-size:17px;font-weight:600;color:#2a4a55">Days Matter · 倒数日</span>
+      <span onclick="openCountdownAdd()" style="font-size:22px;cursor:pointer;line-height:1;color:#3a7a8a;padding:4px 8px">＋</span>
     </div>`;
 
-  let body = '';
   if (tab === 'cat') {
-    // 分类界面：倒数本卡片 + 分类列表
     const books = state.countdownBooks || [];
     const bookCards = books.map(b => {
       const cnt = list.filter(d => (d.book || d.cat || 'life') === b.id && !d.archived).length;
       return `<div onclick="state._cdFilter='${b.id}';state._cdTab='all';openCountdownApp('all')" style="width:72px;flex-shrink:0;cursor:pointer">
-        <div style="height:90px;border-radius:10px;background:${b.color};color:#fff;padding:10px 8px;display:flex;flex-direction:column;justify-content:flex-end;box-shadow:0 4px 12px rgba(0,0,0,.12);position:relative;overflow:hidden">
+        <div style="height:90px;border-radius:10px;background:${b.color};color:#fff;padding:10px 8px;display:flex;flex-direction:column;justify-content:flex-end;box-shadow:0 4px 12px rgba(0,0,0,.12)">
           <div style="font-size:13px;font-weight:600">${escapeHtml(b.name)}</div>
           <div style="font-size:11px;opacity:.85;margin-top:2px">${cnt}</div>
         </div>
@@ -14379,7 +14406,6 @@ function openCountdownApp(tab) {
       { id: 'work', name: '工作', icon: '📘', count: list.filter(d=>(d.book||d.cat)==='work'&&!d.archived).length },
       { id: 'anni', name: '纪念日', icon: '💕', count: list.filter(d=>(d.book||d.cat)==='anni'&&!d.archived).length }
     ];
-    // 每个分类右侧预览最近一条
     const catRows = cats.map(c => {
       const items = list.filter(d => !d.archived && (c.id==='' || (d.book||d.cat||'life')===c.id));
       let preview = '';
@@ -14387,121 +14413,229 @@ function openCountdownApp(tab) {
         const sorted = items.slice().sort((a,b) => Math.abs(calcDays(a.date)||9999) - Math.abs(calcDays(b.date)||9999));
         const top = sorted[0];
         const days = calcDays(top.date);
-        if (days != null) {
-          preview = days >= 0 ? (escapeHtml(top.title||'') + '还有 ' + days + ' 天') : (escapeHtml(top.title||'') + '已过 ' + (-days) + ' 天');
-        }
+        if (days != null) preview = days >= 0 ? (escapeHtml(top.title||'') + '还有 ' + days + ' 天') : (escapeHtml(top.title||'') + '已过 ' + (-days) + ' 天');
       }
-      return `<div onclick="state._cdFilter='${c.id}';state._cdTab='all';openCountdownApp('all')" style="display:flex;align-items:center;padding:14px 16px;border-bottom:1px solid #f0f0f0;background:#fff;cursor:pointer">
+      return `<div onclick="state._cdFilter='${c.id}';state._cdTab='all';openCountdownApp('all')" style="display:flex;align-items:center;padding:14px 16px;border-bottom:1px solid rgba(80,140,160,.08);background:rgba(255,255,255,.75);cursor:pointer">
         <span style="font-size:20px;margin-right:12px">${c.icon}</span>
-        <div style="flex:1;font-size:15px;color:#333">${c.name} <span style="color:#999;font-size:13px">${c.count}</span></div>
-        <div style="font-size:12px;color:#999;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${preview}</div>
+        <div style="flex:1;font-size:15px;color:#2a4a55">${c.name} <span style="color:#8aa;font-size:13px">${c.count}</span></div>
+        <div style="font-size:12px;color:#8aa;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${preview}</div>
       </div>`;
     }).join('');
-
     body = `
-      <div style="background:#fff;padding:14px 12px 16px;border-bottom:8px solid #f2f2f2">
+      <div style="background:rgba(255,255,255,.6);padding:14px 12px 16px;border-bottom:8px solid transparent">
         <div style="display:flex;gap:12px;overflow-x:auto;padding-bottom:4px">
-          <div onclick="addCountdownBook()" style="width:72px;flex-shrink:0;height:90px;border-radius:10px;background:#f5f5f5;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#4a90e2;cursor:pointer;border:1px dashed #ccc">
-            <div style="width:28px;height:28px;border-radius:50%;background:#4caf50;color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;margin-bottom:6px">＋</div>
-            <div style="font-size:11px;color:#666;text-align:center">添加<br>新倒数本</div>
+          <div onclick="addCountdownBook()" style="width:72px;flex-shrink:0;height:90px;border-radius:10px;background:rgba(255,255,255,.8);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#3a7a8a;cursor:pointer;border:1px dashed #9bc">
+            <div style="width:28px;height:28px;border-radius:50%;background:#5eb8b0;color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;margin-bottom:6px">＋</div>
+            <div style="font-size:11px;color:#668;text-align:center">添加<br>新倒数本</div>
           </div>
           ${bookCards}
         </div>
       </div>
-      <div style="background:#fff">${catRows}</div>
-      <div style="display:flex;background:#fff;margin-top:8px;border-top:1px solid #eee">
-        <div onclick="openCdCalculator()" style="flex:1;padding:16px;text-align:center;border-right:1px solid #f0f0f0;cursor:pointer">
-          <div style="font-size:20px;margin-bottom:4px">加减</div>
-          <div style="font-size:13px;color:#666">日期计算器</div>
+      <div>${catRows}</div>
+      <div style="display:flex;background:rgba(255,255,255,.75);margin-top:8px;border-top:1px solid rgba(80,140,160,.1)">
+        <div onclick="openCdCalculator()" style="flex:1;padding:16px;text-align:center;border-right:1px solid rgba(80,140,160,.08);cursor:pointer">
+          <div style="font-size:18px;margin-bottom:4px;color:#3a7a8a">加减</div>
+          <div style="font-size:13px;color:#668">日期计算器</div>
         </div>
         <div onclick="openCdMilestones()" style="flex:1;padding:16px;text-align:center;cursor:pointer">
-          <div style="font-size:20px;margin-bottom:4px">★</div>
-          <div style="font-size:13px;color:#666">里程碑</div>
+          <div style="font-size:18px;margin-bottom:4px;color:#3a7a8a">★</div>
+          <div style="font-size:13px;color:#668">里程碑</div>
         </div>
       </div>`;
   } else {
-    // 全部列表
     let filter = state._cdFilter || '';
     let items = list.filter(d => !d.archived);
     if (filter) items = items.filter(d => (d.book || d.cat || 'life') === filter);
-    // pin first / sort by abs days
     items = items.slice().sort((a, b) => {
       if (a.pinned && !b.pinned) return -1;
       if (!a.pinned && b.pinned) return 1;
       return (calcDays(a.date) ?? 99999) - (calcDays(b.date) ?? 99999);
     });
-    // header feature: first future or pinned
     const feature = items.find(d => (calcDays(d.date) ?? -1) >= 0) || items[0];
     let head = '';
     if (feature) {
       const days = calcDays(feature.date);
       const future = days != null && days >= 0;
-      head = `<div style="background:#fff;padding:20px 18px 16px;border-bottom:8px solid #f2f2f2">
+      const fi = list.indexOf(feature);
+      head = `<div onclick="if(window.clickGuarded&&clickGuarded())return;openCountdownDetail(${fi})" style="background:rgba(255,255,255,.85);backdrop-filter:blur(12px);padding:20px 18px 16px;border-bottom:8px solid transparent;cursor:pointer;margin:10px 12px;border-radius:16px;box-shadow:0 4px 18px rgba(80,140,160,.1)">
         <div style="display:flex;justify-content:space-between;align-items:flex-start">
           <div>
-            <div style="font-size:16px;font-weight:600;color:#222">${escapeHtml(feature.title||'')} ${future?'还有':'已经'}</div>
-            <div style="font-size:12px;color:#999;margin-top:6px">目标日: ${weekLabel(feature.date)}</div>
+            <div style="font-size:16px;font-weight:600;color:#2a4a55">${escapeHtml(feature.title||'')} ${future?'还有':'已经'}</div>
+            <div style="font-size:12px;color:#8aa;margin-top:6px">目标日: ${weekLabel(feature.date)}</div>
           </div>
           <div style="text-align:right">
-            <span style="font-size:42px;font-weight:700;color:#1a1a1a;line-height:1">${days != null ? Math.abs(days) : '—'}</span>
-            <span style="display:inline-block;background:#e85d5d;color:#fff;font-size:10px;padding:2px 6px;border-radius:4px;margin-left:4px;vertical-align:super">Days</span>
+            <span style="font-size:42px;font-weight:700;color:#1a3a45;line-height:1">${days != null ? Math.abs(days) : '—'}</span>
+            <span style="display:inline-block;background:#5eb8b0;color:#fff;font-size:10px;padding:2px 6px;border-radius:4px;margin-left:4px;vertical-align:super">Days</span>
           </div>
         </div>
       </div>`;
     }
-    const rows = items.map((d, idx) => {
+    const rows = items.map((d) => {
       const days = calcDays(d.date);
       const future = days != null && days >= 0;
-      const color = future ? '#4a90e2' : '#e89a3c';
+      const color = future ? '#5b9fd4' : '#e89a3c';
       const realIdx = list.indexOf(d);
-      return `<div onclick="editCountdown(${realIdx})" style="display:flex;align-items:center;background:#fff;border-bottom:1px solid #f0f0f0;cursor:pointer">
-        <div style="flex:1;padding:14px 16px;font-size:15px;color:#333">${escapeHtml(d.title||'')} ${future?'还有':'已经'}</div>
+      return `<div onclick="if(window.clickGuarded&&clickGuarded())return;openCountdownDetail(${realIdx})" style="display:flex;align-items:center;background:rgba(255,255,255,.78);border-bottom:1px solid rgba(80,140,160,.08);cursor:pointer">
+        <div style="flex:1;padding:14px 16px;font-size:15px;color:#2a4a55">${escapeHtml(d.title||'')} ${future?'还有':'已经'}</div>
         <div style="display:flex;align-items:stretch">
           <div style="background:${color};color:#fff;min-width:56px;padding:12px 10px;text-align:center;font-size:20px;font-weight:600">${days != null ? Math.abs(days) : '—'}</div>
           <div style="background:${color};color:#fff;padding:12px 8px;font-size:12px;display:flex;align-items:center;opacity:.95">天</div>
         </div>
       </div>`;
-    }).join('') || '<div class="empty" style="padding:40px;text-align:center;color:#999">还没有倒数日<br>点右上角 ＋ 添加</div>';
-    body = head + `<div>${rows}</div>`;
+    }).join('') || '<div class="empty" style="padding:40px;text-align:center;color:#8aa">还没有倒数日<br>点右上角 ＋ 添加</div>';
+    body = head + `<div style="margin:0 0 8px">${rows}</div>`;
   }
 
   const dock = `
-    <div style="position:absolute;left:16px;right:16px;bottom:16px;height:52px;border-radius:26px;background:rgba(255,255,255,.92);backdrop-filter:blur(12px);box-shadow:0 4px 20px rgba(0,0,0,.1);display:flex;z-index:20;overflow:hidden">
-      <button type="button" onclick="state._cdFilter='';openCountdownApp('all')" style="flex:1;border:none;background:${tab==='all'?'rgba(74,144,226,.12)':'transparent'};color:${tab==='all'?'#4a90e2':'#666'};font-size:14px;font-weight:${tab==='all'?'600':'400'};cursor:pointer">全部</button>
-      <button type="button" onclick="openCountdownApp('cat')" style="flex:1;border:none;background:${tab==='cat'?'rgba(74,144,226,.12)':'transparent'};color:${tab==='cat'?'#4a90e2':'#666'};font-size:14px;font-weight:${tab==='cat'?'600':'400'};cursor:pointer">分类</button>
+    <div style="position:absolute;left:16px;right:16px;bottom:16px;height:52px;border-radius:26px;background:rgba(255,255,255,.82);backdrop-filter:blur(16px);box-shadow:0 4px 20px rgba(80,140,160,.12);display:flex;z-index:20;overflow:hidden;border:0.5px solid rgba(255,255,255,.6)">
+      <button type="button" onclick="state._cdFilter='';openCountdownApp('all')" style="flex:1;border:none;background:${tab==='all'?'rgba(94,184,176,.18)':'transparent'};color:${tab==='all'?'#2a7a75':'#668'};font-size:14px;font-weight:${tab==='all'?'600':'400'};cursor:pointer">全部</button>
+      <button type="button" onclick="openCountdownApp('cat')" style="flex:1;border:none;background:${tab==='cat'?'rgba(94,184,176,.18)':'transparent'};color:${tab==='cat'?'#2a7a75':'#668'};font-size:14px;font-weight:${tab==='cat'?'600':'400'};cursor:pointer">分类</button>
     </div>`;
 
   openSubPage('倒数日', `
-    <div style="display:flex;flex-direction:column;height:100%;background:#f2f2f2;position:relative">
+    <div style="display:flex;flex-direction:column;height:100%;background:linear-gradient(165deg,#e8f4f8 0%,#d4ebea 45%,#c8e4e8 100%);position:relative">
       ${topBar}
       <div style="flex:1;overflow-y:auto;padding-bottom:80px">${body}</div>
       ${dock}
     </div>
   `, '', { replace: true });
-  state._subKind = 'countdown';
-  state._homeDepth = 0;
+  state._openFromHome = false;
 }
 
-function addCountdown() {
-  const books = state.countdownBooks || [];
-  const opts = books.map(b => `<option value="${b.id}">${escapeHtml(b.name)}</option>`).join('');
-  openModal('添加倒数日', `
-    <div class="form-group"><label>标题</label><input id="cdTitle" placeholder="例如：高考倒计时"></div>
-    <div class="form-group"><label>目标日期</label><input id="cdDate" type="date"></div>
-    <div class="form-group"><label>倒数本</label><select id="cdBook">${opts}</select></div>
-  `, `<button class="btn btn-secondary" onclick="closeModal()">取消</button>
-      <button class="btn btn-primary" onclick="(function(){
-        var t=document.getElementById('cdTitle').value.trim();
-        var d=document.getElementById('cdDate').value;
-        var b=document.getElementById('cdBook').value;
-        if(!t||!d){showToast('请填写标题和日期');return;}
-        state.countdown=state.countdown||[];
-        state.countdown.push({title:t,date:d,book:b,pinned:false,archived:false});
-        save();closeModal();openCountdownApp(state._cdTab||'all');
-      })()">保存</button>`);
+function openCountdownDetail(i) {
+  if (typeof clickGuarded === 'function' && clickGuarded()) return;
+  const d = (state.countdown || [])[i];
+  if (!d) return;
+  state._cdDetailIdx = i;
+  state._homeRoot = 'countdown';
+  state._homeDepth = 1;
+  state._subKind = 'homeApp';
+  state._subBackFn = function(){ openCountdownApp(state._cdTab || 'all'); };
+  const dayMs = 86400000;
+  const weekNames = '日一二三四五六';
+  const t = new Date(d.date + 'T00:00:00').getTime();
+  const days = isNaN(t) ? null : Math.ceil((t - new Date(new Date().toDateString()).getTime()) / dayMs);
+  const future = days != null && days >= 0;
+  const dd = new Date(d.date + 'T00:00:00');
+  const targetStr = isNaN(dd.getTime()) ? (d.date||'') : (dd.getFullYear()+'-'+(dd.getMonth()+1)+'-'+dd.getDate()+'星期'+weekNames[dd.getDay()]);
+  const titleLine = future ? ((d.title||'倒数') + '还有') : ((d.title||'事件') + '已经');
+  const bg = d.bg || 'linear-gradient(180deg,#e8d5b5 0%,#d4c4a0 40%,#c4b08a 100%)';
+  const bgStyle = (d.bg && String(d.bg).indexOf('url(')===0) ? ('background-image:'+d.bg+';background-size:cover;background-position:center') : ('background:'+bg);
+  openSubPage('Days Matter · 倒数日', `
+    <div style="display:flex;flex-direction:column;height:100%;${bgStyle};position:relative">
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 20px 100px">
+        <div style="width:min(300px,88%);border-radius:14px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.18);background:#fff">
+          <div style="background:#4a90d9;color:#fff;text-align:center;padding:12px 16px;font-size:16px;font-weight:500">${escapeHtml(titleLine)}</div>
+          <div style="padding:36px 20px;text-align:center">
+            <div style="font-size:88px;font-weight:700;color:#1a1a1a;line-height:1;letter-spacing:-2px">${days != null ? Math.abs(days) : '—'}</div>
+          </div>
+          <div style="border-top:1px solid #eee;padding:12px;text-align:center;font-size:13px;color:#888;background:#fafafa">目标日: ${escapeHtml(targetStr)}</div>
+        </div>
+      </div>
+      <div style="position:absolute;left:0;right:0;bottom:20px;display:flex;justify-content:center;gap:10px;padding:0 12px;flex-wrap:wrap">
+        <button type="button" onclick="showToast('分享功能占位')" style="border:none;background:rgba(232,180,100,.92);color:#fff;border-radius:20px;padding:10px 16px;font-size:13px;cursor:pointer">分享</button>
+        <button type="button" onclick="showToast('可截图保存')" style="border:none;background:rgba(232,180,100,.92);color:#fff;border-radius:20px;padding:10px 16px;font-size:13px;cursor:pointer">存为图片</button>
+        <button type="button" onclick="cdChangeBg(${i})" style="border:none;background:rgba(232,180,100,.75);color:#fff;border-radius:20px;padding:10px 14px;font-size:13px;cursor:pointer">背景</button>
+        <button type="button" onclick="(function(){var x=state.countdown[${i}];if(x){x.pinned=!x.pinned;save();showToast(x.pinned?'已置顶':'已取消置顶');}})()" style="border:none;background:rgba(255,255,255,.7);color:#666;border-radius:20px;width:40px;height:40px;font-size:16px;cursor:pointer">⚑</button>
+        <button type="button" onclick="openCountdownAdd()" style="border:none;background:rgba(232,180,100,.95);color:#fff;border-radius:20px;width:40px;height:40px;font-size:20px;cursor:pointer">＋</button>
+      </div>
+    </div>
+  `, `<button type="button" class="nav-btn" onclick="editCountdown(${i})" title="编辑"><span style="font-size:16px">✎</span></button>`);
 }
+
+function cdChangeBg(i) {
+  state.fileTarget = 'cdBg_' + i;
+  const fi = document.getElementById('fileInput');
+  if (fi) { fi.accept = 'image/*'; fi.value = ''; fi.click(); }
+}
+
+function openCountdownAdd() {
+  state._homeRoot = 'countdown';
+  state._homeDepth = 1;
+  state._subKind = 'homeApp';
+  state._subBackFn = function(){ openCountdownApp(state._cdTab||'all'); };
+  const books = state.countdownBooks || [];
+  const bookOpts = books.map(b => `<option value="${b.id}">${escapeHtml(b.name)}</option>`).join('');
+  const today = new Date();
+  const ds = today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
+  openSubPage('添加新日子', `
+    <div style="height:100%;background:#f5f6f8;display:flex;flex-direction:column">
+      <div style="background:#5b9fd4;color:#fff;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+        <span onclick="closeSubPage()" style="font-size:20px;cursor:pointer;padding:4px 8px">‹</span>
+        <span style="font-size:17px;font-weight:600">添加新日子</span>
+        <span onclick="saveNewCountdown()" style="font-size:15px;cursor:pointer;padding:4px 8px">保存</span>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:8px 0 24px">
+        <div style="background:#fff;padding:14px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #f0f0f0">
+          <span style="color:#8aa;font-size:18px">▣</span>
+          <input id="cdTitle" placeholder="输入事件名称" style="flex:1;border:none;outline:none;font-size:15px;background:transparent">
+        </div>
+        <div style="background:#fff;padding:14px 16px;border-bottom:1px solid #f0f0f0">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+            <span style="color:#8aa;font-size:18px">▦</span>
+            <div style="flex:1"><div style="font-size:14px;color:#333">目标日</div><div style="font-size:11px;color:#999">未来日期为倒数，过去日期为正数</div></div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding-left:30px">
+            <input id="cdDate" type="date" value="${ds}" style="border:none;outline:none;font-size:15px;color:#5b9fd4;background:transparent">
+            <div style="display:flex;gap:4px">
+              <span style="padding:4px 10px;border-radius:12px;background:#5b9fd4;color:#fff;font-size:12px">公历</span>
+              <span style="padding:4px 10px;border-radius:12px;background:#eee;color:#999;font-size:12px">阴历</span>
+            </div>
+          </div>
+        </div>
+        <div style="background:#fff;padding:14px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #f0f0f0">
+          <span style="color:#8aa;font-size:18px">☰</span>
+          <div style="flex:1;font-size:14px;color:#333">倒数本</div>
+          <select id="cdBook" style="border:none;outline:none;font-size:14px;color:#5b9fd4;background:transparent">${bookOpts}</select>
+        </div>
+        <div style="background:#fff;padding:14px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #f0f0f0">
+          <span style="color:#8aa;font-size:18px">⬆</span>
+          <div style="flex:1;font-size:14px;color:#333">置顶</div>
+          <label style="position:relative;width:44px;height:26px">
+            <input type="checkbox" id="cdPin" style="opacity:0;width:0;height:0">
+            <span style="position:absolute;inset:0;background:#ddd;border-radius:13px;transition:.2s"></span>
+          </label>
+        </div>
+        <div style="background:#fff;padding:14px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #f0f0f0">
+          <span style="color:#8aa;font-size:18px">↻</span>
+          <div style="flex:1;font-size:14px;color:#333">重复</div>
+          <span style="font-size:14px;color:#5b9fd4">不重复 ›</span>
+        </div>
+        <div style="background:#fff;padding:14px 16px;border-bottom:1px solid #f0f0f0">
+          <div style="display:flex;align-items:center;gap:12px">
+            <span style="color:#c9a227;font-size:18px">✦</span>
+            <div style="flex:1">
+              <div style="font-size:14px;color:#c9a227">进阶设置</div>
+              <div style="font-size:11px;color:#999;margin-top:2px">结束日 / 精确时间 / +1 日 / 颜色 / 高亮</div>
+            </div>
+            <span style="color:#ccc">›</span>
+          </div>
+        </div>
+        <div style="padding:20px 16px">
+          <button type="button" onclick="saveNewCountdown()" style="width:100%;border:none;background:#5b9fd4;color:#fff;border-radius:24px;padding:14px;font-size:16px;font-weight:600;cursor:pointer">保存</button>
+        </div>
+      </div>
+    </div>
+  `, '');
+}
+
+function saveNewCountdown() {
+  const t = (document.getElementById('cdTitle') || {}).value;
+  const d = (document.getElementById('cdDate') || {}).value;
+  const b = (document.getElementById('cdBook') || {}).value;
+  const pin = !!(document.getElementById('cdPin') || {}).checked;
+  if (!t || !String(t).trim()) { showToast('请输入事件名称'); return; }
+  if (!d) { showToast('请选择目标日'); return; }
+  state.countdown = state.countdown || [];
+  state.countdown.push({ title: String(t).trim(), date: d, book: b || 'life', pinned: pin, archived: false });
+  save();
+  openCountdownApp(state._cdTab || 'all');
+}
+
+function addCountdown() { openCountdownAdd(); }
 
 function editCountdown(i) {
+  if (typeof clickGuarded === 'function' && clickGuarded()) return;
   state._cdEditIdx = i; state._homeDepth = 1; state._homeRoot = 'countdown'; state._subBackFn = function(){ openCountdownApp(state._cdTab||'all'); };
 
   const d = (state.countdown || [])[i];
@@ -14521,12 +14655,12 @@ function editCountdown(i) {
         x.date=document.getElementById('cdDate').value;
         x.book=document.getElementById('cdBook').value;
         x.pinned=document.getElementById('cdPin').checked;
-        save();closeModal();openCountdownApp(state._cdTab||'all');
+        save();closeModal();openCountdownDetail(${i});
       })()">保存</button>`);
 }
 
 function addCountdownBook() {
-  openModal('新建倒数本', `
+  openModal('添加倒数本', `
     <div class="form-group"><label>名称</label><input id="cdbName" placeholder="例如：学习"></div>
     <div class="form-group"><label>颜色</label><input id="cdbColor" type="color" value="#7ec8c8"></div>
   `, `<button class="btn btn-secondary" onclick="closeModal()">取消</button>
@@ -14539,37 +14673,131 @@ function addCountdownBook() {
 }
 
 function openCdCalculator() {
-  openModal('日期计算器', `
-    <div class="form-group"><label>起始日期</label><input id="cdcA" type="date"></div>
-    <div class="form-group"><label>结束日期</label><input id="cdcB" type="date"></div>
-    <div id="cdcRes" style="margin-top:12px;font-size:15px;color:#4a90e2;text-align:center"></div>
-  `, `<button class="btn btn-secondary" onclick="closeModal()">关闭</button>
-      <button class="btn btn-primary" onclick="(function(){
-        var a=new Date(document.getElementById('cdcA').value+'T00:00:00');
-        var b=new Date(document.getElementById('cdcB').value+'T00:00:00');
-        if(isNaN(a)||isNaN(b)){showToast('请选择日期');return;}
-        var days=Math.round((b-a)/86400000);
-        document.getElementById('cdcRes').textContent = days>=0 ? ('相隔 '+days+' 天') : ('相差 '+(-days)+' 天');
-      })()">计算</button>`);
+  state._homeRoot = 'countdown';
+  state._homeDepth = 1;
+  state._subKind = 'homeApp';
+  state._subBackFn = function(){ openCountdownApp('cat'); };
+  const today = new Date();
+  const ds = today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
+  openSubPage('日期计算器', `
+    <div style="height:100%;background:#f5f6f8;overflow-y:auto">
+      <div style="background:#5b9fd4;color:#fff;padding:12px 16px;display:flex;align-items:center;gap:10px">
+        <span onclick="closeSubPage()" style="font-size:20px;cursor:pointer">‹</span>
+        <span style="font-size:17px;font-weight:600">日期计算器</span>
+      </div>
+      <div style="padding:16px;font-size:14px;color:#666">计算日期</div>
+      <div style="background:#fff;margin:0 0 12px;padding:16px">
+        <div style="text-align:center;margin-bottom:12px">从 <input id="cdcFrom" type="date" value="${ds}" style="border:none;color:#5b9fd4;font-size:15px;background:transparent"> 开始</div>
+        <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+          <input id="cdcNum1" type="number" placeholder="输入数字计算" style="border:1px solid #e5e5e5;border-radius:16px;padding:8px 14px;width:120px;text-align:center">
+          <select id="cdcUnit1" style="border:1px solid #e5e5e5;border-radius:12px;padding:8px 10px;color:#5b9fd4"><option value="d">天</option><option value="w">周</option><option value="m">月</option></select>
+          <span>之前</span>
+        </div>
+        <div id="cdcRes1" style="text-align:center;font-size:15px;color:#333;padding:8px">公元 —</div>
+        <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin:12px 0;flex-wrap:wrap">
+          <input id="cdcNum2" type="number" placeholder="输入数字计算" style="border:1px solid #e5e5e5;border-radius:16px;padding:8px 14px;width:120px;text-align:center">
+          <select id="cdcUnit2" style="border:1px solid #e5e5e5;border-radius:12px;padding:8px 10px;color:#5b9fd4"><option value="d">天</option><option value="w">周</option><option value="m">月</option></select>
+          <span>之后</span>
+        </div>
+        <div id="cdcRes2" style="text-align:center;font-size:15px;color:#333;padding:8px">公元 —</div>
+        <button type="button" onclick="runCdCalcShift()" style="display:block;margin:12px auto 0;border:none;background:#5b9fd4;color:#fff;border-radius:18px;padding:10px 24px;cursor:pointer">计算</button>
+      </div>
+      <div style="padding:8px 16px;font-size:14px;color:#666">计算日期间隔</div>
+      <div style="background:#fff;padding:16px">
+        <div style="text-align:center;margin-bottom:10px">从 <input id="cdcA" type="date" value="${ds}" style="border:none;color:#5b9fd4;font-size:15px;background:transparent"> 开始，</div>
+        <div style="text-align:center;margin-bottom:10px">至 <input id="cdcB" type="date" value="${ds}" style="border:none;color:#5b9fd4;font-size:15px;background:transparent"> 结束</div>
+        <div id="cdcGap" style="text-align:center;font-size:18px;padding:12px">共 <b>0</b> <span style="background:#ddd;border-radius:10px;padding:2px 8px;font-size:12px">Days</span></div>
+        <label style="display:flex;align-items:center;justify-content:center;gap:8px;font-size:13px;color:#666"><input type="checkbox" id="cdcIncl"> 包含起始日</label>
+        <button type="button" onclick="runCdCalcGap()" style="display:block;margin:12px auto 0;border:none;background:#5b9fd4;color:#fff;border-radius:18px;padding:10px 24px;cursor:pointer">计算间隔</button>
+      </div>
+    </div>
+  `, '');
+}
+function runCdCalcShift() {
+  const weekNames = '日一二三四五六';
+  function fmt(dt) {
+    return '公元 ' + dt.getFullYear() + '-' + (dt.getMonth()+1) + '-' + dt.getDate() + ' 星期' + weekNames[dt.getDay()];
+  }
+  function shift(base, n, unit, dir) {
+    const d = new Date(base + 'T00:00:00');
+    if (isNaN(d.getTime()) || !n) return null;
+    n = Number(n) * dir;
+    if (unit === 'w') d.setDate(d.getDate() + n * 7);
+    else if (unit === 'm') d.setMonth(d.getMonth() + n);
+    else d.setDate(d.getDate() + n);
+    return d;
+  }
+  const base = (document.getElementById('cdcFrom')||{}).value;
+  const r1 = shift(base, (document.getElementById('cdcNum1')||{}).value, (document.getElementById('cdcUnit1')||{}).value, -1);
+  const r2 = shift(base, (document.getElementById('cdcNum2')||{}).value, (document.getElementById('cdcUnit2')||{}).value, 1);
+  const el1 = document.getElementById('cdcRes1');
+  const el2 = document.getElementById('cdcRes2');
+  if (el1) el1.textContent = r1 ? fmt(r1) : '公元 —';
+  if (el2) el2.textContent = r2 ? fmt(r2) : '公元 —';
+}
+function runCdCalcGap() {
+  const a = new Date(((document.getElementById('cdcA')||{}).value||'') + 'T00:00:00');
+  const b = new Date(((document.getElementById('cdcB')||{}).value||'') + 'T00:00:00');
+  if (isNaN(a.getTime()) || isNaN(b.getTime())) { showToast('请选择日期'); return; }
+  let days = Math.round((b - a) / 86400000);
+  if ((document.getElementById('cdcIncl')||{}).checked) days = Math.abs(days) + (days >= 0 ? 1 : -1);
+  const el = document.getElementById('cdcGap');
+  if (el) el.innerHTML = '共 <b>' + Math.abs(days) + '</b> <span style="background:#ddd;border-radius:10px;padding:2px 8px;font-size:12px">Days</span>';
 }
 
 function openCdMilestones() {
+  state._homeRoot = 'countdown';
+  state._homeDepth = 1;
+  state._subKind = 'homeApp';
+  state._subBackFn = function(){ openCountdownApp('cat'); };
+  const now = new Date();
+  const start = new Date(now.getFullYear(), 0, 1);
+  const end = new Date(now.getFullYear() + 1, 0, 1);
+  const passed = Math.floor((now - start) / 86400000) + 1;
+  const total = Math.floor((end - start) / 86400000);
+  const left = total - passed;
+  const pct = ((passed / total) * 100).toFixed(2);
   const list = (state.countdown || []).filter(d => !d.archived);
-  const now = new Date(new Date().toDateString()).getTime();
-  const html = list.map(d => {
+  const dayMs = 86400000;
+  const rows = list.map(d => {
     const t = new Date(d.date + 'T00:00:00').getTime();
-    const days = Math.ceil((t - now) / 86400000);
-    if (days > 0) return '';
-    const passed = -days;
-    const marks = [100, 200, 365, 500, 1000, 2000].filter(m => passed >= m);
-    if (!marks.length) return '';
-    return `<div style="padding:12px;border-bottom:1px solid #eee"><b>${escapeHtml(d.title||'')}</b><div class="text-sub">已过 ${passed} 天 · 里程碑: ${marks.join('、')} 天</div></div>`;
-  }).filter(Boolean).join('') || '<div class="empty">暂无里程碑</div>';
-  openModal('里程碑', html, `<button class="btn btn-primary" onclick="closeModal()">关闭</button>`);
+    if (isNaN(t)) return '';
+    const days = Math.ceil((t - new Date(new Date().toDateString()).getTime()) / dayMs);
+    if (days < 0) return '';
+    return `<div onclick="openCountdownDetail(${(state.countdown||[]).indexOf(d)})" style="display:flex;align-items:center;background:#fff;border-bottom:1px solid #f0f0f0;cursor:pointer">
+      <div style="flex:1;padding:14px 16px;font-size:15px;color:#333">${escapeHtml(d.title||'')}还有</div>
+      <div style="display:flex;align-items:stretch">
+        <div style="background:#5b9fd4;color:#fff;min-width:52px;padding:12px 8px;text-align:center;font-size:18px;font-weight:600">${days}</div>
+        <div style="background:#5b9fd4;color:#fff;padding:12px 8px;font-size:12px;display:flex;align-items:center;opacity:.95">天</div>
+      </div>
+    </div>`;
+  }).filter(Boolean).join('') || '<div class="empty" style="padding:40px;color:#999">暂无未来倒数</div>';
+  openSubPage('倒数本 · 里程碑', `
+    <div style="height:100%;background:#f5f6f8;display:flex;flex-direction:column">
+      <div style="background:#5b9fd4;color:#fff;padding:12px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0">
+        <span onclick="closeSubPage()" style="font-size:20px;cursor:pointer">‹</span>
+        <span style="flex:1;font-size:17px;font-weight:600">倒数本 · 里程碑</span>
+        <span style="font-size:16px">✎</span>
+      </div>
+      <div style="background:#fff;padding:16px;margin-bottom:8px">
+        <div style="font-size:12px;color:#999">${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日</div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:6px">
+          <div style="font-size:16px;color:#333">今年进度已经</div>
+          <div style="font-size:28px;font-weight:700;color:#444">${pct}%</div>
+        </div>
+        <div style="margin-top:10px;height:18px;border-radius:4px;background:#eef2f5;overflow:hidden;display:flex">
+          <div style="width:${pct}%;background:linear-gradient(90deg,#7ec8f0,#5b9fd4);color:#fff;font-size:11px;line-height:18px;padding-left:8px">${passed}天</div>
+          <div style="flex:1;text-align:right;font-size:11px;color:#999;line-height:18px;padding-right:8px">还有${left}天</div>
+        </div>
+      </div>
+      <div style="flex:1;overflow-y:auto">${rows}</div>
+    </div>
+  `, '');
 }
 
 
 /* —— galgame 瀑布流 —— */
+
 
 function openGalApp(tab) {
   resetHomeNav('gal');
