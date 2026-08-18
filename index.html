@@ -1748,7 +1748,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-19b';
+const EENOK_BUILD = '2026-08-19c';
 function checkAppUpdate() {
   try {
     const prev = localStorage.getItem('eenook_build');
@@ -8515,10 +8515,6 @@ function renderContacts() {
     });
   });
   let html = `
-    <div class="setting-item" onclick="openPhoneCheck()" style="border-radius:16px;margin:8px 12px;border:1px solid var(--line)">
-      <span class="icon" style="width:22px;height:22px;margin-right:12px;flex-shrink:0"><svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg></span>
-      查手机
-    </div>
     <div class="setting-item" onclick="openShop()" style="border-radius:16px;margin:8px 12px;border:1px solid var(--line)">
       <span class="icon" style="width:22px;height:22px;margin-right:12px;flex-shrink:0"><svg viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></span>
       商城
@@ -12032,68 +12028,52 @@ function editBookMeta(bi) {
 }
 
 // ===== 查手机 =====
+function phoneGlassDock(active) {
+  // 底部全透明玻璃 dock：查手机 | 捡手机
+  return '<div style="position:absolute;left:16px;right:16px;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:30;display:flex;gap:0;border-radius:22px;overflow:hidden;'
+    + 'background:rgba(255,255,255,.22);backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%);'
+    + 'border:0.5px solid rgba(255,255,255,.45);box-shadow:0 8px 28px rgba(40,80,100,.1)">'
+    + '<button type="button" onclick="openPhoneCheck()" style="flex:1;border:none;background:'+(active==='check'?'rgba(255,255,255,.35)':'transparent')+';padding:14px 8px;font-size:14px;font-weight:'+(active==='check'?'700':'500')+';color:#1c3a44;cursor:pointer">查手机</button>'
+    + '<button type="button" onclick="openPickupPhone()" style="flex:1;border:none;background:'+(active==='pickup'?'rgba(255,255,255,.35)':'transparent')+';padding:14px 8px;font-size:14px;font-weight:'+(active==='pickup'?'700':'500')+';color:#1c3a44;cursor:pointer">捡手机</button>'
+    + '</div>';
+}
+function buildPhonePersonaPrompt(ch) {
+  const u = state.user || {};
+  const userP = [u.nick, u.realName, u.persona, u.setting].filter(Boolean).join('；');
+  const rel = (ch.relation || ch.rel || (state.chats[ch.id] && state.chats[ch.id].relation) || '').toString();
+  return '【角色】'+(ch.realName||ch.nick||'')+' / 昵称：'+(ch.nick||'')+'\n人设：'+(ch.persona||'普通人').slice(0,500)
+    + '\n【用户】'+(userP||'普通用户').slice(0,300)
+    + '\n【二人关系】'+(rel||'朋友/相识').slice(0,200)
+    + '\n【铁律】不OOC；不弱化/神化/丑化；不辱女不危险不辱国家种族（特殊设定仅限角色视角）；不抢话；不人身攻击 user；角色首先是活人，有温度、习惯与真实情感；查手机内容用于了解角色日常，禁止恐怖恐吓油腻霸道偏执病态。';
+}
 function openPhoneCheck() {
   state._subStack = [];
   state._homeRoot = 'phonecheck';
   state._subKind = 'phonecheck';
   state._homeDepth = 0;
-  state._subBackFn = null;
+  state._phoneChar = null;
+  state._subBackFn = function(){ goHome(); };
   state._clickGuardUntil = 0;
   state._navLock = false;
-  state._suppressLaunch = false;
-  state._phoneCheckList = (state.chars || []).slice();
-  const list = state._phoneCheckList.map(function(ch, idx) {
-    return '<div class="pc-row" data-pcidx="'+idx+'" role="button" tabindex="0" '
-      + 'onclick="event.preventDefault();event.stopPropagation();window._pcGo&&_pcGo('+idx+')" '
-      + 'style="display:flex;align-items:center;margin:8px 12px;padding:16px 14px;border-radius:14px;border:1px solid var(--line);background:var(--card);cursor:pointer;-webkit-tap-highlight-color:rgba(0,0,0,.08);user-select:none;-webkit-user-select:none">'
-      + '<img src="'+avatarUrl(ch)+'" alt="" style="width:44px;height:44px;border-radius:12px;margin-right:12px;object-fit:cover;pointer-events:none;flex-shrink:0">'
-      + '<span style="flex:1;font-size:16px;pointer-events:none">'+escapeHtml(ch.nick||ch.realName||('角色'+(idx+1)))+'</span>'
+  const chars = (typeof visibleChars === 'function' ? visibleChars() : (state.chars || [])).slice();
+  state._phoneCheckList = chars;
+  const list = chars.map(function(ch, idx) {
+    return '<div class="pc-row" data-pcidx="'+idx+'" onclick="event.preventDefault();event.stopPropagation();openCharPhoneByIdx('+idx+')" '
+      + 'style="display:flex;align-items:center;margin:8px 14px;padding:14px;border-radius:16px;background:rgba(255,255,255,.72);border:1px solid rgba(255,255,255,.5);cursor:pointer;backdrop-filter:blur(8px)">'
+      + '<img src="'+avatarUrl(ch)+'" style="width:48px;height:48px;border-radius:14px;margin-right:12px;object-fit:cover;pointer-events:none">'
+      + '<div style="flex:1;min-width:0;pointer-events:none"><div style="font-size:16px;font-weight:600;color:#1c3a44">'+escapeHtml(ch.nick||ch.realName||('角色'+(idx+1)))+'</div>'
+      + '<div style="font-size:12px;color:#6a8a95;margin-top:3px">查看其手机里的日常痕迹</div></div>'
       + '<span style="color:#c7c7cc;pointer-events:none">›</span></div>';
-  }).join('') || '<div class="empty">暂无角色，请先在角色库添加</div>';
-  openSubPage('查手机', '<div id="phoneCheckList" style="padding:4px 0 24px;touch-action:pan-y">'+list+'</div>', '', {
-    replace: true,
-    softGuard: true,
-    backFn: function(){ goHome(); }
-  });
-  state._clickGuardUntil = 0;
-  window._pcGo = function(idx) {
-    state._clickGuardUntil = 0;
-    state._navLock = false;
-    state._suppressLaunch = false;
-    try { openCharPhoneByIdx(idx); } catch(e) { showToast('打开失败'); }
-  };
-  setTimeout(function() {
-    try {
-      var rows = document.querySelectorAll('#phoneCheckList .pc-row');
-      rows.forEach(function(row) {
-        var fired = false;
-        var startY = 0;
-        function go(e) {
-          if (fired) return;
-          if (row._moved) { row._moved = false; return; }
-          fired = true;
-          var idx = +(row.getAttribute('data-pcidx') || -1);
-          if (e) { try { e.preventDefault(); e.stopPropagation(); } catch(ex) {} }
-          openCharPhoneByIdx(idx);
-          setTimeout(function(){ fired = false; }, 500);
-        }
-        row.addEventListener('click', go, {passive:false});
-        row.addEventListener('touchstart', function(e){
-          row._moved = false;
-          startY = (e.touches && e.touches[0]) ? e.touches[0].clientY : 0;
-        }, {passive:true});
-        row.addEventListener('touchmove', function(e){
-          var y = (e.touches && e.touches[0]) ? e.touches[0].clientY : 0;
-          if (Math.abs(y - startY) > 12) row._moved = true;
-        }, {passive:true});
-        row.addEventListener('touchend', function(e){
-          if (row._moved) { row._moved = false; return; }
-          go(e);
-        }, {passive:false});
-      });
-    } catch(e) {}
-  }, 30);
-  setTimeout(function(){ state._clickGuardUntil = 0; }, 80);
+  }).join('') || '<div class="empty" style="padding:48px 16px;color:#6a8a95">暂无角色，请先在角色库添加</div>';
+  openSubPage('查手机', `
+    <div style="position:relative;height:100%;background:linear-gradient(165deg,#e8f6f4,#d4ebea);overflow:hidden">
+      <div style="height:100%;overflow-y:auto;padding:8px 0 90px;-webkit-overflow-scrolling:touch">
+        <div style="padding:8px 16px 4px;font-size:12px;color:#6a8a95">选择角色，窥见其手机里的生活</div>
+        ${list}
+      </div>
+      ${phoneGlassDock('check')}
+    </div>
+  `, '', { replace: true, softGuard: true, backFn: function(){ goHome(); } });
 }
 function openCharPhoneByIdx(idx) {
   state._clickGuardUntil = 0;
@@ -12222,16 +12202,20 @@ function setPhoneAppData(contactId, appId, data) {
 }
 
 function ensureCharPhoneObj(ch) {
-  if (!ch) return { apps: { wechat: true, browser: true, notes: true } };
-  // ch.phone 可能是电话号码字符串，不能当对象用
+  const defaultApps = { wechat: true, notes: true, browser: true, sms: true, gallery: true };
+  if (!ch) return { apps: defaultApps };
   if (typeof ch.phone === 'string') {
     ch.phoneNumber = ch.phoneNumber || ch.phone;
-    ch.phone = { notes: [], browser: [], apps: { wechat: true, browser: true, notes: true }, number: ch.phoneNumber };
+    ch.phone = { notes: [], browser: [], sms: [], gallery: null, apps: Object.assign({}, defaultApps), number: ch.phoneNumber };
   } else if (!ch.phone || typeof ch.phone !== 'object' || Array.isArray(ch.phone)) {
-    ch.phone = { notes: [], browser: [], apps: { wechat: true, browser: true, notes: true } };
+    ch.phone = { notes: [], browser: [], sms: [], gallery: null, apps: Object.assign({}, defaultApps) };
   }
   if (!ch.phone.apps || typeof ch.phone.apps !== 'object') {
-    ch.phone.apps = { wechat: true, browser: true, notes: true };
+    ch.phone.apps = Object.assign({}, defaultApps);
+  } else {
+    ['wechat','notes','browser','sms','gallery'].forEach(function(k){
+      if (ch.phone.apps[k] === undefined) ch.phone.apps[k] = true;
+    });
   }
   return ch.phone;
 }
@@ -12252,50 +12236,50 @@ function openCharPhone(cid) {
   state._clickGuardUntil = 0;
   try { ensurePhoneData(cid); } catch(e) {}
   const phoneObj = ensureCharPhoneObj(ch);
-  const apps = phoneObj.apps || { wechat: true, browser: true, notes: true };
-  const dark = state.theme && state.theme.mode === 'dark';
-  const bg = dark ? 'linear-gradient(180deg,#1a1a1c,#0d0d0f)' : 'linear-gradient(180deg,#e8f4f8,#d4ebea)';
-  const fg = dark ? '#f5f5f7' : '#1c1c1e';
-  const iconBg = dark ? 'rgba(44,44,46,.95)' : 'rgba(255,255,255,.85)';
+  const apps = phoneObj.apps || {};
+  const fg = '#1c3a44';
+  const iconBg = 'rgba(255,255,255,.82)';
+  // 线条风图标
   const items = [
-    { id:'wechat', name:'微信', show: apps.wechat !== false, svg:'<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>' },
-    { id:'browser', name:'浏览器', show: apps.browser !== false, svg:'<circle cx="12" cy="12" r="10"/><path d="M2 12h20"/>' },
-    { id:'notes', name:'备忘录', show: apps.notes !== false, svg:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>' },
-    { id:'settings', name:'设置', show: true, svg:'<circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2"/>' }
+    { id:'wechat', name:'微信', show: apps.wechat !== false, svg:'<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>' },
+    { id:'notes', name:'备忘录', show: apps.notes !== false, svg:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h6"/>' },
+    { id:'browser', name:'浏览器', show: apps.browser !== false, svg:'<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>' },
+    { id:'sms', name:'短信', show: apps.sms !== false, svg:'<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>' },
+    { id:'gallery', name:'相册', show: apps.gallery !== false, svg:'<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>' },
+    { id:'settings', name:'设置', show: true, svg:'<circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>' }
   ];
   const grid = items.filter(x=>x.show).map(x => `
-    <button type="button" class="phone-app-btn" data-phone-app="${x.id}" style="border:none;background:transparent;text-align:center;cursor:pointer;padding:8px 4px;-webkit-tap-highlight-color:rgba(0,0,0,.08)">
-      <div style="width:56px;height:56px;margin:0 auto;border-radius:14px;background:${iconBg};display:flex;align-items:center;justify-content:center;border:1px solid var(--line);pointer-events:none">
-        <span class="icon" style="width:26px;height:26px;pointer-events:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">${x.svg}</svg></span>
+    <button type="button" class="phone-app-btn" data-phone-app="${x.id}" style="border:none;background:transparent;text-align:center;cursor:pointer;padding:10px 4px">
+      <div style="width:58px;height:58px;margin:0 auto;border-radius:16px;background:${iconBg};display:flex;align-items:center;justify-content:center;border:0.5px solid rgba(255,255,255,.6);box-shadow:0 4px 14px rgba(60,100,120,.08);pointer-events:none">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="${fg}" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none">${x.svg}</svg>
       </div>
-      <div style="font-size:11px;margin-top:6px;color:${fg};pointer-events:none">${x.name}</div>
+      <div style="font-size:11px;margin-top:7px;color:${fg};pointer-events:none">${x.name}</div>
     </button>`).join('');
   openSubPage('', `
-    <div style="display:flex;flex-direction:column;height:100%;background:${bg};color:${fg};box-sizing:border-box">
-      <div style="padding:12px 16px;display:flex;align-items:center;gap:8px;flex-shrink:0">
-        <button type="button" onclick="exitPhone()" style="border:none;background:${iconBg};border-radius:50%;width:36px;height:36px;font-size:18px;color:${fg};cursor:pointer">‹</button>
-        <div style="flex:1;text-align:center;font-size:14px;color:var(--sub)">${escapeHtml(ch.nick||ch.realName||'')} 的手机</div>
+    <div style="position:relative;height:100%;background:linear-gradient(165deg,#e8f6f4,#cfe8e4);color:${fg};box-sizing:border-box;overflow:hidden">
+      <div style="padding:14px 16px;display:flex;align-items:center;gap:8px">
+        <button type="button" onclick="exitPhone()" style="border:none;background:rgba(255,255,255,.7);border-radius:50%;width:36px;height:36px;font-size:18px;color:${fg};cursor:pointer">‹</button>
+        <div style="flex:1;text-align:center;font-size:14px;font-weight:600">${escapeHtml(ch.nick||ch.realName||'')} 的手机</div>
         <div style="width:36px"></div>
       </div>
-      <div style="flex:1;padding:24px 16px;overflow-y:auto">
-        <div id="phoneAppGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px 8px">${grid}</div>
+      <div style="padding:12px 16px 100px;overflow-y:auto;height:calc(100% - 60px);box-sizing:border-box">
+        <div id="phoneAppGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px 10px">${grid}</div>
       </div>
+      ${phoneGlassDock('check')}
     </div>
   `, '', { replace: true, softGuard: true, backFn: function(){ openPhoneCheck(); } });
   try { const sn = document.getElementById('subNav'); if (sn) sn.style.display = 'none'; } catch(e) {}
-  state._clickGuardUntil = 0;
   setTimeout(function() {
     try {
       document.querySelectorAll('.phone-app-btn').forEach(function(el) {
         el.onclick = function(ev) {
           if (ev) { ev.preventDefault(); ev.stopPropagation(); }
-          state._clickGuardUntil = 0;
           var app = el.getAttribute('data-phone-app');
           if (app) openPhoneApp(app);
         };
       });
-    } catch(e) { console.warn('phone bind', e); }
-  }, 50);
+    } catch(e) {}
+  }, 40);
 }
 
 function openPhoneWechat(tab) {
@@ -12404,67 +12388,107 @@ function openPhoneWxSession(ii) {
 }
 function openPhoneWxWallet() {
   const ch = state.chars.find(c=>c.id===state._phoneChar);
-  const w = (ch && ch.phone && ch.phone.wechatData && ch.phone.wechatData.wallet) || { balance:'--', items:[] };
-  openModal('钱包', `<div style="font-size:28px;text-align:center;margin:12px 0">¥ ${escapeHtml(String(w.balance))}</div>
-    ${(w.items||[]).map(i=>`<div class="setting-item">${escapeHtml(i)}</div>`).join('')||'<div class="text-sub">点击右上角○可生成</div>'}`,
-    `<button class="btn btn-secondary" onclick="closeModal()">关闭</button>`);
+  const w = (ch && ch.phone && ch.phone.wechatData && ch.phone.wechatData.wallet) || { balance:'--', cards:[], bills:[], items:[] };
+  const cards = w.cards || w.items || [];
+  const bills = w.bills || [];
+  openModal('钱包', `
+    <div style="font-size:28px;text-align:center;margin:12px 0;font-weight:700">¥ ${escapeHtml(String(w.balance||'--'))}</div>
+    <div style="font-size:13px;color:#888;margin-bottom:8px">银行卡</div>
+    ${(cards.length?cards:['暂无，点微信页○生成']).map(function(i){ return '<div class="setting-item">'+escapeHtml(typeof i==='string'?i:(i.title||JSON.stringify(i)))+'</div>'; }).join('')}
+    <div style="font-size:13px;color:#888;margin:12px 0 8px">消费账单</div>
+    ${(bills.length?bills:[{title:'暂无账单',amount:'',time:''}]).map(function(b){
+      return '<div style="padding:10px 0;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between"><div><div>'+escapeHtml(b.title||'')+'</div><div style="font-size:11px;color:#999">'+escapeHtml(b.time||'')+'</div></div><div style="color:#333">'+escapeHtml(String(b.amount||''))+'</div></div>';
+    }).join('')}
+  `, `<button class="btn btn-secondary" onclick="closeModal()">关闭</button>
+      <button class="btn btn-primary" onclick="closeModal();phoneApiGen('wechat','wallet')">生成</button>`);
 }
 function openPhoneWxFav() {
   const ch = state.chars.find(c=>c.id===state._phoneChar);
   const favs = (ch && ch.phone && ch.phone.wechatData && ch.phone.wechatData.favs) || [];
-  openModal('收藏', favs.map(f=>`<div style="padding:10px 0;border-bottom:1px solid var(--line)">${escapeHtml(f)}</div>`).join('')||'<div class="empty">暂无，点○生成</div>',
-    `<button class="btn btn-secondary" onclick="closeModal()">关闭</button>`);
+  openModal('收藏', favs.map(function(f){
+    if (typeof f === 'string') return '<div style="padding:10px 0;border-bottom:1px solid var(--line)">'+escapeHtml(f)+'</div>';
+    return '<div style="padding:12px 0;border-bottom:1px solid var(--line)"><div style="font-weight:600">'+escapeHtml(f.title||'收藏')+'</div><div style="font-size:13px;margin-top:4px;line-height:1.5">'+escapeHtml(f.content||'')+'</div>'
+      +(f.thought?'<div style="margin-top:6px;font-size:12px;color:#8a6d3b;background:#fff8e6;padding:6px 8px;border-radius:8px">内心：'+escapeHtml(f.thought)+'</div>':'')+'</div>';
+  }).join('')||'<div class="empty">暂无，点生成</div>',
+    `<button class="btn btn-secondary" onclick="closeModal()">关闭</button>
+     <button class="btn btn-primary" onclick="closeModal();phoneApiGen('wechat','favs')">生成</button>`);
 }
 async function phoneApiGen(app, tab) {
   const btn = document.getElementById('phoneGenBtn');
-  if (btn) { btn.classList.add('spin'); btn.textContent = '◌'; }
+  if (btn) { btn.textContent = '◌'; }
   const ch = state.chars.find(c=>c.id===state._phoneChar);
   if (!ch) return;
-  if (!ch.phone) ch.phone = {};
-  const persona = ch.persona || ch.nick || '角色';
-  let prompt = '';
+  ensureCharPhoneObj(ch);
+  if (!ch.phone.wechatData) ch.phone.wechatData = {};
+  const base = buildPhonePersonaPrompt(ch);
+  let system = base + '\n只输出合法 JSON，不要 markdown、不要解释。';
+  let user = '';
   if (app === 'wechat') {
-    if (tab === 'chats') prompt = `你是${persona}。用JSON数组返回其微信聊天列表5条，每项{name,last,messages:[{from:'me'|'other',text}]}。只输出JSON。`;
-    else if (tab === 'contacts') prompt = `你是${persona}。用JSON数组返回通讯录8人，每项{name,tag}。只输出JSON。`;
-    else if (tab === 'moments') prompt = `你是${persona}。用JSON数组返回朋友圈4条，每项{name,text}。只输出JSON。`;
-    else prompt = `你是${persona}。返回JSON：{"wallet":{"balance":"数字","items":["零钱","银行卡"]},"favs":["收藏1","收藏2"]}。只输出JSON。`;
-  } else if (app === 'browser') {
-    prompt = `你是${persona}。用JSON数组返回浏览器历史5条，每项{title,url,snippet}。只输出JSON。`;
+    if (tab === 'chats') user = '生成角色微信聊天列表 3~5 条。JSON数组：[{name,last,messages:[{from:"me"|"other",text}]}]。me=角色自己，other=对方。聊天自然日常。';
+    else if (tab === 'contacts') user = '根据人设生成角色微信通讯录 6~10 人。JSON数组：[{name,tag}]。tag如同学/家人/同事。';
+    else if (tab === 'wallet') user = '生成角色微信钱包。JSON：{balance:"数字字符串",cards:["银行卡描述"],bills:[{title,amount,time}]}。bills 3~6 条消费账单。';
+    else if (tab === 'favs') user = '生成角色微信收藏 3~5 条。JSON数组：[{title,content,thought}]。content为收藏正文，thought为角色内心想法。';
+    else user = '生成微信综合：{chats:[{name,last,messages:[{from,text}]}],contacts:[{name,tag}],wallet:{balance,cards,bills:[{title,amount,time}]},favs:[{title,content,thought}]}';
   } else if (app === 'notes') {
-    prompt = `你是${persona}。用JSON数组返回备忘录4条，每项{title,body}。只输出JSON。`;
+    user = '生成角色 iOS 备忘录 3~5 条。JSON数组：[{title,body,thought}]。body 可短可长，口语；thought 为写下时的内心一句话。';
+  } else if (app === 'browser') {
+    if (tab === 'history') user = '生成浏览器历史记录 5 条。JSON数组：[{title,url,time,detail,thought}]。detail 页面摘要，thought 角色内心批注。';
+    else user = '生成阅读列表 3~5 本/篇。JSON数组：[{title,source,summary,thought}]。thought 为角色阅读时的内心独白/批注。';
+  } else if (app === 'sms') {
+    user = '生成短信列表 5 条，可涉及快递/外卖/学习/验证码/同学/家人。JSON数组：[{from,preview,time,messages:[{from:"them"|"me",text}],replyThought}]。me=角色回复，replyThought=回复时的想法。';
+  } else if (app === 'gallery') {
+    user = '生成相册。JSON：{normal:[{desc,thought}],private:[{desc,thought}]}。normal 3~5 张日常可见照片描述；private 5 张私密相册描述+内心。不要生成真实图片URL。';
+  } else if (app === 'settings') {
+    user = '返回 JSON：{"ok":true}';
   }
   let data = null;
   try {
-    if (state.api && state.api.baseUrl && state.api.key) {
-      const res = await fetch(state.api.baseUrl.replace(/\/$/, '') + '/chat/completions', {
-        method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+state.api.key},
-        body: JSON.stringify({ model: state.api.model||'gpt-3.5-turbo', messages:[{role:'user',content:prompt}], temperature:0.8 })
-      });
-      const j = await res.json();
-      let t = j.choices?.[0]?.message?.content || '';
-      const mm = t.match(/\\[[\\s\\S]*\\]|\\{[\\s\\S]*\\}/);
-      if (mm) data = JSON.parse(mm[0]);
-    }
-  } catch (e) { console.warn(e); }
-  if (!ch.phone.wechatData) ch.phone.wechatData = {};
-  if (app === 'wechat') {
-    if (tab === 'chats') ch.phone.wechatData.chats = Array.isArray(data)?data:[{name:'同学',last:'在吗',messages:[{from:'other',text:'在吗'},{from:'me',text:'怎么了'}]}];
-    else if (tab === 'contacts') ch.phone.wechatData.contacts = Array.isArray(data)?data:[{name:'家人',tag:'亲人'}];
-    else if (tab === 'moments') ch.phone.wechatData.moments = Array.isArray(data)?data:[{name:ch.nick,text:'今天天气不错'}];
-    else {
-      if (data && data.wallet) ch.phone.wechatData.wallet = data.wallet;
-      if (data && data.favs) ch.phone.wechatData.favs = data.favs;
-      if (!data) { ch.phone.wechatData.wallet={balance:'128.00',items:['零钱','银行卡']}; ch.phone.wechatData.favs=['一篇文章']; }
-    }
-    save(); openPhoneWechat(tab);
-  } else if (app === 'browser') {
-    ch.phone.browser = Array.isArray(data)?data:[{title:'搜索结果',url:'https://example.com',snippet:'示例'}];
-    save(); openPhoneApp('browser');
-  } else if (app === 'notes') {
-    ch.phone.notes = Array.isArray(data)?data:[{title:'备忘',body:'记得做事'}];
-    save(); openPhoneApp('notes');
+    showToast('生成中…');
+    const { text } = await apiChat([
+      { role: 'system', content: system },
+      { role: 'user', content: user }
+    ], { max_tokens: 1400, temperature: 0.85, timeout: 90000 });
+    const raw = String(text || '').replace(/```json|```/g, '').trim();
+    const mm = raw.match(/\[[\s\S]*\]|\{[\s\S]*\}/);
+    if (mm) data = JSON.parse(mm[0]);
+  } catch (e) {
+    console.warn('phoneApiGen', e);
+    showToast('生成失败：' + (e.message || e));
   }
-  if (btn) { btn.classList.remove('spin'); btn.textContent = '○'; }
+  // 写入
+  if (app === 'wechat') {
+    const wd = ch.phone.wechatData;
+    if (tab === 'chats') wd.chats = Array.isArray(data) ? data : (data && data.chats) || wd.chats || [];
+    else if (tab === 'contacts') wd.contacts = Array.isArray(data) ? data : (data && data.contacts) || [];
+    else if (tab === 'wallet') {
+      if (data && data.balance != null) wd.wallet = data;
+      else if (data && data.wallet) wd.wallet = data.wallet;
+    }
+    else if (tab === 'favs') wd.favs = Array.isArray(data) ? data : (data && data.favs) || [];
+    else if (data && typeof data === 'object') {
+      if (data.chats) wd.chats = data.chats;
+      if (data.contacts) wd.contacts = data.contacts;
+      if (data.wallet) wd.wallet = data.wallet;
+      if (data.favs) wd.favs = data.favs;
+    }
+    save(); openPhoneWechat(tab || 'chats');
+  } else if (app === 'notes') {
+    ch.phone.notes = Array.isArray(data) ? data : [];
+    save(); openPhoneApp('notes');
+  } else if (app === 'browser') {
+    if (tab === 'history') ch.phone.browserHistory = Array.isArray(data) ? data : [];
+    else ch.phone.browserRead = Array.isArray(data) ? data : [];
+    save(); openPhoneApp('browser', tab || 'read');
+  } else if (app === 'sms') {
+    ch.phone.sms = Array.isArray(data) ? data : [];
+    save(); openPhoneApp('sms');
+  } else if (app === 'gallery') {
+    ch.phone.gallery = data && typeof data === 'object' ? data : { normal: [], private: [] };
+    save(); openPhoneApp('gallery');
+  } else {
+    showToast('已完成');
+  }
+  if (btn) btn.textContent = '○';
 }
 function backPhoneHome() {
   state._phoneLayer = 'home';
@@ -12474,11 +12498,10 @@ function backPhoneHome() {
 function savePhoneApps() {
   const ch = state.chars.find(c=>c.id===state._phoneChar);
   ensureCharPhoneObj(ch);
-  ch.phone.apps = {
-    wechat: document.getElementById('pa_wechat').checked,
-    browser: document.getElementById('pa_browser').checked,
-    notes: document.getElementById('pa_notes').checked
-  };
+  ['wechat','notes','browser','sms','gallery'].forEach(function(k){
+    const el = document.getElementById('pa_'+k);
+    if (el) ch.phone.apps[k] = !!el.checked;
+  });
   save(); openCharPhone(ch.id);
 }
 async function genPhoneContent() {
@@ -12489,7 +12512,7 @@ async function genPhoneContent() {
   ch.phone.notes.unshift({ title:'今日待办', body:'记得回消息\n晚上早点休息', ts:Date.now() });
   save(); alert('已生成示例内容'); openPhoneApp('notes');
 }
-function openPhoneApp(app) {
+function openPhoneApp(app, tab) {
   state._clickGuardUntil = 0;
   const ch = state.chars.find(c=>c.id===state._phoneChar);
   if (!ch) { showToast('未选择角色手机'); return; }
@@ -12498,83 +12521,232 @@ function openPhoneApp(app) {
   state._homeDepth = 2;
   state._subBackFn = function(){ openCharPhone(state._phoneChar); };
   try { document.getElementById('subNav').style.display = 'none'; } catch(e) {}
-  const gen = `<button type="button" id="phoneGenBtn" onclick="phoneApiGen('${app==='browser'?'browser':'notes'}','')" style="border:none;background:transparent;font-size:18px;width:28px;height:28px;cursor:pointer">○</button>`;
   if (app === 'wechat') { openPhoneWechat('chats'); return; }
-  if (app === 'browser') {
-    const list = ch.phone.browser || [];
-    const dark = state.theme && state.theme.mode === 'dark';
-    const bg = dark ? '#000' : '#fff';
-    const fg = dark ? '#f5f5f7' : '#1c1c1e';
-    const line = dark ? '#2c2c2e' : '#eee';
-    const bar = dark ? '#1c1c1e' : '#f5f5f5';
-    openSubPage('', `
-      <div style="position:absolute;inset:0;display:flex;flex-direction:column;background:${bg};color:${fg}">
-        <div style="padding:10px 12px;display:flex;align-items:center;border-bottom:1px solid ${line};background:${dark?'#1c1c1e':bg}">
-          <button type="button" onclick="backPhoneHome()" style="border:none;background:transparent;font-size:22px;color:${fg}">‹</button>
-          <div style="flex:1;text-align:center;font-weight:600;color:${fg}">浏览器</div>
-          ${gen}
-        </div>
-        <div style="padding:8px 12px;background:${bar}"><div style="background:${dark?'#2c2c2e':'#fff'};border-radius:8px;padding:8px 12px;color:#888;font-size:13px">搜索或输入网址</div></div>
-        <div style="flex:1;overflow:auto">${(list.length?list:[{title:'点右上角○生成浏览记录',snippet:''}]).map(i=>`
-          <div style="padding:12px 14px;border-bottom:1px solid ${line}">
-            <div style="color:${dark?'#7aa2ff':'#1a0dab'}">${escapeHtml(i.title||'')}</div>
-            <div class="text-sub" style="font-size:12px">${escapeHtml(i.url||'')}</div>
-            <div style="font-size:13px;margin-top:4px;color:${fg}">${escapeHtml(i.snippet||'')}</div>
-          </div>`).join('')}</div>
-      </div>
-    `, '', { replace: true });
-    return;
-  }
+
+  // —— 备忘录（iOS 风格）——
   if (app === 'notes') {
     const list = ch.phone.notes || [];
-    const dark = state.theme && state.theme.mode === 'dark';
-    const bg = dark ? '#000' : '#fff';
-    const fg = dark ? '#f5f5f7' : '#1c1c1e';
     openSubPage('', `
-      <div style="position:absolute;inset:0;display:flex;flex-direction:column;background:${bg};color:${fg}">
-        <div style="padding:10px 12px;display:flex;align-items:center;border-bottom:1px solid ${dark?'#2c2c2e':'#eee'};background:${dark?'#1c1c1e':bg}">
-          <button type="button" onclick="backPhoneHome()" style="border:none;background:transparent;font-size:22px;color:${fg}">‹</button>
-          <div style="flex:1;text-align:center;font-weight:600;color:${fg}">备忘录</div>
-          ${gen}
+      <div style="position:absolute;inset:0;display:flex;flex-direction:column;background:#f2f2f7">
+        <div style="padding:10px 12px;display:flex;align-items:center;background:#f2f2f7">
+          <button type="button" onclick="backPhoneHome()" style="border:none;background:transparent;font-size:22px">‹</button>
+          <div style="flex:1;text-align:center;font-weight:600">备忘录</div>
+          <button type="button" id="phoneGenBtn" onclick="phoneApiGen('notes','')" style="border:none;background:transparent;font-size:18px;width:28px;cursor:pointer">○</button>
         </div>
-        <div style="flex:1;overflow:auto;padding:8px">${(list.length?list:[{title:'点○生成',body:''}]).map(n=>`
-          <div style="background:${dark?'#2c2c2e':'#fff9c4'};margin:8px;padding:12px;border-radius:8px;color:${fg}">
-            <div style="font-weight:600">${escapeHtml(n.title||'无题')}</div>
-            <div style="margin-top:6px;line-height:1.5;white-space:pre-wrap">${escapeHtml(n.body||'')}</div>
-          </div>`).join('')}</div>
+        <div style="flex:1;overflow:auto;padding:8px 12px 24px">
+          ${(list.length?list:[{title:'点右上角○生成 3~5 条',body:''}]).map(function(n,i){
+            return '<div onclick="viewPhoneNote('+i+')" style="background:#fff;border-radius:12px;padding:14px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,.04);cursor:pointer">'
+              + '<div style="font-weight:600;font-size:15px">'+escapeHtml(n.title||'无题')+'</div>'
+              + '<div style="margin-top:6px;font-size:13px;color:#555;line-height:1.5;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap">'+escapeHtml(n.body||'')+'</div>'
+              + (n.thought?'<div style="margin-top:8px;font-size:11px;color:#8a6d3b">💭 '+escapeHtml(n.thought)+'</div>':'')
+              + '</div>';
+          }).join('')}
+        </div>
       </div>
     `, '', { replace: true });
     return;
   }
+
+  // —— 浏览器：阅读列表 / 历史 ——
+  if (app === 'browser') {
+    tab = tab || state._phoneBrowserTab || 'read';
+    state._phoneBrowserTab = tab;
+    const readList = ch.phone.browserRead || [];
+    const hist = ch.phone.browserHistory || ch.phone.browser || [];
+    const isRead = tab === 'read';
+    openSubPage('', `
+      <div style="position:absolute;inset:0;display:flex;flex-direction:column;background:#0a0a0c;color:#f5f5f7">
+        <div style="padding:10px 12px;display:flex;align-items:center">
+          <button type="button" onclick="backPhoneHome()" style="border:none;background:transparent;font-size:22px;color:#f5f5f7">‹</button>
+          <div style="flex:1;text-align:center;font-weight:600">${isRead?'阅读列表':'历史记录'}</div>
+          <button type="button" id="phoneGenBtn" onclick="phoneApiGen('browser','${isRead?'read':'history'}')" style="border:none;background:transparent;font-size:18px;color:#f5f5f7;width:28px;cursor:pointer">○</button>
+        </div>
+        <div style="display:flex;gap:8px;padding:0 16px 10px">
+          <button type="button" onclick="openPhoneApp('browser','read')" style="flex:1;border:none;border-radius:20px;padding:8px;background:${isRead?'#2a2a2e':'#1a1a1c'};color:#fff;font-size:13px">阅读列表</button>
+          <button type="button" onclick="openPhoneApp('browser','history')" style="flex:1;border:none;border-radius:20px;padding:8px;background:${!isRead?'#2a2a2e':'#1a1a1c'};color:#fff;font-size:13px">历史记录</button>
+        </div>
+        <div style="flex:1;overflow:auto;padding:4px 12px 24px">
+          ${isRead
+            ? ((readList.length?readList:[{title:'点○生成 3~5 条阅读',summary:'',thought:''}]).map(function(it){
+                return '<div style="background:linear-gradient(135deg,#1c1c1e,#121214);border-radius:18px;padding:16px;margin-bottom:12px;border:1px solid #2c2c2e">'
+                  + '<div style="font-size:16px;font-weight:600">'+escapeHtml(it.title||'')+'</div>'
+                  + '<div style="font-size:12px;color:#8e8e93;margin-top:4px">'+escapeHtml(it.source||'')+'</div>'
+                  + '<div style="font-size:13px;color:#c7c7cc;margin-top:8px;line-height:1.5">'+escapeHtml(it.summary||'')+'</div>'
+                  + (it.thought?'<div style="margin-top:10px;padding:8px 10px;background:rgba(255,200,100,.12);border-radius:10px;font-size:12px;color:#e8c070">批注：'+escapeHtml(it.thought)+'</div>':'')
+                  + '</div>';
+              }).join(''))
+            : ((hist.length?hist:[{title:'点○生成 5 条历史',time:''}]).map(function(it,i){
+                return '<div onclick="openPhoneBrowserDetail('+i+')" style="display:flex;align-items:center;padding:14px 12px;border-bottom:1px solid #222;cursor:pointer">'
+                  + '<div style="flex:1;min-width:0"><div style="font-size:15px">'+escapeHtml(it.title||'')+'</div>'
+                  + '<div style="font-size:11px;color:#8e8e93;margin-top:3px">'+escapeHtml(it.time||it.url||'')+'</div></div>'
+                  + '<span style="color:#555">›</span></div>';
+              }).join(''))
+          }
+        </div>
+      </div>
+    `, '', { replace: true });
+    return;
+  }
+
+  // —— 短信 ——
+  if (app === 'sms') {
+    const list = ch.phone.sms || [];
+    openSubPage('', `
+      <div style="position:absolute;inset:0;display:flex;flex-direction:column;background:#f2f2f7">
+        <div style="padding:10px 12px;display:flex;align-items:center">
+          <button type="button" onclick="backPhoneHome()" style="border:none;background:transparent;font-size:22px">‹</button>
+          <div style="flex:1;text-align:center;font-weight:600">信息</div>
+          <button type="button" id="phoneGenBtn" onclick="phoneApiGen('sms','')" style="border:none;background:transparent;font-size:18px;width:28px;cursor:pointer">○</button>
+        </div>
+        <div style="flex:1;overflow:auto">
+          ${(list.length?list:[{from:'点○生成',preview:'快递/外卖/验证码/家人…',time:''}]).map(function(s,i){
+            return '<div onclick="openPhoneSmsDetail('+i+')" style="display:flex;gap:12px;padding:14px 16px;background:#fff;border-bottom:1px solid #eee;cursor:pointer">'
+              + '<div style="width:44px;height:44px;border-radius:50%;background:#e5e5ea;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">💬</div>'
+              + '<div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between"><div style="font-weight:600">'+escapeHtml(s.from||'')+'</div><div style="font-size:11px;color:#999">'+escapeHtml(s.time||'')+'</div></div>'
+              + '<div style="font-size:13px;color:#666;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escapeHtml(s.preview||'')+'</div></div></div>';
+          }).join('')}
+        </div>
+      </div>
+    `, '', { replace: true });
+    return;
+  }
+
+  // —— 相册 ——
+  if (app === 'gallery') {
+    const g = ch.phone.gallery || { normal: [], private: [] };
+    const normal = g.normal || [];
+    const priv = g.private || [];
+    openSubPage('', `
+      <div style="position:absolute;inset:0;display:flex;flex-direction:column;background:#000;color:#fff">
+        <div style="padding:10px 12px;display:flex;align-items:center">
+          <button type="button" onclick="backPhoneHome()" style="border:none;background:transparent;font-size:22px;color:#fff">‹</button>
+          <div style="flex:1;text-align:center;font-weight:600">相册</div>
+          <button type="button" id="phoneGenBtn" onclick="phoneApiGen('gallery','')" style="border:none;background:transparent;font-size:18px;color:#fff;width:28px;cursor:pointer">○</button>
+        </div>
+        <div style="flex:1;overflow:auto;padding:12px">
+          <div style="font-size:13px;color:#8e8e93;margin-bottom:8px">最近 · 可见</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:20px">
+            ${(normal.length?normal:[{desc:'点○生成 3~5 张'}]).map(function(p,i){
+              return '<div onclick="openPhonePhotoDetail(\'normal\','+i+')" style="aspect-ratio:1;border-radius:12px;background:linear-gradient(135deg,#2a2a2e,#1a1a1c);padding:12px;display:flex;align-items:flex-end;cursor:pointer">'
+                + '<div style="font-size:12px;line-height:1.35;color:#ddd">'+escapeHtml((p.desc||'').slice(0,40))+'</div></div>';
+            }).join('')}
+          </div>
+          <div style="font-size:13px;color:#8e8e93;margin-bottom:8px">🔒 私密相册</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            ${(priv.length?priv:[{desc:'点○生成 5 张'}]).map(function(p,i){
+              return '<div onclick="openPhonePhotoDetail(\'private\','+i+')" style="aspect-ratio:1;border-radius:12px;background:linear-gradient(135deg,#3a2a2e,#1a1214);padding:12px;display:flex;align-items:flex-end;cursor:pointer;border:1px solid #3a3030">'
+                + '<div style="font-size:12px;line-height:1.35;color:#e0c0c0">'+escapeHtml((p.desc||'').slice(0,40))+'</div></div>';
+            }).join('')}
+          </div>
+        </div>
+      </div>
+    `, '', { replace: true });
+    return;
+  }
+
+  // —— 设置 ——
   if (app === 'settings') {
     ensureCharPhoneObj(ch);
     const apps = ch.phone.apps;
-    const dark = state.theme && state.theme.mode === 'dark';
-    const bg = dark ? '#000' : '#f2f2f7';
-    const fg = dark ? '#f5f5f7' : '#1c1c1e';
-    const card = dark ? '#1c1c1e' : '#fff';
     openSubPage('', `
-      <div style="position:absolute;inset:0;background:${bg};color:${fg};padding:12px;overflow:auto">
+      <div style="position:absolute;inset:0;background:#f2f2f7;padding:12px;overflow:auto">
         <div style="display:flex;align-items:center;margin-bottom:16px">
-          <button type="button" onclick="backPhoneHome()" style="border:none;background:transparent;font-size:22px;color:${fg}">‹</button>
-          <div style="flex:1;text-align:center;font-weight:600;color:${fg}">设置</div>
-          <button type="button" id="phoneGenBtn" onclick="phoneApiGen('settings','')" style="border:none;background:transparent;font-size:18px;width:28px;height:28px;cursor:pointer;color:${fg}">○</button>
+          <button type="button" onclick="backPhoneHome()" style="border:none;background:transparent;font-size:22px">‹</button>
+          <div style="flex:1;text-align:center;font-weight:600">设置</div>
+          <button type="button" id="phoneGenBtn" onclick="phoneOneKeyGen()" style="border:none;background:transparent;font-size:13px;color:#007aff;cursor:pointer">一键生成</button>
         </div>
-        <div style="font-size:13px;color:var(--sub);margin-bottom:8px;padding:0 4px">主屏幕应用（勾选显示）</div>
-        <div style="background:${card};border-radius:12px;overflow:hidden">
-          ${['wechat','browser','notes'].map(k => {
-            const names = {wechat:'微信',browser:'浏览器',notes:'备忘录'};
+        <div style="font-size:13px;color:#8e8e93;margin-bottom:8px;padding:0 4px">主屏幕应用</div>
+        <div style="background:#fff;border-radius:12px;overflow:hidden;margin-bottom:16px">
+          ${['wechat','notes','browser','sms','gallery'].map(function(k){
+            const names = {wechat:'微信',notes:'备忘录',browser:'浏览器',sms:'短信',gallery:'相册'};
             const on = apps[k] !== false;
-            return `<div style="display:flex;align-items:center;padding:14px 16px;border-bottom:1px solid ${dark?'#2c2c2e':'#f0f0f0'}">
-              <div style="flex:1;color:${fg}">${names[k]}</div>
-              <div class="switch ${on?'on':''}" onclick="togglePhoneApp('${k}', this)"></div>
-            </div>`;
+            return '<div style="display:flex;align-items:center;padding:14px 16px;border-bottom:1px solid #f0f0f0"><div style="flex:1">'+names[k]+'</div><div class="switch '+(on?'on':'')+'" onclick="togglePhoneApp(\''+k+'\', this)"></div></div>';
           }).join('')}
         </div>
-        <div class="text-sub" style="padding:12px 4px;font-size:12px">勾选后主界面显示对应 App；内容可由右上角 ○ 调用 API 生成</div>
+        <div class="text-sub" style="font-size:12px;padding:0 4px;line-height:1.5">右上角「一键生成」可按勾选 App 批量生成内容。生成会读取角色/用户人设与关系。</div>
       </div>
     `, '', { replace: true });
   }
+}
+function openPhoneBrowserDetail(i) {
+  const ch = state.chars.find(c=>c.id===state._phoneChar);
+  if (!ch) return;
+  const it = (ch.phone.browserHistory || ch.phone.browser || [])[i];
+  if (!it) return;
+  openSubPage('', `
+    <div style="position:absolute;inset:0;background:#0a0a0c;color:#f5f5f7;display:flex;flex-direction:column">
+      <div style="padding:10px 12px;display:flex;align-items:center">
+        <button type="button" onclick="openPhoneApp('browser','history')" style="border:none;background:transparent;font-size:22px;color:#f5f5f7">‹</button>
+        <div style="flex:1;text-align:center;font-weight:600;font-size:14px">详情</div>
+        <div style="width:28px"></div>
+      </div>
+      <div style="flex:1;overflow:auto;padding:16px">
+        <div style="font-size:18px;font-weight:700">${escapeHtml(it.title||'')}</div>
+        <div style="font-size:12px;color:#8e8e93;margin-top:6px">${escapeHtml(it.url||'')} · ${escapeHtml(it.time||'')}</div>
+        <div style="font-size:14px;line-height:1.7;margin-top:16px;color:#ddd">${escapeHtml(it.detail||it.snippet||'')}</div>
+        ${it.thought?`<div style="margin-top:20px;padding:12px;background:rgba(255,200,100,.12);border-radius:12px;font-size:13px;color:#e8c070;line-height:1.5">💭 内心：${escapeHtml(it.thought)}</div>`:''}
+      </div>
+    </div>
+  `, '', { replace: true });
+}
+function openPhoneSmsDetail(i) {
+  const ch = state.chars.find(c=>c.id===state._phoneChar);
+  if (!ch) return;
+  const s = (ch.phone.sms || [])[i];
+  if (!s) return;
+  const msgs = s.messages || [{ from:'them', text: s.preview || '' }];
+  openSubPage('', `
+    <div style="position:absolute;inset:0;display:flex;flex-direction:column;background:#f2f2f7">
+      <div style="padding:10px 12px;display:flex;align-items:center;background:#f2f2f7">
+        <button type="button" onclick="openPhoneApp('sms')" style="border:none;background:transparent;font-size:22px">‹</button>
+        <div style="flex:1;text-align:center;font-weight:600">${escapeHtml(s.from||'短信')}</div>
+        <div style="width:28px"></div>
+      </div>
+      <div style="flex:1;overflow:auto;padding:16px">
+        ${msgs.map(function(m){
+          const me = m.from === 'me';
+          return '<div style="margin:10px 0;display:flex;justify-content:'+(me?'flex-end':'flex-start')+'"><div style="max-width:75%;padding:10px 14px;border-radius:18px;background:'+(me?'#007aff':'#e5e5ea')+';color:'+(me?'#fff':'#000')+';font-size:15px;line-height:1.4">'+escapeHtml(m.text||'')+'</div></div>';
+        }).join('')}
+        ${s.replyThought?`<div style="margin-top:16px;padding:10px 12px;background:#fff8e6;border-radius:12px;font-size:12px;color:#8a6d3b">回复时想：${escapeHtml(s.replyThought)}</div>`:''}
+      </div>
+    </div>
+  `, '', { replace: true });
+}
+function openPhonePhotoDetail(kind, i) {
+  const ch = state.chars.find(c=>c.id===state._phoneChar);
+  if (!ch) return;
+  const g = ch.phone.gallery || {};
+  const p = ((kind === 'private' ? g.private : g.normal) || [])[i];
+  if (!p) return;
+  openSubPage('', `
+    <div style="position:absolute;inset:0;background:#000;color:#fff;display:flex;flex-direction:column">
+      <div style="padding:10px 12px;display:flex;align-items:center">
+        <button type="button" onclick="openPhoneApp('gallery')" style="border:none;background:transparent;font-size:22px;color:#fff">‹</button>
+        <div style="flex:1;text-align:center;font-weight:600">${kind==='private'?'私密':'照片'}</div>
+        <div style="width:28px"></div>
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:24px">
+        <div style="aspect-ratio:1;border-radius:16px;background:linear-gradient(145deg,#2a2a30,#1a1a1e);display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;font-size:15px;line-height:1.6;color:#ddd">${escapeHtml(p.desc||'')}</div>
+        ${p.thought?`<div style="margin-top:20px;padding:12px;background:rgba(255,255,255,.08);border-radius:12px;font-size:13px;line-height:1.5;color:#e0d0b0">💭 ${escapeHtml(p.thought)}</div>`:''}
+      </div>
+    </div>
+  `, '', { replace: true });
+}
+async function phoneOneKeyGen() {
+  const ch = state.chars.find(c=>c.id===state._phoneChar);
+  if (!ch) return;
+  ensureCharPhoneObj(ch);
+  const apps = ch.phone.apps || {};
+  showToast('一键生成中，请稍候…');
+  try {
+    if (apps.wechat !== false) await phoneApiGen('wechat', 'chats');
+    if (apps.notes !== false) await phoneApiGen('notes', '');
+    if (apps.browser !== false) { await phoneApiGen('browser', 'read'); await phoneApiGen('browser', 'history'); }
+    if (apps.sms !== false) await phoneApiGen('sms', '');
+    if (apps.gallery !== false) await phoneApiGen('gallery', '');
+    showToast('一键生成完成');
+    openCharPhone(ch.id);
+  } catch(e) { showToast('部分失败：'+(e.message||e)); }
 }
 function togglePhoneApp(key, el) {
   const ch = state.chars.find(c=>c.id===state._phoneChar);
@@ -13078,6 +13250,16 @@ function openChangelog() {
     { v: '2026-08-18q', items: [
       '世界：从主屏进入强制角色列表，防点击穿透进单个角色页',
       '记忆互通：挂载其它会话时带上近聊原文；API Base 规范化更稳'
+    ]},
+    { v: '2026-08-19c', items: [
+      '查手机从通讯录移除；底部透明玻璃 Dock：查手机|捡手机',
+      '查手机六应用：微信/备忘录/浏览器/短信/相册/设置（线条图标）',
+      '生成读取人设·关系；浏览器阅读列表与历史；相册含私密；一键生成'
+    ]},
+    { v: '2026-08-19c', items: [
+      '捡手机完整双模式：捡到角色手机（假扮回复）/ 被角色捡到（逐步查机+干预）',
+      '查机每步内心独白，锁屏/阻止/任其看/夺回；同步记忆',
+      '通讯录已无查手机入口；玻璃 Dock 查手机|捡手机'
     ]},
     { v: '2026-08-19b', items: [
       'icity 主屏进入强制广场+防手指穿透，不再误开日记详情',
@@ -15991,19 +16173,355 @@ function igViewStory() { showToast('快拍'); }
 function openPickupPhone() {
   state._homeRoot = 'pickup';
   state._homeDepth = 0;
-  state._subKind = 'homeApp';
-  state._subBackFn = null;
-  armClickGuard(800);
+  state._subKind = 'pickup';
+  state._subBackFn = function(){ goHome(); };
+  state._pickupMode = null;
+  state._pickupChar = null;
+  armClickGuard(600);
   openSubPage('捡手机', `
-    <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(165deg,#e8f4f8,#d4ebea);padding:24px;text-align:center">
-      <div style="width:72px;height:72px;border-radius:20px;background:rgba(255,255,255,.7);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center;margin-bottom:16px;border:0.5px solid rgba(255,255,255,.8);box-shadow:0 8px 24px rgba(80,140,160,.12)">
-        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#3a7a8a" stroke-width="1.6"><rect x="6" y="2" width="12" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18.01"/></svg>
+    <div style="position:relative;height:100%;background:linear-gradient(165deg,#e8f6f4,#d4ebea);overflow:hidden">
+      <div style="height:100%;overflow-y:auto;padding:20px 16px 100px;box-sizing:border-box">
+        <div style="font-size:13px;color:#6a8a95;margin-bottom:14px;line-height:1.5">选择一种情境。全程读取角色/用户人设与关系，禁止 OOC。</div>
+        <div onclick="openPickupFoundCharList()" style="background:rgba(255,255,255,.78);border-radius:20px;padding:22px 18px;margin-bottom:14px;border:1px solid rgba(255,255,255,.6);box-shadow:0 8px 24px rgba(60,120,140,.08);cursor:pointer;backdrop-filter:blur(12px)">
+          <div style="display:flex;align-items:center;gap:14px">
+            <div style="width:52px;height:52px;border-radius:16px;background:linear-gradient(135deg,#5eb8b0,#3a9a92);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M12 18h.01"/></svg>
+            </div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:17px;font-weight:700;color:#1c3a44">捡到了角色的手机</div>
+              <div style="font-size:12px;color:#6a8a95;margin-top:6px;line-height:1.45">你假扮角色回消息 / 给通讯录发信，对方会根据你像不像来回应</div>
+            </div>
+            <span style="color:#c7c7cc">›</span>
+          </div>
+        </div>
+        <div onclick="openPickupFoundUserList()" style="background:rgba(255,255,255,.78);border-radius:20px;padding:22px 18px;border:1px solid rgba(255,255,255,.6);box-shadow:0 8px 24px rgba(60,120,140,.08);cursor:pointer;backdrop-filter:blur(12px)">
+          <div style="display:flex;align-items:center;gap:14px">
+            <div style="width:52px;height:52px;border-radius:16px;background:linear-gradient(135deg,#7aa2ff,#5b8def);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:17px;font-weight:700;color:#1c3a44">被角色捡到了手机</div>
+              <div style="font-size:12px;color:#6a8a95;margin-top:6px;line-height:1.45">角色一步步查看你的手机，每步有内心独白；你可阻止、锁屏、或任其翻看</div>
+            </div>
+            <span style="color:#c7c7cc">›</span>
+          </div>
+        </div>
       </div>
-      <div style="font-size:18px;font-weight:600;color:#2a4a55;margin-bottom:8px">捡手机</div>
-      <div style="font-size:13px;color:#6a8a95;line-height:1.6;max-width:260px">占位 App · 后续可在这里模拟「捡到角色的手机」剧情与权限探索。</div>
+      ${phoneGlassDock('pickup')}
+    </div>
+  `, '', { replace: true, backFn: function(){ goHome(); } });
+  state._openFromHome = false;
+}
+
+function pickupCharListHtml(onClickFn) {
+  const chars = (typeof visibleChars === 'function' ? visibleChars() : (state.chars || []));
+  return chars.map(function(ch, idx) {
+    return '<div onclick="'+onClickFn+'(\''+ch.id+'\')" style="display:flex;align-items:center;margin:8px 0;padding:14px;border-radius:16px;background:rgba(255,255,255,.75);border:1px solid rgba(255,255,255,.5);cursor:pointer">'
+      + '<img src="'+avatarUrl(ch)+'" style="width:48px;height:48px;border-radius:14px;margin-right:12px;object-fit:cover">'
+      + '<div style="flex:1"><div style="font-weight:600;color:#1c3a44">'+escapeHtml(ch.nick||ch.realName||'')+'</div>'
+      + '<div style="font-size:12px;color:#6a8a95;margin-top:3px">'+escapeHtml((ch.persona||'').slice(0,28))+'</div></div>'
+      + '<span style="color:#c7c7cc">›</span></div>';
+  }).join('') || '<div class="empty" style="padding:40px;color:#6a8a95">请先添加角色</div>';
+}
+
+function openPickupFoundCharList() {
+  state._pickupMode = 'foundChar';
+  state._homeRoot = 'pickup';
+  state._homeDepth = 1;
+  state._subBackFn = function(){ openPickupPhone(); };
+  openSubPage('捡到角色手机', `
+    <div style="height:100%;background:linear-gradient(165deg,#e8f6f4,#d4ebea);overflow-y:auto;padding:12px 14px 40px">
+      <div style="font-size:12px;color:#6a8a95;margin-bottom:8px">选择你捡到的手机属于谁</div>
+      ${pickupCharListHtml('openPickupFoundCharSession')}
+    </div>
+  `, '', { replace: true, backFn: function(){ openPickupPhone(); } });
+}
+
+function openPickupFoundUserList() {
+  state._pickupMode = 'foundUser';
+  state._homeRoot = 'pickup';
+  state._homeDepth = 1;
+  state._subBackFn = function(){ openPickupPhone(); };
+  openSubPage('被角色捡到', `
+    <div style="height:100%;background:linear-gradient(165deg,#e8f6f4,#d4ebea);overflow-y:auto;padding:12px 14px 40px">
+      <div style="font-size:12px;color:#6a8a95;margin-bottom:8px">谁捡到了你的手机？（进入后将自动开始查机流程）</div>
+      ${pickupCharListHtml('openPickupFoundUserSession')}
+    </div>
+  `, '', { replace: true, backFn: function(){ openPickupPhone(); } });
+}
+
+/** 模式一：user 捡到角色手机，假扮角色 */
+function openPickupFoundCharSession(charId) {
+  const ch = (state.chars || []).find(c => c.id === charId);
+  if (!ch) { showToast('角色不存在'); return; }
+  state._pickupChar = charId;
+  state._pickupMode = 'foundChar';
+  if (!state.pickupData) state.pickupData = {};
+  if (!state.pickupData[charId]) state.pickupData[charId] = { foundChar: { threads: [], contacts: [] } };
+  const pd = state.pickupData[charId].foundChar;
+  state._homeDepth = 2;
+  state._subBackFn = function(){ openPickupFoundCharList(); };
+  const threads = pd.threads || [];
+  openSubPage(escapeHtml(ch.nick||'') + ' · 手机', `
+    <div style="position:absolute;inset:0;display:flex;flex-direction:column;background:#ededed">
+      <div style="padding:10px 12px;display:flex;align-items:center;background:#ededed;flex-shrink:0">
+        <button type="button" onclick="openPickupFoundCharList()" style="border:none;background:transparent;font-size:22px">‹</button>
+        <div style="flex:1;text-align:center;font-weight:600">微信 · 假扮中</div>
+        <button type="button" onclick="pickupGenFoundCharChats('${charId}')" style="border:none;background:transparent;font-size:18px;width:28px;cursor:pointer">○</button>
+      </div>
+      <div style="flex:1;overflow:auto;padding-bottom:20px">
+        ${(threads.length?threads:[{name:'点右上角○生成会话',last:'假扮角色回复时会同步记忆'}]).map(function(t,i){
+          return '<div onclick="openPickupFoundCharThread(\''+charId+'\','+i+')" style="background:#fff;padding:12px 14px;display:flex;gap:12px;border-bottom:1px solid #e5e5e5;cursor:pointer">'
+            + '<div style="width:48px;height:48px;border-radius:6px;background:#ddd;flex-shrink:0"></div>'
+            + '<div style="flex:1;min-width:0"><div style="font-size:16px">'+escapeHtml(t.name||'好友')+'</div>'
+            + '<div class="text-sub" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escapeHtml(t.last||'')+'</div></div></div>';
+        }).join('')}
+      </div>
+      <div style="padding:10px 14px;background:#fff;border-top:1px solid #eee;font-size:11px;color:#888;line-height:1.4">你正在假扮「${escapeHtml(ch.nick||'')}」。对方是否识破取决于你回得像不像。互动会写入记忆。</div>
+    </div>
+  `, '', { replace: true, backFn: function(){ openPickupFoundCharList(); } });
+}
+
+async function pickupGenFoundCharChats(charId) {
+  const ch = (state.chars || []).find(c => c.id === charId);
+  if (!ch) return;
+  showToast('生成会话中…');
+  try {
+    const { text } = await apiChat([
+      { role:'system', content: buildPhonePersonaPrompt(ch) + '\n只输出合法 JSON 数组。场景：有人捡到了角色手机，里面有未读/进行中的会话。' },
+      { role:'user', content: '生成 3~5 个微信会话。JSON：[{name,last,messages:[{from:"other"|"me",text}]}]。me=角色本人历史发言，other=对方。日常自然。' }
+    ], { max_tokens: 1200, temperature: 0.85 });
+    let arr = [];
+    try { arr = JSON.parse(String(text||'').replace(/```json|```/g,'').trim().match(/\[[\s\S]*\]/)[0]); } catch(e) {}
+    if (!state.pickupData) state.pickupData = {};
+    if (!state.pickupData[charId]) state.pickupData[charId] = { foundChar: { threads: [] } };
+    if (!state.pickupData[charId].foundChar) state.pickupData[charId].foundChar = { threads: [] };
+    state.pickupData[charId].foundChar.threads = Array.isArray(arr) ? arr : [];
+    save();
+    openPickupFoundCharSession(charId);
+  } catch(e) { showToast('生成失败：'+(e.message||e)); }
+}
+
+function openPickupFoundCharThread(charId, ti) {
+  const ch = (state.chars || []).find(c => c.id === charId);
+  const pd = ((state.pickupData||{})[charId]||{}).foundChar || {};
+  const thread = (pd.threads || [])[ti];
+  if (!thread) return;
+  if (!thread.messages) thread.messages = [];
+  state._pickupThread = { charId, ti };
+  openSubPage(escapeHtml(thread.name||'会话'), `
+    <div style="position:absolute;inset:0;display:flex;flex-direction:column;background:#ededed">
+      <div style="padding:10px 12px;display:flex;align-items:center;background:#ededed">
+        <button type="button" onclick="openPickupFoundCharSession('${charId}')" style="border:none;background:transparent;font-size:22px">‹</button>
+        <div style="flex:1;text-align:center;font-weight:600">${escapeHtml(thread.name||'')}</div>
+        <div style="width:28px"></div>
+      </div>
+      <div id="pickupThreadMsgs" style="flex:1;overflow:auto;padding:12px">
+        ${thread.messages.map(function(m){
+          const me = m.from === 'me';
+          return '<div style="margin:8px 0;text-align:'+(me?'right':'left')+'"><span style="display:inline-block;max-width:75%;padding:8px 12px;border-radius:8px;background:'+(me?'#95ec69':'#fff')+';font-size:14px;line-height:1.45">'+escapeHtml(m.text||'')+'</span></div>';
+        }).join('')}
+      </div>
+      <div style="padding:8px 10px;background:#f7f7f7;display:flex;gap:8px;align-items:center;border-top:1px solid #e5e5e5">
+        <input id="pickupFakeInput" placeholder="以角色身份回复…" style="flex:1;border:none;border-radius:18px;padding:10px 14px;background:#fff;font-size:14px;outline:none">
+        <button type="button" onclick="pickupFakeSend()" style="border:none;background:#07c160;color:#fff;border-radius:18px;padding:10px 16px;font-size:14px;cursor:pointer">发送</button>
+      </div>
     </div>
   `, '', { replace: true });
-  state._openFromHome = false;
+}
+
+async function pickupFakeSend() {
+  const inp = document.getElementById('pickupFakeInput');
+  const text = (inp && inp.value || '').trim();
+  if (!text) return;
+  const meta = state._pickupThread;
+  if (!meta) return;
+  const { charId, ti } = meta;
+  const ch = (state.chars || []).find(c => c.id === charId);
+  const pd = state.pickupData[charId].foundChar;
+  const thread = pd.threads[ti];
+  thread.messages.push({ from: 'me', text: text, ts: Date.now() });
+  thread.last = text;
+  if (inp) inp.value = '';
+  // 同步短记忆
+  try {
+    if (!state.chats[charId]) state.chats[charId] = { messages: [], timeAware: true };
+    const chat = state.chats[charId];
+    if (!chat.shortMemory) chat.shortMemory = [];
+    chat.shortMemory.push({ text: '【捡手机·假扮】我假扮「'+(ch.nick||'')+'」对「'+(thread.name||'')+'」说：'+text, ts: Date.now() });
+    if (chat.shortMemory.length > 40) chat.shortMemory = chat.shortMemory.slice(-40);
+  } catch(e) {}
+  save();
+  openPickupFoundCharThread(charId, ti);
+  // 对方回复：是否识破
+  showToast('对方正在回复…');
+  try {
+    const { text: reply } = await apiChat([
+      { role:'system', content: buildPhonePersonaPrompt(ch)
+        + '\n场景：有人捡到了角色手机，正在以角色身份回复「'+(thread.name||'对方')+'」。'
+        + '\n你扮演会话对方。根据这条假扮回复是否像本人，决定：完全没察觉 / 略感违和 / 怀疑被冒充。'
+        + '\n只输出对方回复正文（1~3句），口语自然，禁止解释。' },
+      { role:'user', content: '对方（假扮成角色）发来：' + text }
+    ], { max_tokens: 200, temperature: 0.9 });
+    const r = (reply || '').trim();
+    if (r) {
+      thread.messages.push({ from: 'other', text: r, ts: Date.now() });
+      thread.last = r;
+      try {
+        const chat = state.chats[charId];
+        if (chat && chat.shortMemory) {
+          chat.shortMemory.push({ text: '【捡手机·对方回】'+(thread.name||'')+'：'+r.slice(0,80), ts: Date.now() });
+        }
+      } catch(e) {}
+      save();
+      openPickupFoundCharThread(charId, ti);
+    }
+  } catch(e) { showToast('回复失败'); }
+}
+
+/** 模式二：角色捡到 user 手机，逐步查机 */
+function openPickupFoundUserSession(charId) {
+  const ch = (state.chars || []).find(c => c.id === charId);
+  if (!ch) { showToast('角色不存在'); return; }
+  state._pickupChar = charId;
+  state._pickupMode = 'foundUser';
+  if (!state.pickupData) state.pickupData = {};
+  if (!state.pickupData[charId]) state.pickupData[charId] = {};
+  if (!state.pickupData[charId].foundUser) {
+    state.pickupData[charId].foundUser = { steps: [], status: 'checking', locked: false, password: '' };
+  }
+  const fu = state.pickupData[charId].foundUser;
+  state._homeDepth = 2;
+  state._subBackFn = function(){ openPickupFoundUserList(); };
+  // 若无步骤则自动开始生成第一步
+  openSubPage(escapeHtml(ch.nick||'') + ' 在查你的手机', `
+    <div style="position:absolute;inset:0;display:flex;flex-direction:column;background:linear-gradient(165deg,#e8f0f8,#d4e0f0)">
+      <div style="padding:10px 12px;display:flex;align-items:center;flex-shrink:0">
+        <button type="button" onclick="openPickupFoundUserList()" style="border:none;background:transparent;font-size:22px">‹</button>
+        <div style="flex:1;text-align:center;font-weight:600;font-size:14px">查机过程</div>
+        <button type="button" onclick="pickupNextCheckStep('${charId}')" style="border:none;background:transparent;font-size:13px;color:#007aff;cursor:pointer">继续</button>
+      </div>
+      <div id="pickupCheckFeed" style="flex:1;overflow:auto;padding:12px 14px 100px">
+        ${renderPickupCheckSteps(charId)}
+      </div>
+      <div style="position:absolute;left:12px;right:12px;bottom:12px;display:flex;gap:8px;flex-wrap:wrap">
+        <button type="button" onclick="pickupUserIntervene('${charId}','lock')" style="flex:1;min-width:40%;border:none;border-radius:14px;padding:12px;background:rgba(255,255,255,.9);font-size:13px;cursor:pointer">锁屏</button>
+        <button type="button" onclick="pickupUserIntervene('${charId}','stop')" style="flex:1;min-width:40%;border:none;border-radius:14px;padding:12px;background:rgba(255,255,255,.9);font-size:13px;cursor:pointer">阻止 TA</button>
+        <button type="button" onclick="pickupUserIntervene('${charId}','allow')" style="flex:1;min-width:40%;border:none;border-radius:14px;padding:12px;background:rgba(94,184,176,.9);color:#fff;font-size:13px;cursor:pointer">任其翻看</button>
+        <button type="button" onclick="pickupUserIntervene('${charId}','force')" style="flex:1;min-width:40%;border:none;border-radius:14px;padding:12px;background:rgba(255,255,255,.9);font-size:13px;cursor:pointer">强行夺回</button>
+      </div>
+    </div>
+  `, '', { replace: true, backFn: function(){ openPickupFoundUserList(); } });
+  if (!(fu.steps && fu.steps.length)) {
+    setTimeout(function(){ pickupNextCheckStep(charId); }, 400);
+  }
+}
+
+function renderPickupCheckSteps(charId) {
+  const fu = ((state.pickupData||{})[charId]||{}).foundUser || {};
+  const steps = fu.steps || [];
+  if (!steps.length) return '<div style="text-align:center;color:#6a8a95;padding:40px 12px">角色正准备解锁你的手机…</div>';
+  return steps.map(function(s) {
+    return '<div style="background:rgba(255,255,255,.85);border-radius:16px;padding:14px;margin-bottom:12px;border:1px solid rgba(255,255,255,.6)">'
+      + '<div style="font-size:12px;color:#5b8def;font-weight:600;margin-bottom:6px">'+escapeHtml(s.app||'步骤')+'</div>'
+      + '<div style="font-size:14px;color:#1c3a44;line-height:1.55;white-space:pre-wrap">'+escapeHtml(s.content||'')+'</div>'
+      + (s.thought ? '<div style="margin-top:10px;padding:8px 10px;background:rgba(255,230,180,.35);border-radius:10px;font-size:12px;color:#8a6d3b;line-height:1.45">💭 '+escapeHtml(s.thought)+'</div>' : '')
+      + '</div>';
+  }).join('');
+}
+
+async function pickupNextCheckStep(charId) {
+  const ch = (state.chars || []).find(c => c.id === charId);
+  if (!ch) return;
+  const fu = state.pickupData[charId].foundUser;
+  if (fu.locked) { showToast('手机已锁定，需解锁后继续'); return; }
+  if (fu.status === 'stopped') { showToast('角色已停止翻看'); return; }
+  showToast('角色继续翻看…');
+  const apps = ['锁屏界面','微信聊天列表','与你的对话','通讯录','相册缩略图','备忘录','短信','设置页'];
+  const stepIdx = (fu.steps || []).length;
+  const appName = apps[stepIdx % apps.length];
+  try {
+    const { text } = await apiChat([
+      { role:'system', content: buildPhonePersonaPrompt(ch)
+        + '\n场景：角色捡到了 user 的手机，正在一步步查看。当前步骤：'+appName+'。'
+        + '\n输出 JSON：{"content":"角色看到的内容摘要（第三人称叙述看到了什么）","thought":"角色此刻内心独白第一人称"}。'
+        + '\n内容贴合人设与二人关系，有温度，不OOC，不恐吓不油腻。只输出 JSON。' },
+      { role:'user', content: '继续查机，第 '+(stepIdx+1)+' 步：'+appName }
+    ], { max_tokens: 400, temperature: 0.88 });
+    let data = {};
+    try { data = JSON.parse(String(text||'').replace(/```json|```/g,'').trim().match(/\{[\s\S]*\}/)[0]); } catch(e) {}
+    if (!fu.steps) fu.steps = [];
+    fu.steps.push({ app: appName, content: data.content || '（翻看中）', thought: data.thought || '', ts: Date.now() });
+    // 写入记忆
+    try {
+      if (!state.chats[charId]) state.chats[charId] = { messages: [], timeAware: true };
+      const chat = state.chats[charId];
+      if (!chat.shortMemory) chat.shortMemory = [];
+      chat.shortMemory.push({ text: '【捡手机·被查】'+(ch.nick||'')+'查看了我的手机「'+appName+'」：'+(data.content||'').slice(0,60), ts: Date.now() });
+      if (chat.shortMemory.length > 50) chat.shortMemory = chat.shortMemory.slice(-50);
+    } catch(e) {}
+    save();
+    openPickupFoundUserSession(charId);
+  } catch(e) { showToast('生成失败：'+(e.message||e)); }
+}
+
+async function pickupUserIntervene(charId, action) {
+  const ch = (state.chars || []).find(c => c.id === charId);
+  if (!ch) return;
+  const fu = state.pickupData[charId].foundUser;
+  let userHint = '';
+  if (action === 'lock') {
+    fu.locked = true;
+    fu.status = 'locked';
+    userHint = 'user 远程/当场把手机锁屏了';
+  } else if (action === 'stop') {
+    fu.status = 'stopped';
+    userHint = 'user 当面阻止角色继续翻看';
+  } else if (action === 'allow') {
+    fu.locked = false;
+    fu.status = 'checking';
+    userHint = 'user 表示可以继续看，不阻止';
+    save();
+    pickupNextCheckStep(charId);
+    return;
+  } else if (action === 'force') {
+    fu.status = 'seized';
+    userHint = 'user 强行夺回手机';
+  }
+  showToast('角色反应中…');
+  try {
+    const { text } = await apiChat([
+      { role:'system', content: buildPhonePersonaPrompt(ch)
+        + '\n场景：角色正在/刚在翻 user 手机。突发：'+userHint+'。'
+        + '\n输出 JSON：{"speech":"角色当时可能说出口的话（可空）","thought":"内心独白","next":"locked|stopped|force_check|continue"}。'
+        + '\n按人设反应：可能尴尬、道歉、倔强继续、心虚等。不OOC。只输出 JSON。' },
+      { role:'user', content: userHint }
+    ], { max_tokens: 300, temperature: 0.9 });
+    let data = {};
+    try { data = JSON.parse(String(text||'').replace(/```json|```/g,'').trim().match(/\{[\s\S]*\}/)[0]); } catch(e) {}
+    if (!fu.steps) fu.steps = [];
+    fu.steps.push({
+      app: '你的干预',
+      content: (data.speech ? ('角色：「'+data.speech+'」\n') : '') + userHint,
+      thought: data.thought || '',
+      ts: Date.now()
+    });
+    if (data.next === 'force_check') { fu.locked = false; fu.status = 'checking'; }
+    if (data.next === 'stopped') fu.status = 'stopped';
+    if (data.next === 'locked') { fu.locked = true; fu.status = 'locked'; }
+    try {
+      const chat = state.chats[charId];
+      if (chat) {
+        if (!chat.shortMemory) chat.shortMemory = [];
+        chat.shortMemory.push({ text: '【捡手机·干预】'+userHint+(data.thought?('｜想法：'+data.thought.slice(0,40)):'') , ts: Date.now() });
+      }
+    } catch(e) {}
+    save();
+    openPickupFoundUserSession(charId);
+  } catch(e) {
+    save();
+    openPickupFoundUserSession(charId);
+  }
 }
 
 function openCountdownApp(tab) {
