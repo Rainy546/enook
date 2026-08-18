@@ -1712,7 +1712,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-18c';
+const EENOK_BUILD = '2026-08-18d';
 function checkAppUpdate() {
   try {
     const prev = localStorage.getItem('eenook_build');
@@ -4166,9 +4166,11 @@ function getOnlineChatRules(extra) {
   else if (h < 14) slot = '中午'; else if (h < 18) slot = '下午'; else if (h < 21) slot = '晚上';
   else if (h < 23) slot = '夜里'; else slot = '深夜';
   return `你是真实人类在线上聊天，不是AI助手。
-【铁则】禁止OOC；禁止客服腔/说明书腔；禁止括号动作旁白；禁止一次发长段，必须一句一句（默认每轮1-2句短句）；少用句号，可用空格代替逗号；少用emoji，不要故意卖萌弱智化；不弱化也不神化角色（除非人设明确要求）；不发与人设冲突的语气/表情。
-【时间】现在是 ${timeStr}（周${week}，${slot}）。时间感知必须准：按真实钟点说话，不要把晚上说成该睡觉、把白天说成深夜。与微信聊天记忆若已挂载则必须承接，不要否定已发生的事。
-【温度】有情绪有观点，先接情绪再接内容。像真人微信/短信/私信。
+【铁则】必须读取：角色人设、user人设、二人关系；禁止OOC；禁止客服腔/说明书腔；禁止括号动作旁白；禁止一次发长段，必须一句一句（默认每轮1-2句短句）；少用句号，可用空格代替逗号；少用emoji。
+【人格】不弱化、不神化、不丑化角色；不辱女、不危险发言、不侮辱国家/种族（除非角色特殊设定且仅限角色言行）；不抢话；不侮辱user、不对user人身攻击或肢体伤害（除非user明确要求或特殊设定）；去油腻、去绝望恐吓、去无脑霸道偏执病态（除非人设明确且健康边界内）。
+【身份顺序】除却一切身份之前，角色首先是自己，其次才是恋人/朋友等身份。一切设定前提默认健康、尊重、温暖；仅当user明确要求时才可走向不健康恋爱线。
+【温度】有真实人类的温度、思想、生活习惯与情感；重视user的感受，也重视自己的感受；不忽视情绪。像真人微信/短信/私信。
+【时间】现在是 ${timeStr}（周${week}，${slot}）。时间感知必须准。与已挂载聊天记忆承接，不否定已发生的事。
 ${extra||''}`;
 }
 
@@ -10984,74 +10986,52 @@ function openCharPhone(cid) {
   try { ensurePhoneData(cid); } catch(e) {}
   if (!ch.phone) ch.phone = { notes: [], browser: [], apps: { wechat:true, browser:true, notes:true } };
   if (!ch.phone.apps) ch.phone.apps = { wechat:true, browser:true, notes:true };
-  const _pd = state.theme && state.theme.mode === 'dark';
-  const _pbg = _pd ? 'linear-gradient(180deg,#1a1a1c,#0d0d0f)' : 'linear-gradient(180deg,#faf6f8,#f0e8ec)';
-  const _pfg = _pd ? '#f5f5f7' : '#1c1c1e';
-  const _picon = _pd ? 'rgba(44,44,46,.95)' : 'rgba(255,255,255,.65)';
-  // 全屏：隐藏 sub nav 用自定义
-  openSubPage('', `
-    <div style="position:absolute;inset:0;background:${_pbg};display:flex;flex-direction:column;color:${_pfg}">
-      <div style="padding:12px 16px;display:flex;align-items:center;gap:8px">
-        <button type="button" onclick="exitPhone()" style="border:none;background:${_picon};border-radius:50%;width:32px;height:32px;font-size:16px;color:${_pfg}">‹</button>
-        <div style="flex:1;text-align:center;font-size:13px;color:var(--sub)">${escapeHtml(ch.nick||ch.realName||'')} 的手机</div>
-        <div style="width:32px"></div>
+  const apps = ch.phone.apps;
+  const dark = state.theme && state.theme.mode === 'dark';
+  const bg = dark ? 'linear-gradient(180deg,#1a1a1c,#0d0d0f)' : 'linear-gradient(180deg,#e8f4f8,#d4ebea)';
+  const fg = dark ? '#f5f5f7' : '#1c1c1e';
+  const iconBg = dark ? 'rgba(44,44,46,.95)' : 'rgba(255,255,255,.85)';
+  const items = [
+    { id:'wechat', name:'微信', show: apps.wechat !== false, svg:'<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>' },
+    { id:'browser', name:'浏览器', show: apps.browser !== false, svg:'<circle cx="12" cy="12" r="10"/><path d="M2 12h20"/>' },
+    { id:'notes', name:'备忘录', show: apps.notes !== false, svg:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>' },
+    { id:'settings', name:'设置', show: true, svg:'<circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2"/>' }
+  ];
+  const grid = items.filter(x=>x.show).map(x => `
+    <button type="button" class="phone-app-btn" data-phone-app="${x.id}" style="border:none;background:transparent;text-align:center;cursor:pointer;padding:8px 4px;-webkit-tap-highlight-color:rgba(0,0,0,.08)">
+      <div style="width:56px;height:56px;margin:0 auto;border-radius:14px;background:${iconBg};display:flex;align-items:center;justify-content:center;border:1px solid var(--line);pointer-events:none">
+        <span class="icon" style="width:26px;height:26px;pointer-events:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">${x.svg}</svg></span>
       </div>
-      <div style="flex:1;padding:20px 16px">
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:20px 12px">
-          ${(ch.phone.apps||{wechat:1,browser:1,notes:1}).wechat!==false?`<div data-phone-app="wechat" style="text-align:center;cursor:pointer;pointer-events:auto;z-index:5;position:relative">
-            <div style="width:54px;height:54px;margin:0 auto;border-radius:14px;background:${_picon};display:flex;align-items:center;justify-content:center;border:1px solid var(--line)">
-              <span class="icon" style="width:26px;height:26px"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
-            </div>
-            <div style="font-size:11px;margin-top:6px">微信</div>
-          </div>`:''}
-          ${(ch.phone.apps||{}).browser!==false?`<div data-phone-app="browser" style="text-align:center;cursor:pointer;pointer-events:auto;z-index:5;position:relative">
-            <div style="width:54px;height:54px;margin:0 auto;border-radius:14px;background:${_picon};display:flex;align-items:center;justify-content:center;border:1px solid var(--line)">
-              <span class="icon" style="width:26px;height:26px"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/></svg></span>
-            </div>
-            <div style="font-size:11px;margin-top:6px">浏览器</div>
-          </div>`:''}
-          ${(ch.phone.apps||{}).notes!==false?`<div data-phone-app="notes" style="text-align:center;cursor:pointer;pointer-events:auto;z-index:5;position:relative">
-            <div style="width:54px;height:54px;margin:0 auto;border-radius:14px;background:${_picon};display:flex;align-items:center;justify-content:center;border:1px solid var(--line)">
-              <span class="icon" style="width:26px;height:26px"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span>
-            </div>
-            <div style="font-size:11px;margin-top:6px">备忘录</div>
-          </div>`:''}
-          <div data-phone-app="settings" style="text-align:center;cursor:pointer;pointer-events:auto;z-index:5;position:relative">
-            <div style="width:54px;height:54px;margin:0 auto;border-radius:14px;background:${_picon};display:flex;align-items:center;justify-content:center;border:1px solid var(--line)">
-              <span class="icon" style="width:26px;height:26px"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2"/></svg></span>
-            </div>
-            <div style="font-size:11px;margin-top:6px">设置</div>
-          </div>
-        </div>
+      <div style="font-size:11px;margin-top:6px;color:${fg};pointer-events:none">${x.name}</div>
+    </button>`).join('');
+  openSubPage('', `
+    <div style="display:flex;flex-direction:column;height:100%;background:${bg};color:${fg};box-sizing:border-box">
+      <div style="padding:12px 16px;display:flex;align-items:center;gap:8px;flex-shrink:0">
+        <button type="button" onclick="exitPhone()" style="border:none;background:${iconBg};border-radius:50%;width:36px;height:36px;font-size:18px;color:${fg};cursor:pointer">‹</button>
+        <div style="flex:1;text-align:center;font-size:14px;color:var(--sub)">${escapeHtml(ch.nick||ch.realName||'')} 的手机</div>
+        <div style="width:36px"></div>
+      </div>
+      <div style="flex:1;padding:24px 16px;overflow-y:auto">
+        <div id="phoneAppGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px 8px">${grid}</div>
       </div>
     </div>
   `, '', { replace: true });
-  try {
-    const sn = document.getElementById('subNav');
-    if (sn) sn.style.display = 'none';
-  } catch(e) {}
+  try { const sn = document.getElementById('subNav'); if (sn) sn.style.display = 'none'; } catch(e) {}
   state._clickGuardUntil = 0;
-  // 用 JS 绑定，避免内联 onclick 被遮挡或防护拦截
   setTimeout(function() {
     try {
-      const body = document.getElementById('subBody');
-      if (!body) return;
-      body.querySelectorAll('[data-phone-app]').forEach(function(el) {
-        el.style.pointerEvents = 'auto';
-        el.style.cursor = 'pointer';
+      document.querySelectorAll('.phone-app-btn').forEach(function(el) {
         el.onclick = function(ev) {
           if (ev) { ev.preventDefault(); ev.stopPropagation(); }
           state._clickGuardUntil = 0;
-          openPhoneApp(el.getAttribute('data-phone-app'));
+          var app = el.getAttribute('data-phone-app');
+          if (app) openPhoneApp(app);
         };
       });
-    } catch(e) { console.warn(e); }
-  }, 30);
-  window._phoneClose = function() {
-    try { document.getElementById('subNav').style.display = ''; } catch(e) {}
-    exitPhone();
-  };
+    } catch(e) { console.warn('phone bind', e); }
+  }, 50);
 }
+
 function openPhoneWechat(tab) {
   state._clickGuardUntil = 0;
   const ch = state.chars.find(c=>c.id===state._phoneChar);
@@ -11826,6 +11806,11 @@ function editHomePolaroid() {
 function openChangelog() {
   const ver = (typeof EENOK_BUILD !== 'undefined') ? EENOK_BUILD : '';
   const logs = [
+    { v: '2026-08-18d', items: [
+      '记忆强制角色列表；查手机图标改为 button 绑定可点；退出回查手机列表',
+      'Melo 主屏固定首页；播放器改为黑胶唱片；本地歌可···编辑删除',
+      '悬浮球点外部收起面板；角色回复规则强化（人设/关系/禁令）'
+    ]},
     { v: '2026-08-18c', items: [
       '记忆从主屏固定进角色列表；查手机退出回角色列表非通讯录',
       '查手机微信/设置用 data 绑定可点',
@@ -12368,14 +12353,16 @@ function openMemoryApp(filterCharId) {
   if (!state.memoryApp) state.memoryApp = { items: [] };
   state._homeRoot = 'memory';
   state._subKind = 'homeApp';
-  // 只有显式传入角色 id 才进详情；主屏/返回一律角色列表
-  if (filterCharId) {
-    state._memFilter = filterCharId;
+  // 仅当参数是非空字符串时进角色记忆，否则强制角色列表
+  var id = (typeof filterCharId === 'string' && filterCharId) ? filterCharId : null;
+  if (id) {
+    state._memFilter = id;
     state._homeDepth = 1;
   } else {
     state._memFilter = null;
     state._homeDepth = 0;
     state._subBackFn = null;
+    state._openFromHome = false;
   }
   const chars = state.chars || [];
   // 未选角色：先选人
@@ -12416,11 +12403,15 @@ function openMemoryApp(filterCharId) {
       }
     } catch(e) {}
     // attach data-memchar
+    var listEl = document.getElementById('memCharList');
+    if (listEl) listEl.style.pointerEvents = 'none';
     setTimeout(function(){
+      var le = document.getElementById('memCharList');
+      if (le) le.style.pointerEvents = 'auto';
       document.querySelectorAll('#memCharList > div').forEach(function(el, i){
         if (chars[i]) el.setAttribute('data-memchar', (chars[i].nick||'').toLowerCase());
       });
-    }, 20);
+    }, 700);
     return;
   }
   state._homeDepth = 1;
@@ -14374,13 +14365,56 @@ async function igSearchGen() {
   const q = (document.getElementById('igSearchQ')||{}).value || '日常';
   showToast('生成中…');
   ensureIG().explore = ensureIG().explore || [];
-  for (let i=0;i<9;i++) ensureIG().explore.unshift({ img: '', caption: q+' · '+i, ts: Date.now() });
+  try {
+    const prompt = '为 Instagram 探索页生成6条短视频/图文卡片，主题：「'+q+'」。只返回 JSON 数组：[{"caption":"画面文字描述20字内","text":"配文一句话","tag":"标签"}]。不要markdown。';
+    const raw = await apiChat([{ role:'user', content: prompt }], { temperature: 0.9, max_tokens: 600 });
+    let arr = [];
+    try { arr = JSON.parse(String(raw||'').replace(/```json|```/g,'').trim()); } catch(e) {}
+    if (!Array.isArray(arr) || !arr.length) {
+      arr = [1,2,3,4,5,6].map(function(n){ return { caption: q+' 画面 '+n, text: q+' · 随手记', tag: q }; });
+    }
+    arr.slice(0,9).forEach(function(it) {
+      ensureIG().explore.unshift({
+        img: '',
+        caption: (it.caption || it.text || q).toString(),
+        text: (it.text || it.caption || '').toString(),
+        tag: it.tag || q,
+        ts: Date.now()
+      });
+    });
+  } catch(e) {
+    for (let i=0;i<6;i++) ensureIG().explore.unshift({ img: '', caption: q+' · 画面'+(i+1), text: q, ts: Date.now() });
+  }
   save(); openForumIG('search');
 }
 function igViewExplore(i) {
-  const v = (ensureIG().explore||[])[i];
-  if (!v) return;
-  openModal('探索', `<div style="aspect-ratio:1;background:#ddd"></div><div style="margin-top:8px">${escapeHtml(v.caption||'')}</div>`, `<button class="btn btn-secondary" onclick="closeModal()">关闭</button>`);
+  const list = ensureIG().explore || [];
+  if (!list.length) return;
+  state._igExploreIdx = i;
+  function renderOne(idx) {
+    const v = list[idx];
+    if (!v) return '';
+    return '<div style="height:100%;display:flex;flex-direction:column;background:#000;color:#fff">'
+      + '<div style="flex:1;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;background:linear-gradient(180deg,#1a1a1c,#0d0d0f)">'
+      + '<div style="font-size:16px;line-height:1.6;opacity:.9">'+escapeHtml(v.caption||v.text||'画面')+'</div></div>'
+      + '<div style="padding:16px;background:rgba(0,0,0,.85)">'
+      + '<div style="font-size:14px;margin-bottom:6px">'+escapeHtml(v.text||v.caption||'')+'</div>'
+      + '<div style="font-size:12px;opacity:.6">#'+escapeHtml(v.tag||'')+' · 上下滑切换</div></div></div>';
+  }
+  openSubPage('探索', '<div id="igExploreSwipe" style="height:100%">'+renderOne(i)+'</div>', '', { replace: false });
+  setTimeout(function() {
+    var el = document.getElementById('igExploreSwipe');
+    if (!el) return;
+    var sy = 0;
+    el.addEventListener('touchstart', function(e){ sy = e.touches[0].clientY; }, { passive: true });
+    el.addEventListener('touchend', function(e){
+      var dy = e.changedTouches[0].clientY - sy;
+      if (Math.abs(dy) < 40) return;
+      if (dy < 0 && state._igExploreIdx < list.length-1) state._igExploreIdx++;
+      else if (dy > 0 && state._igExploreIdx > 0) state._igExploreIdx--;
+      el.innerHTML = renderOne(state._igExploreIdx);
+    }, { passive: true });
+  }, 50);
 }
 function igFeedFilter(ev) {
   try { if (ev) ev.stopPropagation(); } catch(e) {}
@@ -17207,7 +17241,10 @@ function openMelo(tab, opts) {
   state._homeDepth = 0;
   state._subBackFn = null;
   opts = opts || {};
+  // 主屏进入固定首页，避免残留 tab 进喜欢/搜索
+  if (state._openFromHome) tab = 'home';
   tab = tab || state._meloTab || 'home';
+  if (tab === 'liked') tab = 'home';
   state._meloTab = tab;
   if (!state.melo) state.melo = { songs: [], playlists: [], liked: [], history: [], notes: [], current: null, playing: false, loop: 'all', accent: '#5eb8b0', profile: {} };
   if (!state.melo.profile) state.melo.profile = {};
@@ -17244,8 +17281,9 @@ function openMelo(tab, opts) {
       + (q ? '<div style="padding:0 14px 20px">'+songs.map(function(s){ var real=melo.songs.indexOf(s); return '<div onclick="playMeloSong('+real+')" style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:0.5px solid rgba(80,140,160,.1);cursor:pointer"><div style="width:44px;height:44px;border-radius:8px;background:'+(s.cover?('url('+s.cover+') center/cover'):'#c5e0e0')+'"></div><div style="flex:1;min-width:0"><div style="font-size:14px;color:'+fg+'">'+escapeHtml(s.name||'')+'</div><div style="font-size:12px;color:'+subc+'">'+escapeHtml(s.artist||'本地')+'</div></div></div>'; }).join('')||('<div class="empty" style="padding:24px;color:'+subc+'">没有匹配的歌曲</div>')+'</div>' : '');
   } else if (tab === 'notes') {
     var notes = melo.notes || [];
-    main = '<div style="padding:12px 14px;display:flex;align-items:center;justify-content:space-between"><div style="font-size:16px;font-weight:700;color:'+fg+'">笔记</div>'
-      + '<button type="button" onclick="openMeloNoteModal()" style="border:none;background:'+accent+';color:#fff;width:36px;height:36px;border-radius:50%;font-size:22px;line-height:1;cursor:pointer;box-shadow:0 4px 12px rgba(94,184,176,.35)">＋</button></div>'
+    main = '<div style="padding:12px 14px;display:flex;align-items:center;justify-content:space-between">'
+      + '<div><div style="font-size:16px;font-weight:700;color:'+fg+'">笔记</div><div style="font-size:11px;color:'+subc+';margin-top:2px">记录听感与心情</div></div>'
+      + '<button type="button" onclick="openMeloNoteModal()" style="border:none;background:'+accent+';color:#fff;border-radius:20px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(94,184,176,.35)">＋ 写笔记</button></div>'
       + '<div style="padding:0 14px 80px">'
       + (notes.length ? notes.map(function(n,ni){ return '<div style="background:'+card+';border-radius:14px;padding:14px;margin-bottom:10px;box-shadow:0 2px 10px rgba(80,140,160,.08)"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><div style="width:32px;height:32px;border-radius:50%;background:'+accent+'33;display:flex;align-items:center;justify-content:center;font-size:12px;color:'+accent+'">我</div><div style="flex:1"><div style="font-size:13px;font-weight:600;color:'+fg+'">'+escapeHtml(melo.profile.nick||state.user.nick||'我')+'</div><div style="font-size:11px;color:'+subc+'">'+(n.ts?new Date(n.ts).toLocaleDateString():'')+'</div></div><span onclick="delMeloNote('+ni+')" style="color:#ccc;cursor:pointer;padding:4px">×</span></div><div style="font-size:14px;color:'+fg+';line-height:1.55;white-space:pre-wrap">'+escapeHtml(n.text||'')+'</div>'+(n.songName?'<div style="margin-top:10px;padding:8px 10px;background:rgba(94,184,176,.12);border-radius:10px;font-size:12px;color:'+accent+'">♪ '+escapeHtml(n.songName)+'</div>':'')+'</div>'; }).join('') : '<div style="text-align:center;padding:48px 20px;color:'+subc+'">还没有笔记<br>点右上角 ＋ 写一条</div>')
       + '</div>';
@@ -17285,7 +17323,7 @@ function openMelo(tab, opts) {
       + '<div onclick="importMeloSongs()" style="flex-shrink:0;width:130px;height:150px;border-radius:16px;background:'+card+';padding:14px;display:flex;flex-direction:column;justify-content:flex-end;cursor:pointer;border:0.5px solid rgba(94,184,176,.2)"><div style="font-size:15px;font-weight:700;color:'+fg+'">导入本地</div><div style="font-size:11px;color:'+subc+';margin-top:4px">MP3 / AAC</div></div></div>'
       + '<div style="padding:4px 14px;font-size:15px;font-weight:600;color:'+fg+'">本地歌曲</div>'
       + '<div style="padding:8px 14px 90px">'
-      + (songs.length ? songs.map(function(s,idx){ return '<div onclick="playMeloSong('+idx+')" style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:0.5px solid rgba(80,140,160,.08);cursor:pointer"><div style="width:48px;height:48px;border-radius:10px;background:'+(s.cover?('url('+s.cover+') center/cover'):'linear-gradient(145deg,#c5e8e4,#a8d4e0)')+';flex-shrink:0"></div><div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:500;color:'+fg+'">'+escapeHtml(s.name||'未知')+'</div><div style="font-size:12px;color:'+subc+';margin-top:2px">'+escapeHtml(s.artist||'本地')+'</div></div><span style="color:'+accent+';font-size:18px">▶</span></div>'; }).join('') : '<div style="text-align:center;padding:40px 20px;color:'+subc+'">还没有歌曲<br>点左上角「导入」添加本地音乐</div>')
+      + (songs.length ? songs.map(function(s,idx){ return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:0.5px solid rgba(80,140,160,.08)"><div onclick="playMeloSong('+idx+')" style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;cursor:pointer"><div style="width:48px;height:48px;border-radius:10px;background:'+(s.cover?('url('+s.cover+') center/cover'):'linear-gradient(145deg,#c5e8e4,#a8d4e0)')+';flex-shrink:0"></div><div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:500;color:'+fg+'">'+escapeHtml(s.name||'未知')+'</div><div style="font-size:12px;color:'+subc+';margin-top:2px">'+escapeHtml(s.artist||'本地')+'</div></div></div><button type="button" onclick="event.stopPropagation();editMeloSong('+idx+')" style="border:none;background:transparent;color:'+subc+';font-size:18px;padding:8px;cursor:pointer">···</button></div>'; }).join('') : '<div style="text-align:center;padding:40px 20px;color:'+subc+'">还没有歌曲<br>点左上角「导入」添加本地音乐</div>')
       + '</div>';
   }
   var mini = '';
@@ -17484,12 +17522,10 @@ function openMeloNowPlaying() {
   const i = state.melo.current;
   if (i == null) return;
   const s = state.melo.songs[i];
-  const accent = state.melo.accent || '#5eb8d0';
+  const accent = state.melo.accent || '#5eb8b0';
   const liked = (state.melo.liked||[]).includes(i);
   const loopLabel = state.melo.loop==='one' ? '单曲' : state.melo.loop==='off' ? '顺序' : '列表';
-  const wp = s.playBg || '';
   const cover = s.cover || '';
-  const frameUrl = 'https://nos.netease.com/ysf/67c27955f7b307df3281f14c7e300095.png';
   state._subKind = 'meloPlay';
   state._homeRoot = 'melo';
   state._homeDepth = 1;
@@ -17500,45 +17536,53 @@ function openMeloNowPlaying() {
     openMelo(state._meloTab || 'home', { replace: true });
   };
   const playing = !!state.melo.playing;
+  const spin = playing ? 'animation:meloSpin 8s linear infinite' : '';
   openSubPage(s.name || '正在播放', `
-    <div style="height:100%;display:flex;flex-direction:column;background:${wp?`#0a1020 url(${wp}) center/cover`:'linear-gradient(180deg,#0e1a28,#1a2a3a)'};color:#fff;position:relative;overflow:hidden">
-      <div style="position:absolute;inset:0;background:radial-gradient(ellipse at center,rgba(90,180,210,.15),transparent 70%);pointer-events:none"></div>
-      <div style="position:relative;z-index:1;padding:8px 16px;display:flex;justify-content:space-between;align-items:center">
-        <button type="button" onclick="closeSubPage()" style="border:none;background:rgba(255,255,255,.12);border-radius:14px;padding:6px 12px;color:#fff;font-size:14px;cursor:pointer">‹ 返回</button>
-        <div style="display:flex;gap:8px">
-          <button type="button" onclick="state.fileTarget='meloPlayBg';state._meloSongIdx=${i};document.getElementById('fileInput').accept='image/*';document.getElementById('fileInput').click()" style="border:none;background:rgba(255,255,255,.12);border-radius:12px;padding:4px 10px;font-size:11px;color:#fff">壁纸</button>
-          <button type="button" onclick="clearMeloPlayBg(${i})" style="border:none;background:rgba(255,255,255,.12);border-radius:12px;padding:4px 10px;font-size:11px;color:#fff">还原</button>
-        </div>
+    <div style="height:100%;display:flex;flex-direction:column;background:linear-gradient(180deg,#e8f6f4 0%,#d0ebe8 45%,#b8dcd8 100%);color:#2a4a55;position:relative;overflow:hidden">
+      <div style="padding:8px 16px;display:flex;justify-content:space-between;align-items:center;position:relative;z-index:2">
+        <button type="button" onclick="closeSubPage()" style="border:none;background:rgba(255,255,255,.7);border-radius:14px;padding:6px 12px;color:#2a4a55;font-size:14px;cursor:pointer">‹ 返回</button>
+        <div style="font-size:13px;color:#6a8a90">正在播放</div>
+        <button type="button" onclick="state.fileTarget='meloCover';state._meloSongIdx=${i};document.getElementById('fileInput').accept='image/*';document.getElementById('fileInput').click()" style="border:none;background:rgba(255,255,255,.7);border-radius:12px;padding:4px 10px;font-size:11px;color:#2a4a55">封面</button>
       </div>
-      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px 20px 16px;position:relative;z-index:1">
-        <!-- 播放器机壳：透明屏区放封面 -->
-        <div style="position:relative;width:min(92vw,340px);aspect-ratio:1/1.08;max-height:58vh">
-          <div style="position:absolute;left:12%;right:12%;top:11%;bottom:34%;border-radius:10px;overflow:hidden;background:#000;z-index:1">
-            ${cover
-              ? `<img src="${cover}" style="width:100%;height:100%;object-fit:cover;display:block" alt="">`
-              : `<div style="width:100%;height:100%;background:linear-gradient(145deg,#2a3a4a,#1a2838);display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.35);font-size:13px">封面</div>`}
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px 24px 20px;position:relative;z-index:1">
+        <!-- 黑胶唱片 -->
+        <div style="position:relative;width:min(72vw,280px);height:min(72vw,280px);margin-bottom:8px">
+          <div style="position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle at center,#1a1a1a 0%,#0d0d0d 35%,#222 36%,#111 100%);box-shadow:0 16px 40px rgba(0,40,50,.25),inset 0 0 0 8px #0a0a0a;${spin}">
+            <div style="position:absolute;inset:18%;border-radius:50%;overflow:hidden;background:#333;border:3px solid #1a1a1a">
+              ${cover
+                ? `<img src="${cover}" style="width:100%;height:100%;object-fit:cover" alt="">`
+                : `<div style="width:100%;height:100%;background:linear-gradient(145deg,#5eb8b0,#3a9a9a);display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.7);font-size:12px">Melo</div>`}
+            </div>
+            <div style="position:absolute;left:50%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:#e8f4f8;box-shadow:0 0 0 3px #333;z-index:2"></div>
           </div>
-          <img src="${frameUrl}" alt="player" draggable="false" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none;z-index:2;filter:drop-shadow(0 12px 28px rgba(0,40,80,.45))">
+          <!-- 唱臂装饰 -->
+          <div style="position:absolute;right:-8px;top:10%;width:4px;height:42%;background:linear-gradient(180deg,#d0d8dc,#a8b4b8);border-radius:2px;transform:rotate(25deg);transform-origin:top center;opacity:.85"></div>
         </div>
-        <div style="width:100%;max-width:300px;margin-top:18px;text-align:center">
-          <div style="font-size:18px;font-weight:700;margin-bottom:4px;text-shadow:0 2px 8px rgba(0,0,0,.4)">${escapeHtml(s.name||'未知曲目')}</div>
-          <div style="font-size:13px;opacity:.75;margin-bottom:14px">${escapeHtml(s.artist||'未知歌手')}</div>
+        <div style="width:100%;max-width:300px;text-align:center;margin-top:12px">
+          <div style="font-size:18px;font-weight:700;margin-bottom:4px;color:#2a4a55">${escapeHtml(s.name||'未知曲目')}</div>
+          <div style="font-size:13px;color:#6a8a90;margin-bottom:16px">${escapeHtml(s.artist||'本地')}</div>
           <input id="meloProgress" type="range" min="0" max="100" value="0" oninput="meloSeek(this.value)" style="width:100%;accent-color:${accent};height:4px">
-          <div style="display:flex;justify-content:space-between;font-size:11px;opacity:.65;margin-top:6px">
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:#8aa;margin-top:6px">
             <span id="meloCurT">0:00</span><span id="meloDurT">0:00</span>
           </div>
         </div>
-        <div style="display:flex;width:100%;max-width:300px;justify-content:space-between;align-items:center;margin-top:20px;padding:0 4px">
-          <button type="button" onclick="cycleMeloLoop(true)" style="border:none;background:transparent;color:rgba(255,255,255,.85);font-size:12px;min-width:40px">${loopLabel}</button>
-          <button type="button" onclick="meloPrev()" style="border:none;background:transparent;color:#fff;font-size:28px;line-height:1;padding:8px">‹‹</button>
-          <button type="button" id="meloPlayMainBtn" onclick="toggleMeloPlay()" style="width:64px;height:64px;border-radius:50%;border:none;background:linear-gradient(145deg,#e8f4f8,#b8dce8);color:#1a3a48;font-size:22px;box-shadow:0 4px 20px rgba(90,180,210,.35)">${playing?'❚❚':'▶'}</button>
-          <button type="button" onclick="meloNext()" style="border:none;background:transparent;color:#fff;font-size:28px;line-height:1;padding:8px">››</button>
-          <button type="button" onclick="toggleMeloLike(${i})" style="border:none;background:transparent;color:${liked?'#e74c3c':'rgba(255,255,255,.85)'};font-size:22px;min-width:40px">${liked?'♥':'♡'}</button>
+        <div style="display:flex;width:100%;max-width:300px;justify-content:space-between;align-items:center;margin-top:22px;padding:0 4px">
+          <button type="button" onclick="cycleMeloLoop(true)" style="border:none;background:transparent;color:#5a7a80;font-size:12px;min-width:40px">${loopLabel}</button>
+          <button type="button" onclick="meloPrev()" style="border:none;background:transparent;color:#2a4a55;font-size:28px;line-height:1;padding:8px">‹‹</button>
+          <button type="button" id="meloPlayMainBtn" onclick="toggleMeloPlay()" style="width:64px;height:64px;border-radius:50%;border:none;background:linear-gradient(145deg,#7ec8c0,#5eb8b0);color:#fff;font-size:22px;box-shadow:0 6px 20px rgba(94,184,176,.4)">${playing?'❚❚':'▶'}</button>
+          <button type="button" onclick="meloNext()" style="border:none;background:transparent;color:#2a4a55;font-size:28px;line-height:1;padding:8px">››</button>
+          <button type="button" onclick="toggleMeloLike(${i})" style="border:none;background:transparent;color:${liked?'#e74c3c':'#5a7a80'};font-size:22px;min-width:40px">${liked?'♥':'♡'}</button>
         </div>
       </div>
     </div>
   `, '', { replace: false });
   try { document.getElementById('subNav').style.display = ''; } catch(e) {}
+  if (!document.getElementById('meloSpinStyle')) {
+    const st = document.createElement('style');
+    st.id = 'meloSpinStyle';
+    st.textContent = '@keyframes meloSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}';
+    document.head.appendChild(st);
+  }
 }
 
 
@@ -17594,6 +17638,7 @@ function showMeloFloat(show) {
     el._expanded = false;
     el.addEventListener('click', (e) => {
       if (el._moved) return;
+      e.stopPropagation();
       if (!el._expanded) {
         el._expanded = true;
         const panel = document.getElementById('meloFloatPanel');
@@ -17604,12 +17649,21 @@ function showMeloFloat(show) {
         const p = document.getElementById('meloFloatPlay');
         if (p) p.textContent = state.melo.playing ? '❚❚' : '▶';
       } else {
-        el._expanded = false;
-        const panel = document.getElementById('meloFloatPanel');
-        if (panel) panel.style.display = 'none';
-        openMelo(state._meloTab || 'home', { replace: true });
+        // 第二次点悬浮球：进入播放页
+        openMeloNowPlaying();
       }
     });
+    if (!window._meloFloatOutsideBound) {
+      window._meloFloatOutsideBound = true;
+      document.addEventListener('click', function(ev) {
+        const f = document.getElementById('meloFloat');
+        if (!f || !f._expanded) return;
+        if (f.contains(ev.target)) return;
+        f._expanded = false;
+        const panel = document.getElementById('meloFloatPanel');
+        if (panel) panel.style.display = 'none';
+      }, true);
+    }
     let sx, sy, ox, oy;
     el.addEventListener('touchstart', ev => {
       el._moved = false;
