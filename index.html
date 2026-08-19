@@ -108,11 +108,13 @@ body.night .home-time-widget { background: rgba(40,40,44,.7); border-color: rgba
   position: absolute;
   display: flex; flex-direction: column; align-items: center; gap: 4px;
   cursor: grab; user-select: none; touch-action: none;
-  width: 72px;
+  width: calc(72px * var(--home-app-scale, 1));
   z-index: 2;
 }
 .home-app .ha-icon {
-  width: 56px; height: 56px; border-radius: var(--home-icon-radius, 16px);
+  width: calc(56px * var(--home-app-scale, 1));
+  height: calc(56px * var(--home-app-scale, 1));
+  border-radius: var(--home-icon-radius, 16px);
   border: none;
   background: transparent;
   display: flex; align-items: center; justify-content: center;
@@ -125,11 +127,18 @@ body.night .home-time-widget { background: rgba(40,40,44,.7); border-color: rgba
   background: transparent; display: block;
 }
 .home-app .ha-icon svg {
-  width: 28px; height: 28px; stroke: currentColor; fill: none;
+  width: calc(28px * var(--home-app-scale, 1));
+  height: calc(28px * var(--home-app-scale, 1));
+  stroke: currentColor; fill: none;
   stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round;
 }
 body.night .home-app .ha-icon { color: #f5f5f7; background: transparent; }
-.home-app .ha-name { font-size: 11px; color: var(--text); max-width: 70px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-app .ha-name {
+  font-size: calc(11px * var(--home-app-scale, 1));
+  color: var(--text);
+  max-width: calc(70px * var(--home-app-scale, 1));
+  text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .home-polaroid {
   border: none !important;
   box-shadow: 0 4px 16px rgba(0,0,0,.08) !important;
@@ -199,19 +208,40 @@ body.night .home-bottom-dock { background: rgba(28,28,30,.9); border-color: #3a3
   margin-top: 4px; padding: 2px 10px; border-radius: 12px;
   background: rgba(255,255,255,.55); font-size: 13px; font-weight: 500;
 }
-.sms-im-msgs { flex: 1; overflow-y: auto; padding: 8px 12px 12px; }
-.sms-bubble-row { display: flex; margin: 4px 0; }
+.sms-im-wrap { position: relative; height: 100%; display: flex; flex-direction: column; }
+.sms-im-msgs { flex: 1; overflow-y: auto; padding: 12px 14px 90px; -webkit-overflow-scrolling: touch; }
+.sms-bubble-row {
+  display: flex; width: 100%; margin: 6px 0;
+  box-sizing: border-box;
+}
 .sms-bubble-row.me { justify-content: flex-end; }
 .sms-bubble-row.other { justify-content: flex-start; }
+.sms-bubble-wrap {
+  max-width: 78%;
+  display: flex; flex-direction: column;
+  /* 关键：避免百分比 max-width 嵌套把气泡挤成单字宽 */
+  min-width: 0;
+}
+.sms-bubble-row.me .sms-bubble-wrap { align-items: flex-end; }
+.sms-bubble-row.other .sms-bubble-wrap { align-items: flex-start; }
 .sms-bubble {
-  max-width: 75%; padding: 8px 12px; border-radius: 18px;
-  font-size: 16px; line-height: 1.35; word-break: break-word;
+  display: inline-block;
+  width: fit-content;
+  max-width: 100%;
+  padding: 8px 12px; border-radius: 18px;
+  font-size: 16px; line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  box-sizing: border-box;
 }
 .sms-bubble.me { background: #007aff; color: #fff; border-bottom-right-radius: 6px; }
 .sms-bubble.other { background: rgba(60,60,67,.32); color: #000; border-bottom-left-radius: 6px; }
 body.night .sms-bubble.other { background: rgba(255,255,255,.2); color: #fff; }
-.sms-im-wrap { position: relative; height: 100%; display: flex; flex-direction: column; }
-.sms-im-msgs { flex: 1; overflow-y: auto; padding: 12px 14px 90px; }
+.sms-tr {
+  font-size: 11px; color: #8e8e93; margin-top: 4px; padding: 0 6px;
+  line-height: 1.4; max-width: 100%;
+}
 .sms-im-input {
   position: absolute; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   display: flex; align-items: center; gap: 10px;
@@ -1748,14 +1778,70 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-19g';
+const EENOK_BUILD = '2026-08-19M';
+/** 检测版本变化；进入主界面后弹出「已更新」提醒 */
 function checkAppUpdate() {
   try {
-    const prev = localStorage.getItem('eenook_build');
+    const prev = localStorage.getItem('eenook_build') || '';
+    const seen = localStorage.getItem('eenook_seen_build') || '';
     if (prev && prev !== EENOK_BUILD) {
-      setTimeout(function(){ try { showToast('eeNook 已更新 · ' + EENOK_BUILD); } catch(e) {} }, 800);
+      // 刚换了文件：记下待提醒，不立刻写 seen
+      localStorage.setItem('eenook_pending_update', EENOK_BUILD);
+      localStorage.setItem('eenook_build_prev', prev);
     }
     localStorage.setItem('eenook_build', EENOK_BUILD);
+    // 若从未见过当前版本，也视为待提醒（首次安装不弹，仅升级弹）
+    if (prev && seen !== EENOK_BUILD) {
+      localStorage.setItem('eenook_pending_update', EENOK_BUILD);
+    }
+  } catch(e) {}
+}
+function hasPendingUpdateNotice() {
+  try {
+    return !!localStorage.getItem('eenook_pending_update') &&
+      localStorage.getItem('eenook_seen_build') !== EENOK_BUILD;
+  } catch(e) { return false; }
+}
+function dismissUpdateNotice() {
+  try {
+    localStorage.setItem('eenook_seen_build', EENOK_BUILD);
+    localStorage.removeItem('eenook_pending_update');
+  } catch(e) {}
+  try { closeModal(); } catch(e) {}
+}
+function showUpdateNoticeIfNeeded() {
+  try {
+    if (!hasPendingUpdateNotice()) return;
+    if (state._updateNoticeShown) return;
+    // 仅在主屏时弹
+    const home = document.getElementById('page-home');
+    if (home && home.style.display === 'none') return;
+    state._updateNoticeShown = true;
+    const prev = (function(){ try { return localStorage.getItem('eenook_build_prev') || ''; } catch(e){ return ''; } })();
+    // 取最新一版 changelog
+    let itemsHtml = '';
+    try {
+      const logs = (typeof getChangelogData === 'function') ? getChangelogData() : [];
+      const latest = logs.find(function(x){ return x.v === EENOK_BUILD; }) || logs[0];
+      if (latest && latest.items) {
+        itemsHtml = '<ul style="margin:10px 0 0;padding-left:18px;font-size:13px;line-height:1.65;color:#333">'
+          + latest.items.map(function(t){ return '<li>'+escapeHtml(t)+'</li>'; }).join('')
+          + '</ul>';
+      }
+    } catch(e) {}
+    openModal(
+      '已更新',
+      '<div style="text-align:center;padding:4px 0 8px">'
+        + '<div style="width:56px;height:56px;margin:0 auto 12px;border-radius:14px;background:linear-gradient(135deg,#7ec8c8,#5a9e9e);display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;font-weight:700">✓</div>'
+        + '<div style="font-size:16px;font-weight:600;margin-bottom:4px">eeNook 已更新</div>'
+        + '<div style="font-size:13px;color:#8e8e93">当前版本 · '+escapeHtml(EENOK_BUILD)
+        + (prev ? (' · 来自 '+escapeHtml(prev)) : '')
+        + '</div>'
+        + itemsHtml
+        + '<div style="font-size:11px;color:#aaa;margin-top:12px">可在「设置 → 更新日志」查看完整记录</div>'
+      + '</div>',
+      '<button class="btn btn-primary" style="width:100%" onclick="dismissUpdateNotice()">知道了</button>'
+    );
   } catch(e) {}
 }
 
@@ -2055,6 +2141,7 @@ function save() {
     }],
     ['offlineStyles', () => state.offlineStyles || []],
     ['memoryApp', () => state.memoryApp || { items: [] }],
+    ['prompts', () => state.prompts || {}],
   ];
   // 后台 IDB（不阻塞 UI）
   if (typeof idbSet === 'function') {
@@ -2405,7 +2492,7 @@ async function loadFromIDB() {
     const keys = ['user','chars','groups','chats','moments','momentsBg','worldBooks','wallet','api','stickerLib',
       'personas','wbCategories','emojiCategories','customEmojis','favorites','theme','contactGroups',
       'officials','spaces','bookstore','pomodoro','scriptKill','melo','shop','takeout','altAccounts',
-      'home','icity','gal','phoneApp','sms','divProfile','forumIG','countdown','lock','offlineStyles','memoryApp'];
+      'home','icity','gal','phoneApp','sms','divProfile','forumIG','countdown','lock','offlineStyles','memoryApp','prompts'];
     for (const k of keys) {
       const v = await idbGet(k, undefined);
       if (v !== undefined) {
@@ -2598,7 +2685,7 @@ function openSubPage(title, bodyHtml, rightHtml, opts) {
   sub.style.setProperty('width', '100%', 'important');
   sub.style.setProperty('height', '100%', 'important');
   sub.style.setProperty('transform', 'none', 'important');
-  var aquaRoots = {countdown:1,memory:1,charlib:1,sk:1,scriptkill:1,worldbook:1,bookstore:1,tomato:1,pomodoro:1,offline:1,gal:1,melo:1,pickup:1,sms:1,settings:1,beauty:1,shop:1,takeout:1};
+  var aquaRoots = {countdown:1,memory:1,charlib:1,sk:1,scriptkill:1,worldbook:1,bookstore:1,tomato:1,pomodoro:1,offline:1,gal:1,melo:1,pickup:1,sms:1,settings:1,beauty:1,shop:1,takeout:1,prompts:1};
   var hr = state._homeRoot || state._subKind || '';
   var aquaBg = aquaRoots[hr] ? 'linear-gradient(165deg,#e8f4f8 0%,#d4ebea 50%,#c8e4e8 100%)' : '#f5f5f7';
   sub.style.setProperty('background', aquaBg, 'important');
@@ -2644,7 +2731,7 @@ function closeSubPage() {
   if (subNav) subNav.style.display = '';
   const kind = state._subKind;
   // 从主屏幕打开的 App：优先回主屏（避免掉进通讯录）
-  const homeKinds = ['homeApp','bookstore','pomodoro','icity','gal','sk','countdown','memory','offline','charlib','divination','worldbook','world','forum','sms','phone','beauty','settings','tomato','scriptkill','melo','meloPlay','phonecheck','pickup'];
+  const homeKinds = ['homeApp','bookstore','pomodoro','icity','gal','sk','countdown','memory','offline','charlib','divination','worldbook','world','forum','sms','phone','beauty','settings','tomato','scriptkill','melo','meloPlay','phonecheck','pickup','prompts'];
   if (state._homeRoot || homeKinds.indexOf(kind) >= 0) {
     // 有自定义返回：优先执行（重新渲染，避免 HTML 快照导致评论/消息消失）
     if (typeof state._subBackFn === 'function') {
@@ -3088,8 +3175,17 @@ function renderMessages(opts) {
     let content = '';
     if (m.type === 'text') {
       let q = m.quote ? `<div class="msg-quote">${escapeHtml(m.quote)}</div>` : '';
-      content = q + escapeHtml(m.content);
-      if (m.translation) content += `<div class="msg-translation">${escapeHtml(m.translation)}</div>`;
+      let bodyText = (typeof cleanMsgContentForDisplay === 'function') ? cleanMsgContentForDisplay(m.content) : (m.content || '');
+      // 历史脏数据：正文里残留 [[tr]] 时尝试再拆一次
+      if (/\[\[\s*\/?\s*tr\s*\]\]|\|\|\|/.test(String(m.content || ''))) {
+        try {
+          const ex = extractInlineTranslations([m.content]);
+          if (ex.texts && ex.texts[0]) bodyText = ex.texts[0];
+          if (ex.translations && ex.translations[0] && !m.translation) m.translation = ex.translations[0];
+        } catch(e) {}
+      }
+      content = q + escapeHtml(bodyText);
+      if (m.translation) content += `<div class="msg-translation">${escapeHtml(cleanMsgContentForDisplay(m.translation))}</div>`;
     } else if (m.type === 'image') {
       let imgSrc = m.content || '';
       if (!imgSrc || imgSrc === 'undefined' || imgSrc === 'null') {
@@ -3725,9 +3821,10 @@ function splitSentences(text) {
   t = t.replace(/（发[^）]*）/g, '');
   // 少用引号：直接剥掉中英文引号
   t = t.replace(/[“”「」『』\"']/g, '');
+  // 保留 [[tr]] 块：先把换行归一，再按句拆时不把 tr 拆丢
   t = t.trim();
   if (!t) return [];
-  // 按换行、句末、问叹、分号拆
+  // 按换行、句末、问叹、分号拆（保留 [[tr]]…[[/tr]] 整段）
   let parts = t.split(/(?<=[。！？?!；;\n])/).map(s => s.trim()).filter(s => s.length > 0);
   if (!parts.length) parts = [t];
   // 再按空格 / 逗号 拆成更短的气泡（像真人连发）
@@ -3875,9 +3972,28 @@ function notifyPendingReply(name, texts, avatar) {
 }
 async function pushSentences(chat, sentences, fromMeta) {
   try {
-    const cleaned = (sentences || []).map(function(s) {
+    // 剥离「译：」/ [[tr]]，挂到气泡 translation，禁止单独成条
+    let rawParts = (sentences || []).map(function(s) {
       return String(s || '').replace(/[“”「」『』"']/g, '').replace(/[。]{2,}/g, '').trim();
     }).filter(Boolean);
+    let extracted = (typeof extractInlineTranslations === 'function')
+      ? extractInlineTranslations(rawParts)
+      : { texts: rawParts, translations: rawParts.map(function(){ return ''; }) };
+    let cleaned = extracted.texts;
+    let trs = extracted.translations || [];
+    // 再滤掉仍以「译：」开头的残留
+    const filtered = [];
+    const filteredTr = [];
+    cleaned.forEach(function(s, i) {
+      if (/^译[:：]/.test(s) || /^\[\[tr\]\]/i.test(s)) {
+        if (filtered.length) filteredTr[filtered.length - 1] = s.replace(/^译[:：]\s*/, '').replace(/\[\[\/?tr\]\]/gi, '').trim();
+        return;
+      }
+      filtered.push(s);
+      filteredTr.push(trs[i] || '');
+    });
+    cleaned = filtered;
+    trs = filteredTr;
     const chatId = state.currentChatId;
     const onChat = document.getElementById('page-chat') && document.getElementById('page-chat').classList.contains('active');
     const away = !(onChat && chatId && state.chats[chatId] === chat);
@@ -3896,6 +4012,7 @@ async function pushSentences(chat, sentences, fromMeta) {
       const msg = {
         from: 'char', type: 'text', content: cleaned[i], ts: Date.now()
       };
+      if (trs[i]) msg.translation = trs[i];
       if (fromMeta) {
         if (fromMeta.fromId) msg.fromId = fromMeta.fromId;
         if (fromMeta.fromName) msg.fromName = fromMeta.fromName;
@@ -3906,8 +4023,8 @@ async function pushSentences(chat, sentences, fromMeta) {
       save();
       try { renderMessages({ forceBottom: true }); } catch(e) {}
       if (away) showMsgBanner(bannerName, cleaned[i], bannerAv);
-      // 自动翻译：不阻塞气泡出现，后台翻译完再刷新
-      if (chat && chat.autoTranslate && typeof autoTranslateText === 'function') {
+      // 无内联翻译且开启自动翻译：后台补翻译到气泡下方
+      if (!msg.translation && chat && chat.autoTranslate && typeof autoTranslateText === 'function') {
         (function(msgRef, lang) {
           autoTranslateText(msgRef.content, lang).then(function(tr) {
             if (tr) {
@@ -4326,13 +4443,154 @@ function getOnlineChatRules(extra) {
   if (h < 5) slot = '凌晨'; else if (h < 9) slot = '早上'; else if (h < 12) slot = '上午';
   else if (h < 14) slot = '中午'; else if (h < 18) slot = '下午'; else if (h < 21) slot = '晚上';
   else if (h < 23) slot = '夜里'; else slot = '深夜';
-  return `你是真实人类在线上聊天，不是AI助手。
-【铁则】必须读取：角色人设、user人设、二人关系；禁止OOC；禁止客服腔/说明书腔；禁止括号动作旁白；禁止一次发长段，必须一句一句（默认每轮1-2句短句）；少用句号，可用空格代替逗号；少用emoji。
-【人格】不弱化、不神化、不丑化角色；不辱女、不危险发言、不侮辱国家/种族（除非角色特殊设定且仅限角色言行）；不抢话；不侮辱user、不对user人身攻击或肢体伤害（除非user明确要求或特殊设定）；去油腻、去绝望恐吓、去无脑霸道偏执病态（除非人设明确且健康边界内）。
-【身份顺序】除却一切身份之前，角色首先是自己，其次才是恋人/朋友等身份。一切设定前提默认健康、尊重、温暖；仅当user明确要求时才可走向不健康恋爱线。
-【温度】有真实人类的温度、思想、生活习惯与情感；重视user的感受，也重视自己的感受；不忽视情绪。像真人微信/短信/私信。
-【时间】现在是 ${timeStr}（周${week}，${slot}）。时间感知必须准。与已挂载聊天记忆承接，不否定已发生的事。若历史消息标注了「昨天/×月×日」，说明那是当时发的，中间可能隔了很久——禁止当成刚说完的话连续接。
+  // 精简优化版内置规则
+  return `你是正在用聊天软件跟 User 聊天的真人，不是 AI、旁白或剧情生成器。
+【优先级】角色人设＞User设定＞世界书＞长期记忆＞短期记忆＞上下文。禁止无理由 OOC。
+【聊天形态】一句一句发，默认每轮 1～2 句短句；少用句号，可用空格/换行；禁止小说旁白、括号动作、客服腔、总结报告腔。
+【边界】不替 User 说话/行动/做决定；不抢话；不弱化也不神化任何一方；去油腻霸总爹味（除非人设明确且健康边界内）；不辱女、不侮辱国家种族；不人身攻击。
+【主体】角色首先是自己，再是关系身份；可不同意、可拒绝、可不知道；情绪要连贯，小事小情绪。
+【记忆】记忆只影响态度与接话，禁止主动复述「我记得你说过…」；新旧冲突以最新明确信息为准。
+【时间】现在是 ${timeStr}（周${week}，${slot}）。尊重时间流逝与历史标注，禁止把很久以前的话当成刚说完。
 ${extra||''}`;
+}
+function getMemoryRulesText() {
+  return `【记忆读取】每次聊天前优先读取与当前话题相关的记忆，并结合上下文判断是否需要使用。不要为了体现「读取了记忆」而刻意重复旧内容。
+【记忆更新】新信息与旧记忆冲突时，以最新、明确的信息为准。相同事件不要重复创建记忆，应更新已有记忆。无法确定的信息不要擅自补全。
+【人物一致】记忆不得覆盖或改变角色人设、User设定与世界书。所有记忆都必须服务于角色一致性、关系连续性与真实聊天感，不得因为记忆内容而 OOC。
+【真实聊天】记忆是辅助，不是聊天台词。不要主动复述记忆内容，不要像总结报告一样说话，不要出现明显的 AI 记忆痕迹。只在自然需要时使用记忆。`;
+}
+function resolveCharLang(c) {
+  if (!c) return '';
+  if (c.lang && String(c.lang).trim()) return String(c.lang).trim();
+  const n = String(c.nation || '').trim();
+  if (!n) return '';
+  if (/中国|中华|华语|汉语|内地|大陆|台湾|香港|澳门|中文/.test(n)) return '中文';
+  if (/日本|日语|日裔/.test(n)) return '日语';
+  if (/韩国|韩语|朝鲜/.test(n)) return '韩语';
+  if (/美国|英国|澳洲|加拿大|英语|英式|美式/.test(n)) return '英语';
+  if (/法国|法语/.test(n)) return '法语';
+  if (/德国|德语/.test(n)) return '德语';
+  if (/俄罗斯|俄语/.test(n)) return '俄语';
+  if (/西班牙/.test(n)) return '西班牙语';
+  if (/瑞典/.test(n)) return '瑞典语';
+  return '';
+}
+function nationLangHint(c) {
+  const lang = resolveCharLang(c);
+  if (!lang || lang === '中文' || lang === '汉语' || lang === '粤语') return '';
+  // 用 ||| 分隔，更稳，系统会拆成「正文 + 气泡下方翻译」
+  return '\n【语言】角色说「'+lang+'」。每条短句格式必须严格为：\n'
+    + lang+'原文|||中文翻译\n'
+    + '示例：안녕하세요|||你好\n'
+    + '禁止输出 [[tr]]、[[/tr]]、译： 等标记；禁止只发中文；禁止把翻译单独成条。\n';
+}
+/** 去掉残留标记 */
+function scrubTrMarkers(s) {
+  return String(s || '')
+    .replace(/\[\[\s*\/?\s*tr\s*\]\]/gi, '')
+    .replace(/\[\[\s*tr\s*\]\]/gi, '')
+    .replace(/\[\[\s*\/tr\s*\]\]/gi, '')
+    .replace(/^译[:：]\s*/gm, '')
+    .trim();
+}
+function looksMostlyCJK(s) {
+  const t = String(s || '').replace(/\s/g, '');
+  if (!t) return false;
+  const cjk = (t.match(/[\u4e00-\u9fff]/g) || []).length;
+  return cjk / t.length >= 0.55;
+}
+function looksForeignChat(s) {
+  const t = String(s || '');
+  // 韩/日/俄/拉丁等
+  if (/[\uac00-\ud7af]/.test(t)) return true; // Hangul
+  if (/[\u3040-\u30ff]/.test(t)) return true; // Kana
+  if (/[\u0400-\u04ff]/.test(t)) return true; // Cyrillic
+  if (/[A-Za-z]{3,}/.test(t) && !looksMostlyCJK(t)) return true;
+  return false;
+}
+/** 从模型输出中剥离翻译，返回 { texts, translations } */
+function extractInlineTranslations(parts) {
+  const texts = [];
+  const translations = [];
+  (parts || []).forEach(function(p) {
+    let s = String(p || '').trim();
+    if (!s) return;
+    // 1) 优先：原文|||译文
+    if (s.indexOf('|||') >= 0) {
+      const idx = s.indexOf('|||');
+      const left = scrubTrMarkers(s.slice(0, idx));
+      const right = scrubTrMarkers(s.slice(idx + 3));
+      if (left) {
+        texts.push(left);
+        translations.push(right || '');
+      } else if (right && texts.length) {
+        translations[texts.length - 1] = right;
+      }
+      return;
+    }
+    // 2) 完整 [[tr]]…[[/tr]] 整段 → 挂到上一条
+    let m = s.match(/^\[\[\s*tr\s*\]\]([\s\S]*?)\[\[\s*\/\s*tr\s*\]\]$/i);
+    if (m) {
+      const tr = scrubTrMarkers(m[1]);
+      if (texts.length) translations[texts.length - 1] = tr;
+      return;
+    }
+    // 3) 行内完整标记
+    let tr = '';
+    s = s.replace(/\[\[\s*tr\s*\]\]([\s\S]*?)\[\[\s*\/\s*tr\s*\]\]/gi, function(_, t) {
+      tr = scrubTrMarkers(t);
+      return '';
+    });
+    // 4) 残留半截标记全部剥掉
+    s = scrubTrMarkers(s);
+    // 5) 「译：」
+    if (/^译[:：]/.test(s)) {
+      const t = s.replace(/^译[:：]\s*/, '').trim();
+      if (texts.length) translations[texts.length - 1] = t;
+      return;
+    }
+    const yi = s.search(/\s*译[:：]/);
+    if (yi > 0) {
+      tr = scrubTrMarkers(s.slice(yi).replace(/^\s*译[:：]\s*/, ''));
+      s = s.slice(0, yi).trim();
+    }
+    if (!s) {
+      if (tr && texts.length) translations[texts.length - 1] = tr;
+      return;
+    }
+    // 6) 纯中文紧跟在外语后 → 视为翻译，不单独成条
+    if (looksMostlyCJK(s) && !looksForeignChat(s) && texts.length && looksForeignChat(texts[texts.length - 1]) && !translations[texts.length - 1]) {
+      translations[texts.length - 1] = s;
+      return;
+    }
+    texts.push(s);
+    translations.push(tr || '');
+  });
+  return { texts: texts, translations: translations };
+}
+/** 展示前再清一次，防止历史消息残留标记 */
+function cleanMsgContentForDisplay(s) {
+  return scrubTrMarkers(s);
+}
+function collectActivePrompts(kind) {
+  // kind: 'online' | 'offline'
+  try {
+    if (!state.prompts) return '';
+    const pack = state.prompts[kind] || {};
+    const lines = [];
+    const builtins = pack.builtins || {};
+    if (kind === 'online') {
+      if (builtins.gemini !== false && pack.geminiText) lines.push('【Gemini提示词】\n' + pack.geminiText);
+      if (builtins.claude !== false && pack.claudeText) lines.push('【Claude提示词】\n' + pack.claudeText);
+      if (builtins.builtin !== false) lines.push('【内置规则】\n' + getOnlineChatRules());
+    } else {
+      if (builtins.offline !== false && pack.offlineText) lines.push('【线下规则】\n' + pack.offlineText);
+    }
+    (pack.custom || []).forEach(function(p) {
+      if (p && p.on !== false && p.content) lines.push('【'+(p.name||'自定义')+'】\n' + p.content);
+    });
+    return lines.join('\n\n').slice(0, 6000);
+  } catch(e) { return ''; }
 }
 
 async function realGenerate(id, c) {
@@ -4398,9 +4656,13 @@ async function realGenerate(id, c) {
     const userP = state.user || {};
     const ug = resolveUserGender(userP);
     const pron = genderPronouns(ug);
-    let system = `【必读】必须同时读取并遵守：①角色人设 ②user人设 ③已挂载世界书 ④已挂载文风。禁止OOC。\n` + `【身份】你是真实存在的人，正在用手机微信和对方私聊。你不是AI助手，禁止暴露AI身份，禁止提系统/设定/上下文等词。
+    let system = `【必读】必须同时读取并遵守：①角色人设 ②user人设 ③已挂载世界书 ④已挂载文风 ⑤提示词（怎么扮演）。禁止OOC。\n` + `【身份】你是真实存在的人，正在用手机微信和对方私聊。你不是AI助手，禁止暴露AI身份，禁止提系统/设定/上下文等词。
 ${getOnlineChatRules()}
+${getMemoryRulesText()}
+${nationLangHint(c)}
+${collectActivePrompts('online')}
 【最高原则】人设一致性 > 上下文连续 > 情绪合理 > 自然聊天。与世界书/人设冲突时以人设与世界书为准，绝对禁止OOC。
+【角色国籍】${c.nation || '未设置'}
 【只扮演角色】只输出角色要发出的消息正文。禁止扮演user、禁止旁白、禁止括号动作、禁止*动作*、禁止Markdown、禁止角色名前缀。
 【信息优先级】先读：当前消息→上下文→短期/长期记忆→user设定→角色人设→世界书→关系状态。弄清对方在说什么、关系阶段、此刻心情，再回复。
 【记忆】重要经历/偏好/约定要体现在自然反应里，不要反复说「我记得你说过」。可自然淡化无关闲聊。禁止凭空编造未发生的事。
@@ -4505,12 +4767,19 @@ ${userP.charKnows===false?'（对方可能使用了小号，你不一定知道�
           '提到天气/穿衣/作息时须符合季节；不要在盛夏说下雪，不要在寒冬说热到中暑。时间表达与此时区一致。';
       } catch(e) {}
     }
-    // 角色语言
+    // 角色语言：聊天设置优先，否则跟随角色语言/国籍
     try {
       const langMap = { zh:'中文', ja:'日语', en:'英语', fr:'法语', de:'德语', ru:'俄语', ko:'韩语', yue:'粤语', sv:'瑞典语' };
-      const rl = chat.replyLang || 'zh';
-      if (rl && rl !== 'zh') {
+      const invMap = { '中文':'zh','汉语':'zh','日语':'ja','韩语':'ko','英语':'en','法语':'fr','德语':'de','俄语':'ru','粤语':'yue','瑞典语':'sv' };
+      let rl = chat.replyLang;
+      if (!rl || rl === 'auto' || rl === 'follow') {
+        const fromChar = (typeof resolveCharLang === 'function') ? resolveCharLang(c) : '';
+        rl = invMap[fromChar] || (fromChar ? fromChar : 'zh');
+      }
+      chat._resolvedLang = rl;
+      if (rl && rl !== 'zh' && rl !== '中文') {
         system += '\n【语言·强制】你必须全程使用「' + (langMap[rl]||rl) + '」回复，不要混用中文（专有名词除外）。';
+        system += (typeof nationLangHint === 'function' ? nationLangHint(Object.assign({}, c, { lang: langMap[rl]||rl })) : '');
       }
     } catch(e) {}
     try {
@@ -5557,6 +5826,23 @@ function openAddChar() {
         <option value="男">男</option>
       </select>
     </div>
+    <div class="form-group"><label>国籍 / 地区</label>
+      <input id="fNation" placeholder="如：中国 / 日本 / 韩国 / 美国 / 法国">
+    </div>
+    <div class="form-group"><label>语言</label>
+      <select id="fLang">
+        <option value="">跟随国籍</option>
+        <option value="中文">中文</option>
+        <option value="日语">日语</option>
+        <option value="韩语">韩语</option>
+        <option value="英语">英语</option>
+        <option value="法语">法语</option>
+        <option value="德语">德语</option>
+        <option value="俄语">俄语</option>
+        <option value="粤语">粤语</option>
+        <option value="瑞典语">瑞典语</option>
+      </select>
+    </div>
     <div class="form-group"><label>签名</label><input id="fSign" placeholder="个性签名"></div>
     <div class="form-group"><label>与 user 的关系</label><input id="fRelation" placeholder="例如：恋人 / 好友 / 前桌"></div>
     <div class="form-group"><label>人物设定</label><textarea id="fPersona" placeholder="性格、说话风格等"></textarea></div>
@@ -5574,6 +5860,8 @@ function saveChar() {
   const data = {
     id, realName: document.getElementById('fRealName').value.trim(), nick,
     gender: (document.getElementById('fGender') || {}).value || '',
+    nation: ((document.getElementById('fNation') || {}).value || '').trim(),
+    lang: ((document.getElementById('fLang') || {}).value || '').trim(),
     avatar: state._tempAvatar || '', signature: document.getElementById('fSign').value.trim(),
     persona: document.getElementById('fPersona').value.trim(),
     relation: (document.getElementById('fRelation') && document.getElementById('fRelation').value || '').trim(),
@@ -5654,7 +5942,7 @@ function openChatSettings() {
       <div class="setting-item" onclick="openSocialAccounts()">社交账号 <span class="right">${(chat.socialLink)?'已关联':'关闭'} ›</span></div>
       <div class="setting-item" onclick="toggleTimeAware()">时间感知 <span class="right"><div class="switch ${chat.timeAware !== false ? 'on' : ''}" id="swTime"></div></span></div>
       <div class="setting-item text-sub" style="font-size:11px;opacity:.75;line-height:1.45;padding-top:0">开启后强制：真实日期/时刻、季节、时区、距上一段对话间隔；跨天禁止当成刚聊完</div>
-      <div class="setting-item" onclick="openChatLangSettings()">角色语言 · ${({zh:'中文',ja:'日语',en:'英语',fr:'法语',de:'德语',ru:'俄语',ko:'韩语',yue:'粤语',sv:'瑞典语'})[chat.replyLang||'zh']||'中文'} <span class="right">›</span></div>
+      <div class="setting-item" onclick="openChatLangSettings()">角色语言 · ${(!chat.replyLang||chat.replyLang==='follow'||chat.replyLang==='auto')?'跟随角色':(({zh:'中文',ja:'日语',en:'英语',fr:'法语',de:'德语',ru:'俄语',ko:'韩语',yue:'粤语',sv:'瑞典语'})[chat.replyLang]||chat.replyLang)} <span class="right">›</span></div>
       <div class="setting-item" onclick="toggleAutoTranslate()">自动翻译 <span class="right"><div class="switch ${chat.autoTranslate ? 'on' : ''}" id="swTrans"></div></span></div>
       <div class="setting-item text-sub" style="font-size:11px;opacity:.75;padding-top:0">开启后每轮生成的气泡下方自动显示译文</div>
       <div class="setting-item" onclick="openBeautify()">聊天美化 <span class="right">›</span></div>
@@ -6141,6 +6429,15 @@ function editCharInChat() {
         <option value="男" ${c.gender==='男'?'selected':''}>男</option>
       </select>
     </div>
+    <div class="form-group"><label>国籍 / 地区</label><input id="fNation" value="${escapeHtml(c.nation || '')}" placeholder="中国 / 日本 / 韩国 / 美国…"></div>
+    <div class="form-group"><label>语言</label>
+      <select id="fLang">
+        ${['','中文','日语','韩语','英语','法语','德语','俄语','粤语','瑞典语'].map(function(l){
+          const lab = l || '跟随国籍';
+          return '<option value="'+l+'" '+( (c.lang||'')===l ? 'selected' : '' )+'>'+lab+'</option>';
+        }).join('')}
+      </select>
+    </div>
     <div class="form-group"><label>签名</label><input id="fSign" value="${c.signature || ''}"></div>
     <div class="form-group"><label>与 user 的关系</label><input id="fRelation" value="${c.relation || c.relationship || ''}" placeholder="例如：恋人 / 好友 / 前桌 / 师妹"></div>
     <div class="form-group"><label>人物设定</label><textarea id="fPersona">${c.persona || ''}</textarea></div>
@@ -6166,17 +6463,21 @@ function toggleTimeAware() {
 function openChatLangSettings() {
   const chat = state.chats[state.currentChatId];
   if (!chat) return;
-  const cur = chat.replyLang || 'zh';
+  const c = state.chars.find(x => x.id === state.currentChatId) || {};
+  const followLab = (typeof resolveCharLang==='function' && resolveCharLang(c)) ? ('跟随角色（'+resolveCharLang(c)+'）') : '跟随角色人设';
+  const cur = chat.replyLang || 'follow';
   const opts = [
+    ['follow', followLab],
     ['zh','中文'],['ja','日语'],['en','英语'],['fr','法语'],
     ['de','德语'],['ru','俄语'],['ko','韩语'],['yue','粤语'],['sv','瑞典语']
   ];
   openModal('角色语言', `
-    <div class="text-sub" style="font-size:12px;margin-bottom:12px;line-height:1.5">角色将用所选语言回复。可同时开启「自动翻译」在气泡下显示中文译文。</div>
+    <div class="text-sub" style="font-size:12px;margin-bottom:12px;line-height:1.5">默认跟随角色编辑里的「语言/国籍」。可同时开启「自动翻译」在气泡下显示中文。</div>
     <div class="setting-list">
       ${opts.map(function(o){
+        const on = (cur===o[0]) || (!chat.replyLang && o[0]==='follow');
         return '<div class="setting-item" onclick="setChatReplyLang(\''+o[0]+'\')">'
-          + o[1] + (cur===o[0]?' <span class="right" style="color:var(--accent)">✓</span>':'') + '</div>';
+          + o[1] + (on?' <span class="right" style="color:var(--accent)">✓</span>':'') + '</div>';
       }).join('')}
     </div>
   `, `<button class="btn btn-secondary" onclick="closeModal();openChatSettings()">返回</button>`);
@@ -6184,9 +6485,9 @@ function openChatLangSettings() {
 function setChatReplyLang(lang) {
   const chat = state.chats[state.currentChatId];
   if (!chat) return;
-  chat.replyLang = lang || 'zh';
+  chat.replyLang = (lang === 'follow' || !lang) ? 'follow' : lang;
   save(); closeModal(); openChatSettings();
-  showToast('已设置角色语言');
+  showToast(lang==='follow'||!lang ? '已跟随角色人设语言' : '已设置角色语言');
 }
 function toggleAutoTranslate() {
   const chat = state.chats[state.currentChatId];
@@ -7231,6 +7532,154 @@ function confirmWbCategory() {
   if (!state.wbCategories.includes(name)) state.wbCategories.push(name);
   save(); openWorldBook();
 }
+
+function ensurePromptsState() {
+  if (!state.prompts) state.prompts = {};
+  if (!state.prompts.online) state.prompts.online = { builtins: { gemini: true, claude: true, builtin: true }, custom: [], geminiText: '', claudeText: '' };
+  if (!state.prompts.offline) state.prompts.offline = { builtins: { offline: true }, custom: [], offlineText: '' };
+  // 首次写入精简默认（可在 App 内替换为完整原文）
+  if (!state.prompts.online.geminiText) {
+    state.prompts.online.geminiText = '【Gemini·活人感】角色不是AI/旁白。禁止OOC；不替User说话行动；不抢话；不神化/弱化User；去霸总油腻爹味；不辱女；区分角色与User；读全上下文；不重复；记忆影响行为但不复述；有时间流逝；情绪连续；短句自然；不主动推剧情；发送前自检。';
+  }
+  if (!state.prompts.online.claudeText) {
+    state.prompts.online.claudeText = '【Claude·真实线上聊天】你是角色本人在用聊天软件说话。优先级：人设>User设定>世界书>记忆>上下文。不写成小说；不替User行动；不抢话不过度分析；不重复；记忆自然用；情绪连续；允许不知道；时间正确；默认短句；少解释少总结；Claude须抑制过度完整与过度体贴。';
+  }
+  if (!state.prompts.offline.offlineText) {
+    state.prompts.offline.offlineText = '【线下规则】文游段落，克制有画面；不OOC；不替User做决定；人设优先；记忆自然影响；时间与关系连续；不写报告腔。';
+  }
+}
+function promptSwitchHtml(on, onchange) {
+  return '<div class="switch '+(on?'on':'')+'" style="flex-shrink:0;cursor:pointer" onclick="event.stopPropagation();'+onchange+'"></div>';
+}
+function openPromptApp(tab) {
+  ensurePromptsState();
+  try { closeModal(); } catch(e) {}
+  // 从主屏进入时始终先到列表主界面（不自动弹编辑）
+  tab = tab || state._promptTab || 'online';
+  if (tab === true || tab === 'edit') tab = 'online';
+  state._promptTab = tab;
+  state._homeRoot = 'prompts';
+  state._homeDepth = 0;
+  state._subKind = 'homeApp';
+  const on = state.prompts.online;
+  const off = state.prompts.offline;
+  const b = on.builtins || {};
+  const ob = off.builtins || {};
+  // 列表项：不暴露正文，点名称查看/编辑；右侧 iOS 开关
+  function row(title, checked, toggleJs, viewJs) {
+    return '<div style="display:flex;align-items:center;gap:12px;padding:14px 4px;border-bottom:0.5px solid rgba(0,0,0,.06)">'
+      + '<div style="flex:1;min-width:0;cursor:pointer" onclick="'+viewJs+'">'
+      + '<div style="font-size:15px;font-weight:500;color:var(--text)">'+title+'</div>'
+      + '<div class="text-sub" style="font-size:11px;margin-top:2px">点击查看内容</div></div>'
+      + promptSwitchHtml(!!checked, toggleJs)
+      + '</div>';
+  }
+  let list = '';
+  if (tab === 'online') {
+    list = row('线上聊天内置规则（精简版）', b.builtin !== false,
+      "state.prompts.online.builtins.builtin=!state.prompts.online.builtins.builtin;save();openPromptApp('online')",
+      "viewPromptText('online','builtin')")
+      + row('Gemini 提示词', b.gemini !== false,
+      "state.prompts.online.builtins.gemini=!state.prompts.online.builtins.gemini;save();openPromptApp('online')",
+      "viewPromptText('online','gemini')")
+      + row('Claude 提示词', b.claude !== false,
+      "state.prompts.online.builtins.claude=!state.prompts.online.builtins.claude;save();openPromptApp('online')",
+      "viewPromptText('online','claude')");
+    (on.custom || []).forEach(function(p, i) {
+      list += row(escapeHtml(p.name || '自定义'), p.on !== false,
+        "state.prompts.online.custom["+i+"].on=!state.prompts.online.custom["+i+"].on;save();openPromptApp('online')",
+        "viewPromptText('online','custom',"+i+")");
+    });
+  } else {
+    list = row('线下规则', ob.offline !== false,
+      "state.prompts.offline.builtins.offline=!state.prompts.offline.builtins.offline;save();openPromptApp('offline')",
+      "viewPromptText('offline','offline')");
+    (off.custom || []).forEach(function(p, i) {
+      list += row(escapeHtml(p.name || '自定义'), p.on !== false,
+        "state.prompts.offline.custom["+i+"].on=!state.prompts.offline.custom["+i+"].on;save();openPromptApp('offline')",
+        "viewPromptText('offline','custom',"+i+")");
+    });
+  }
+  const body = '<div style="display:flex;flex-direction:column;height:100%;background:linear-gradient(180deg,#f3f9fb,#eef6f5)">'
+    + '<div style="flex:1;overflow-y:auto;padding:12px 16px 100px;-webkit-overflow-scrolling:touch">'
+    + '<div style="font-weight:600;font-size:13px;color:#5a7a80;margin-bottom:4px">基础提示词</div>'
+    + '<div style="background:rgba(255,255,255,.85);border-radius:14px;padding:4px 12px;margin-bottom:16px">'+list+'</div>'
+    + '<button type="button" class="btn btn-secondary" style="width:100%;border-radius:12px" onclick="editPromptCustom(\''+tab+'\',-1)">＋ 添加提示词</button>'
+    + '</div>'
+    // 悬浮 dock 底栏
+    + '<div style="position:absolute;left:16px;right:16px;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:5;'
+    + 'display:flex;gap:0;background:rgba(255,255,255,.72);backdrop-filter:blur(20px) saturate(160%);-webkit-backdrop-filter:blur(20px) saturate(160%);'
+    + 'border-radius:22px;padding:6px;box-shadow:0 8px 28px rgba(0,0,0,.1);border:0.5px solid rgba(255,255,255,.6)">'
+    + '<button type="button" onclick="openPromptApp(\'online\')" style="flex:1;border:none;border-radius:16px;padding:12px;font-size:14px;font-weight:'+(tab==='online'?'700':'500')+';'
+    + 'background:'+(tab==='online'?'rgba(94,184,176,.35)':'transparent')+';color:#2a4a55;cursor:pointer">线上</button>'
+    + '<button type="button" onclick="openPromptApp(\'offline\')" style="flex:1;border:none;border-radius:16px;padding:12px;font-size:14px;font-weight:'+(tab==='offline'?'700':'500')+';'
+    + 'background:'+(tab==='offline'?'rgba(94,184,176,.35)':'transparent')+';color:#2a4a55;cursor:pointer">线下</button>'
+    + '</div></div>';
+  openSubPage('提示词', body, '', { replace: true });
+}
+function viewPromptText(kind, key, idx) {
+  ensurePromptsState();
+  let title = '', content = '', canEdit = true;
+  if (kind === 'online') {
+    if (key === 'builtin') {
+      title = '线上聊天内置规则';
+      content = (typeof getOnlineChatRules === 'function') ? getOnlineChatRules() : '';
+      canEdit = false;
+    } else if (key === 'gemini') {
+      title = 'Gemini 提示词';
+      content = state.prompts.online.geminiText || '';
+    } else if (key === 'claude') {
+      title = 'Claude 提示词';
+      content = state.prompts.online.claudeText || '';
+    } else if (key === 'custom') {
+      const p = (state.prompts.online.custom || [])[idx] || {};
+      title = p.name || '自定义';
+      content = p.content || '';
+      openModal(title, '<textarea id="prmViewBody" style="width:100%;min-height:200px;font-size:13px;line-height:1.55">'+escapeHtml(content)+'</textarea>',
+        '<button class="btn btn-secondary" onclick="closeModal()">关闭</button>'
+        + '<button class="btn btn-secondary" style="color:#c0392b" onclick="state.prompts.online.custom.splice('+idx+',1);save();closeModal();openPromptApp(\'online\')">删除</button>'
+        + '<button class="btn btn-primary" onclick="(function(){var t=document.getElementById(\'prmViewBody\');state.prompts.online.custom['+idx+'].content=t.value;save();closeModal();showToast(\'已保存\');})()">保存</button>');
+      return;
+    }
+  } else {
+    if (key === 'offline') {
+      title = '线下规则';
+      content = state.prompts.offline.offlineText || '';
+    } else if (key === 'custom') {
+      const p = (state.prompts.offline.custom || [])[idx] || {};
+      title = p.name || '自定义';
+      content = p.content || '';
+      openModal(title, '<textarea id="prmViewBody" style="width:100%;min-height:200px;font-size:13px">'+escapeHtml(content)+'</textarea>',
+        '<button class="btn btn-secondary" onclick="closeModal()">关闭</button>'
+        + '<button class="btn btn-primary" onclick="(function(){state.prompts.offline.custom['+idx+'].content=document.getElementById(\'prmViewBody\').value;save();closeModal();showToast(\'已保存\');})()">保存</button>');
+      return;
+    }
+  }
+  const editable = canEdit;
+  openModal(title,
+    editable
+      ? '<textarea id="prmViewBody" style="width:100%;min-height:220px;font-size:13px;line-height:1.55">'+escapeHtml(content)+'</textarea>'
+      : '<div style="font-size:13px;line-height:1.6;white-space:pre-wrap;max-height:55vh;overflow-y:auto">'+escapeHtml(content)+'</div>',
+    '<button class="btn btn-secondary" onclick="closeModal()">关闭</button>'
+    + (editable ? '<button class="btn btn-primary" onclick="(function(){var t=document.getElementById(\'prmViewBody\').value;ensurePromptsState();if(\''+key+'\'===\'gemini\')state.prompts.online.geminiText=t;else if(\''+key+'\'===\'claude\')state.prompts.online.claudeText=t;else if(\''+key+'\'===\'offline\')state.prompts.offline.offlineText=t;save();closeModal();showToast(\'已保存\');})()">保存</button>' : '')
+  );
+}
+function savePromptTexts(kind) {
+  // 兼容旧按钮；正文改在 viewPromptText 内保存
+  save();
+  showToast('已保存');
+}
+function editPromptCustom(kind, i) {
+  ensurePromptsState();
+  const list = state.prompts[kind].custom || [];
+  const p = i >= 0 ? list[i] : { name: '', content: '', on: true };
+  openModal(i>=0?'编辑提示词':'添加提示词', `
+    <div class="form-group"><label>名称</label><input id="prmName" value="${escapeHtml(p.name||'')}"></div>
+    <div class="form-group"><label>内容</label><textarea id="prmContent" style="min-height:140px">${escapeHtml(p.content||'')}</textarea></div>
+  `, `<button class="btn btn-secondary" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" onclick="(function(){const n=document.getElementById('prmName').value.trim()||'未命名';const c=document.getElementById('prmContent').value.trim();ensurePromptsState();if(${i}>=0){state.prompts['${kind}'].custom[${i}]={name:n,content:c,on:true};}else{state.prompts['${kind}'].custom.push({name:n,content:c,on:true});}save();closeModal();openPromptApp('${kind}');})()">保存</button>`);
+}
+
 function openWorldBook(tab) {
   resetHomeNav('worldbook');
   if (state._openFromHome || tab == null || tab === 'edit') tab = 'all';
@@ -12886,6 +13335,9 @@ function goHome() {
   var hi = document.getElementById('homeInner');
   if (hi) hi.style.pointerEvents = '';
   try { renderHome(); } catch(e) {}
+  setTimeout(function(){
+    try { if (typeof showUpdateNoticeIfNeeded === 'function') showUpdateNoticeIfNeeded(); } catch(e) {}
+  }, 500);
 }
 function openWechatApp() {
   state.inWechat = true;
@@ -12931,16 +13383,82 @@ function openWechatApp() {
   }, 0);
   try { renderChatList(); } catch(e) {}
 }
+function homeLayoutMetrics() {
+  // 细网格：约半个图标步长，拖动对齐更顺；默认排布仍按 4 列
+  var areaW = 360, areaH = 440;
+  try {
+    var el = document.getElementById('homeInner') || document.getElementById('page-home');
+    if (el) {
+      var w = el.clientWidth || el.offsetWidth;
+      var h = el.clientHeight || el.offsetHeight;
+      if (w > 80) areaW = w;
+      if (h > 120) areaH = Math.max(280, h - 100);
+    }
+  } catch(e) {}
+  var padX = 6;
+  // 吸附用细格（约 8 列）
+  var snapCols = 8;
+  var cellW = Math.floor((areaW - padX * 2) / snapCols);
+  if (cellW < 36) cellW = 36;
+  var cellH = Math.round(cellW * 1.05);
+  // 默认排布仍 4 列（每占 2 个细格）
+  var iconCols = 4;
+  var iconCellW = cellW * 2;
+  var iconCellH = Math.round(iconCellW * 1.12);
+  return {
+    areaW: areaW, areaH: areaH,
+    cols: snapCols, cellW: cellW, cellH: cellH, padX: padX,
+    iconCols: iconCols, iconCellW: iconCellW, iconCellH: iconCellH
+  };
+}
+/** 把任意坐标吸附到最近细网格点 */
+function homeSnapToGrid(x, y) {
+  const m = homeLayoutMetrics();
+  const col = Math.max(0, Math.min(m.cols - 1, Math.round((x - m.padX) / m.cellW)));
+  const row = Math.max(0, Math.round(y / m.cellH));
+  return {
+    x: m.padX + col * m.cellW,
+    y: row * m.cellH,
+    col: col,
+    row: row
+  };
+}
 function homeDefaultLayout() {
-  const apps = ['wechat','memory','offline','bookstore','tomato','icity','forum','countdown','gal','sk','sms','charlib','melo','divination','worldbook','world'];
+  // 原始 UI：整组 App 在 4 列网格上水平垂直居中
+  const apps = ['wechat','memory','offline','bookstore','tomato','icity','forum','countdown','gal','sk','sms','charlib','melo','divination','worldbook','world','pickup','prompts'];
+  const m = homeLayoutMetrics();
+  const icW = m.iconCellW || m.cellW * 2;
+  const icH = m.iconCellH || Math.round(icW * 1.12);
+  const cols = m.iconCols || 4;
+  const rows = Math.ceil(apps.length / cols);
+  const gridH = rows * icH;
+  const oy = Math.max(0, Math.round((m.areaH - gridH) / 2 / m.cellH) * m.cellH);
   const lay = {};
   apps.forEach(function(id, i) {
-    const col = i % 4;
-    const row = Math.floor(i / 4);
-    lay[id] = { x: 12 + col * 82, y: 12 + row * 96, page: 0 };
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    lay[id] = { x: m.padX + col * icW, y: oy + row * icH, page: 0 };
   });
-  lay.polaroid = { x: 200, y: 280, page: 0 };
   return lay;
+}
+/** 对齐：仅把当前页每个 App 吸附到网格，不重排、不还原默认 */
+function homeAlignApps() {
+  ensureHomeState();
+  if (!state.home.layout) state.home.layout = homeDefaultLayout();
+  const page = state.home.page || 0;
+  const known = Object.keys(state.home.layout || {});
+  known.forEach(function(id) {
+    const p = state.home.layout[id];
+    if (!p || typeof p !== 'object') return;
+    if ((p.page || 0) !== page) return;
+    // polaroid 等小组件 key 也可吸附，但跳过纯数字 widget
+    const snap = homeSnapToGrid(p.x || 0, p.y || 0);
+    p.x = snap.x;
+    p.y = snap.y;
+  });
+  save();
+  try { renderHome(); } catch(e) {}
+  showToast('已吸附到网格');
 }
 function homeAllApps() {
   return [
@@ -12959,6 +13477,7 @@ function homeAllApps() {
     { id:'divination', name:'占卜', open:'openDivination()' },
     { id:'worldbook', name:'世界书', open:'openWorldBook()' },
     { id:'world', name:'世界', open:'openWorldApp()' },
+    { id:'prompts', name:'提示词', open:'openPromptApp()' },
     { id:'charlib', name:'角色库', open:'openCharLib()' }, { id:'pickup', name:'捡手机', open:'openPickupPhone()' },
     { id:'settings', name:'设置', open:'openHomeSettingsPage()' },
     { id:'beauty', name:'美化', open:'openHomeBeauty()' },
@@ -13161,13 +13680,16 @@ function renderHome() {
     { id:'melo', name:'Melo', open:'openMelo()' },
     { id:'divination', name:'占卜', open:'openDivination()' },
     { id:'worldbook', name:'世界书', open:'openWorldBook()' },
+    { id:'prompts', name:'提示词', open:'openPromptApp()' },
     { id:'charlib', name:'角色库', open:'openCharLib()' }, { id:'pickup', name:'捡手机', open:'openPickupPhone()' }
   ];
   const icons = state.home.appIcons || {};
   const polaroid = state.home.widgets.polaroid || {};
 
   const radius = state.home.iconRadius != null ? state.home.iconRadius : 16;
+  const appScale = state.home.appScale != null ? state.home.appScale : 1;
   document.documentElement.style.setProperty('--home-icon-radius', radius + 'px');
+  document.documentElement.style.setProperty('--home-app-scale', String(appScale));
   const appHtml = apps.map(function(a) {
     const pos = lay[a.id] || { x: 0, y: 0 };
     const custom = icons[a.id];
@@ -13304,9 +13826,40 @@ function editHomePolaroid() {
       <button class="btn btn-primary" onclick="state.home.widgets.polaroid={cap:document.getElementById('polCap').value,text:document.getElementById('polText').value,img:(state.home.widgets.polaroid&&state.home.widgets.polaroid.img)||''};save();closeModal();renderHome()">保存</button>`);
 }
 
-function openChangelog() {
-  const ver = (typeof EENOK_BUILD !== 'undefined') ? EENOK_BUILD : '';
-  const logs = [
+function getChangelogData() {
+  return [
+    { v: '2026-08-19M', items: [
+      '进入主界面弹出「已更新」提醒（含本版要点，点知道了后本版不再弹）',
+      '短信：修复己方气泡竖排单字；主屏细网格吸附'
+    ]},
+    { v: '2026-08-19L', items: [
+      '短信：修复己方气泡被挤成竖排单字；fit-content 正常横排',
+      '主屏细网格（8 列吸附，默认仍 4 列居中排布）'
+    ]},
+    { v: '2026-08-19k', items: [
+      '翻译：改用 原文|||译文；剥离残留 [[tr]]；展示前再清洗',
+      '短信翻译样式与 IG 一致（气泡下灰字）',
+      '微信语言默认跟随角色；美化自定义图标不再叠默认图标',
+      'Instagram 外语动态可点「翻译」看中文'
+    ]},
+    { v: '2026-08-19j', items: [
+      '主屏网格吸附：拖动松手对齐格子；「对齐」只吸格不重排',
+      'App 大小对自定义图标生效（内联尺寸随 scale）',
+      '外语角色：[[tr]]翻译挂气泡下方，禁止「译：」单独成条；角色可设语言',
+      '提示词：去掉说明文案；进 App 先到列表主界面'
+    ]},
+    { v: '2026-08-19i', items: [
+      '主屏默认居中；编辑完成/对齐按钮：同行拉成直线并水平居中',
+      '美化侧栏「壁纸与图标」增加 App 大小滑杆与布局按钮',
+      '提示词：正文隐藏点开查看；iOS 开关；悬浮玻璃 dock 切换线上/线下'
+    ]},
+    { v: '2026-08-19h', items: [
+      '主屏：App 大小可调；默认布局居中；布局后可「对齐并居中」',
+      'Instagram 探索详情修复黑屏（用 img 展示占位图+文案）',
+      '角色编辑增加国籍；国外角色母语+译',
+      '提示词 App：线上/线下可开关基础与自定义；生成前读取',
+      '线上内置规则精简；记忆读写规则写入系统提示'
+    ]},
     { v: '2026-08-19g', items: [
       '锁屏壁纸：修复 IDB 写入错误（idbPutKv→idbSet），大退重进可恢复',
       '线下状态栏：解析截断 JSON，不再把 {"thought":...} 原文显示出来',
@@ -13473,6 +14026,10 @@ function openChangelog() {
       '线上聊天内置规则、记忆、世界书、心声思维链'
     ]}
   ];
+}
+function openChangelog() {
+  const ver = (typeof EENOK_BUILD !== 'undefined') ? EENOK_BUILD : '';
+  const logs = (typeof getChangelogData === 'function') ? getChangelogData() : [];
   const html = logs.map(block => `
     <div style="margin-bottom:18px">
       <div style="font-weight:700;font-size:15px;margin-bottom:8px;color:var(--text)">v ${escapeHtml(block.v)}</div>
@@ -13529,6 +14086,7 @@ function homeAppIconSvg(id) {
     melo: '<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>',
     divination: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>',
     worldbook: '<svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>',
+    prompts: '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h6"/></svg>',
     charlib: '<svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
     settings: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>',
     beauty: '<svg viewBox="0 0 24 24"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="19" cy="13" r="2"/><circle cx="6" cy="12" r="3"/><path d="M12 22v-6"/><path d="M8 16h8"/></svg>',
@@ -13783,6 +14341,15 @@ function openHomeBeauty() {
       <div style="font-size:13px;color:var(--sub);margin-bottom:8px">图标圆角 ${r}px</div>
       <input type="range" id="iconRadius" min="0" max="28" value="${r}" style="width:100%;margin-bottom:16px"
         oninput="state.home.iconRadius=+this.value;document.documentElement.style.setProperty('--home-icon-radius',this.value+'px');this.previousElementSibling.textContent='图标圆角 '+this.value+'px';save()">
+
+      <div style="font-size:13px;color:var(--sub);margin-bottom:8px">App 大小 ${Math.round((state.home.appScale!=null?state.home.appScale:1)*100)}%</div>
+      <input type="range" id="appScale" min="70" max="140" value="${Math.round((state.home.appScale!=null?state.home.appScale:1)*100)}" style="width:100%;margin-bottom:12px"
+        oninput="state.home.appScale=(+this.value)/100;document.documentElement.style.setProperty('--home-app-scale',String(state.home.appScale));this.previousElementSibling.textContent='App 大小 '+this.value+'%';save()">
+
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        <button type="button" class="btn btn-secondary" style="flex:1;font-size:12px" onclick="state.home.layout=homeDefaultLayout();save();renderHome();showToast('已居中默认布局')">默认居中布局</button>
+        <button type="button" class="btn btn-secondary" style="flex:1;font-size:12px" onclick="homeAlignApps()">对齐并居中</button>
+      </div>
 
       <div style="font-size:13px;color:var(--sub);margin:8px 0">App 图标（逐个更换，支持透明底）</div>
       <div style="border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:16px">${rows}</div>
@@ -14552,7 +15119,7 @@ async function offlineGenerate(charId, rerollIdx) {
   const st = sess.settings || {};
   showToast('生成中…');
   try {
-    let system = '你在写线下见面的文游段落。像轻小说/Ins 随笔，黑白灰情绪，克制、有画面。';
+    let system = '你在写线下见面的文游段落。像轻小说/Ins 随笔，黑白灰情绪，克制、有画面。\n' + (typeof collectActivePrompts==='function'?collectActivePrompts('offline'):'') + '\n' + (typeof getMemoryRulesText==='function'?getMemoryRulesText():'');
     system += '\\n角色名：' + (c.nick || '') + '。人设：' + (c.persona || '') + '。';
     system += '\\nuser 人设：' + ((state.user && state.user.persona) || '') + '。性别注意正确。';
     system += '\\n叙述：角色用' + (st.charPerson || '第三人称') + '；对 user 用' + (st.userPerson || '第二人称') + '。';
@@ -15437,8 +16004,48 @@ function igPostCard(p, i) {
       <span onclick="igSave(${i})"><svg width="24" height="24" viewBox="0 0 24 24" fill="${p.saved?'#ed4956':'none'}" stroke="${p.saved?'#ed4956':'#111'}" stroke-width="1.7"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></span>
     </div>
     <div style="padding:0 12px;font-size:14px;font-weight:600">${likes} 次赞</div>
-    <div style="padding:4px 12px;font-size:14px"><b>${escapeHtml(p.nick||'')}</b> ${escapeHtml(p.caption||'')}</div>
+    <div style="padding:4px 12px;font-size:14px"><b>${escapeHtml(p.nick||'')}</b> <span id="igCapBody_${i}">${escapeHtml(p.caption||'')}</span></div>
+    ${(() => {
+      const cap = String(p.caption || '');
+      const needTr = (typeof looksForeignChat === 'function') ? looksForeignChat(cap) : /[\uac00-\ud7af\u3040-\u30ff\u0400-\u04ff]/.test(cap);
+      if (!needTr) return '';
+      if (p.captionZh) {
+        return '<div style="padding:2px 12px 6px;font-size:12px;color:#8e8e93;line-height:1.45" id="igCapZh_'+i+'">'+escapeHtml(p.captionZh)+'</div>';
+      }
+      return '<div style="padding:2px 12px 6px"><button type="button" onclick="igTranslatePost('+i+')" style="border:none;background:transparent;color:#0095f6;font-size:12px;padding:0;cursor:pointer">翻译</button><span id="igCapZh_'+i+'" style="display:block;font-size:12px;color:#8e8e93;margin-top:4px;line-height:1.45"></span></div>';
+    })()}
   </div>`;
+}
+async function igTranslatePost(i) {
+  const f = ensureIG();
+  const p = (f.posts || [])[i];
+  if (!p || !p.caption) return;
+  if (p.captionZh) {
+    const el = document.getElementById('igCapZh_'+i);
+    if (el) el.textContent = p.captionZh;
+    return;
+  }
+  const btnHost = document.getElementById('igCapZh_'+i);
+  if (btnHost) btnHost.textContent = '翻译中…';
+  try {
+    let tr = '';
+    if (typeof autoTranslateText === 'function') {
+      tr = await autoTranslateText(p.caption, 'zh');
+    }
+    if (!tr) {
+      const { text } = await apiChat([
+        { role: 'user', content: '把下面 Instagram 配文译成简体中文，只输出译文：\n' + p.caption }
+      ], { max_tokens: 200, temperature: 0.2 });
+      tr = String(text || '').trim();
+    }
+    if (tr) {
+      p.captionZh = tr;
+      save();
+      if (btnHost) btnHost.textContent = tr;
+    } else if (btnHost) btnHost.textContent = '翻译失败';
+  } catch(e) {
+    if (btnHost) btnHost.textContent = '翻译失败';
+  }
 }
 function igCompose() {
   openModal('发布动态', `
@@ -15963,7 +16570,7 @@ function openIgDm(id) {
     const me = m.from==='user';
     const body = (m.type==='ig_card' || m.card)
       ? igCardHtml(m.card, m.content)
-      : `<div onclick="igDmBubbleMenu('${id}',${i})" style="max-width:70%;padding:10px 14px;border-radius:20px;font-size:15px;line-height:1.4;background:${me?'#8b5cf6':'#efefef'};color:${me?'#fff':'#111'};cursor:pointer">${escapeHtml(m.content||'')}</div>`;
+      : `<div style="max-width:70%;display:flex;flex-direction:column;align-items:${me?'flex-end':'flex-start'}"><div onclick="igDmBubbleMenu('${id}',${i})" style="padding:10px 14px;border-radius:20px;font-size:15px;line-height:1.4;background:${me?'#8b5cf6':'#efefef'};color:${me?'#fff':'#111'};cursor:pointer">${escapeHtml(m.content||'')}</div>${m.translation?('<div style="font-size:11px;color:#8e8e93;margin-top:4px;padding:0 6px;line-height:1.4">'+escapeHtml(m.translation)+'</div>'):''}</div>`;
     return `<div style="display:flex;justify-content:${me?'flex-end':'flex-start'};padding:4px 12px;align-items:flex-end;gap:8px">
       ${!me?`<div style="width:28px;height:28px;border-radius:50%;background:${t.avatar?('url('+t.avatar+') center/cover'):'#ddd'};flex-shrink:0"></div>`:''}
       ${body}
@@ -16031,7 +16638,9 @@ function appendIgDmBubble(id, m, idx) {
   const row = document.createElement('div');
   row.style.cssText = 'display:flex;justify-content:'+(me?'flex-end':'flex-start')+';padding:4px 12px;align-items:flex-end;gap:8px';
   row.innerHTML = (!me ? '<div style="width:28px;height:28px;border-radius:50%;background:'+(t.avatar?('url('+t.avatar+') center/cover'):'#ddd')+';flex-shrink:0"></div>' : '') +
-    '<div onclick="igDmBubbleMenu(\''+id+'\','+idx+')" style="max-width:70%;padding:10px 14px;border-radius:20px;font-size:15px;line-height:1.4;background:'+(me?'#8b5cf6':'#efefef')+';color:'+(me?'#fff':'#111')+';cursor:pointer">'+(escapeHtml(m.content||''))+'</div>';
+    '<div style="max-width:70%;display:flex;flex-direction:column;align-items:'+(me?'flex-end':'flex-start')+'"><div onclick="igDmBubbleMenu(\''+id+'\','+idx+')" style="padding:10px 14px;border-radius:20px;font-size:15px;line-height:1.4;background:'+(me?'#8b5cf6':'#efefef')+';color:'+(me?'#fff':'#111')+';cursor:pointer">'+(escapeHtml(m.content||''))+'</div>'
+    +(m.translation?'<div style="font-size:11px;color:#8e8e93;margin-top:4px;padding:0 6px">'+escapeHtml(m.translation)+'</div>':'')
+    +'</div>';
   area.appendChild(row);
   area.scrollTop = area.scrollHeight;
   return true;
@@ -16071,18 +16680,26 @@ async function igDmReply(id, userText) {
       content: m.content || ''
     }));
     if (!hist.length) hist.push({ role:'user', content: userText || '你好' });
-    const system = getOnlineChatRules('你在 Instagram 私信里回复。你是'+(c.nick||t.name||'')+'。人设：'+(c.persona||'')+'。性别：'+(c.gender||'')+'。必须一句一句短句，用换行拆开，禁止一段话。') + (ctx ? '\n【微信互通记忆】\n'+ctx : '');
+    const system = getOnlineChatRules('你在 Instagram 私信里回复。你是'+(c.nick||t.name||'')+'。人设：'+(c.persona||'')+'。性别：'+(c.gender||'')+'。必须一句一句短句，用换行拆开，禁止一段话。')
+      + (c && typeof nationLangHint==='function' ? nationLangHint(c) : '')
+      + (ctx ? '\n【微信互通记忆】\n'+ctx : '');
+    // 若有 [[tr]] 结果，解析后写入气泡 translation（与微信一致）
     const { text } = await apiChat([
       { role:'system', content: system },
       ...hist
     ], { max_tokens: 180, temperature: 0.85 });
     hideTypingBubble();
-    const parts = String(text||'').split(/\n+/).map(s=>s.trim()).filter(Boolean)
-      .flatMap(s => s.split(/(?<=[？?！!])\s*/)).map(s=>s.trim()).filter(s=>s.length>0).slice(0,6);
+    let parts = String(text||'').split(/\n+/).map(s=>s.trim()).filter(Boolean)
+      .flatMap(s => s.split(/(?<=[？?！!])\s*/)).map(s=>s.trim()).filter(s=>s.length>0).slice(0,10);
+    const extracted = (typeof extractInlineTranslations==='function') ? extractInlineTranslations(parts) : { texts: parts, translations: [] };
+    parts = (extracted.texts || []).slice(0, 6);
+    const trs = extracted.translations || [];
     for (let i=0;i<parts.length;i++) {
       await new Promise(r => setTimeout(r, i===0?200:380+Math.random()*320));
-      const p = parts[i].replace(/[。]+$/g,'').replace(/[“”"]/g,'');
+      const p = parts[i].replace(/[。]+$/g,'').replace(/[“”"]/g,'').replace(/^译[:：].*/,'').trim();
+      if (!p || /^译[:：]/.test(p)) continue;
       const msg = { from:'char', content:p, ts:Date.now() };
+      if (trs[i]) msg.translation = trs[i];
       t.messages.push(msg);
       save();
       if (!appendIgDmBubble(id, msg, t.messages.length-1)) openIgDm(id);
@@ -16223,38 +16840,52 @@ async function igSearchGen() {
 }
 function igViewExplore(i) {
   const list = ensureIG().explore || [];
-  if (!list.length) return;
-  state._igExploreIdx = i;
+  if (!list.length) { showToast('暂无探索内容'); return; }
+  state._igExploreIdx = Math.max(0, Math.min(i, list.length - 1));
   function renderOne(idx) {
     const v = list[idx];
-    if (!v) return '';
-    const bg = v.img
-      ? ('url('+v.img+') center/cover')
-      : 'linear-gradient(180deg,#1a1a1c,#0d0d0f)';
-    return '<div style="height:100%;display:flex;flex-direction:column;background:#000;color:#fff">'
-      + '<div style="flex:1;background:'+bg+';position:relative">'
-      + (!v.img ? ('<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center"><div style="font-size:16px;line-height:1.6;opacity:.9">'+escapeHtml(v.caption||v.text||'画面')+'</div></div>') : '')
+    if (!v) return '<div style="padding:40px;color:#fff;text-align:center">无内容</div>';
+    // 若无图则现生成占位图，避免纯黑屏
+    let src = v.img || '';
+    if (!src && typeof igMakePlaceholderImg === 'function') {
+      src = igMakePlaceholderImg(v.imgDesc || v.caption || v.text || 'photo', idx);
+      try { v.img = src; } catch(e) {}
+    }
+    const caption = (v.text || v.caption || v.imgDesc || '').toString();
+    const nick = (v.nick || 'explore').toString();
+    const tag = (v.tag || '').toString();
+    // 用 <img> 而不是 background，兼容 data:image/svg+xml
+    return '<div style="height:100%;display:flex;flex-direction:column;background:#111;color:#fff;box-sizing:border-box">'
+      + '<div style="flex:1;min-height:0;position:relative;background:#1a1a1c;display:flex;align-items:center;justify-content:center;overflow:hidden">'
+      + (src
+        ? '<img src="'+src+'" alt="" style="width:100%;height:100%;object-fit:contain;display:block" onerror="this.style.display=\'none\';this.parentNode.insertAdjacentHTML(\'beforeend\',\'<div style=padding:24px;text-align:center;color:#ccc>\'+this.alt+\'</div>\')">'
+        : '<div style="padding:28px 20px;text-align:center;font-size:15px;line-height:1.6;color:#ddd">'+escapeHtml(caption || '画面')+'</div>')
       + '</div>'
-      + '<div style="padding:16px;background:rgba(0,0,0,.85)">'
-      + (v.nick ? ('<div style="font-size:13px;font-weight:600;margin-bottom:4px">'+escapeHtml(v.nick)+'</div>') : '')
-      + '<div style="font-size:14px;margin-bottom:6px">'+escapeHtml(v.text||v.caption||'')+'</div>'
-      + '<div style="font-size:12px;opacity:.6">#'+escapeHtml(v.tag||'')+' · 上下滑切换</div></div></div>';
+      + '<div style="flex-shrink:0;padding:14px 16px 20px;background:rgba(0,0,0,.92)">'
+      + '<div style="font-size:13px;font-weight:600;margin-bottom:6px">'+escapeHtml(nick)+'</div>'
+      + '<div style="font-size:14px;line-height:1.5;margin-bottom:6px;white-space:pre-wrap">'+escapeHtml(caption)+'</div>'
+      + (tag ? ('<div style="font-size:12px;opacity:.55">#'+escapeHtml(tag)+'</div>') : '')
+      + '<div style="font-size:11px;opacity:.4;margin-top:8px">上下滑切换 · '+(idx+1)+'/'+list.length+'</div>'
+      + '</div></div>';
   }
-  state._homeRoot = 'ig'; state._homeDepth = 1;
+  state._homeRoot = 'forum'; state._homeDepth = 1;
   state._subBackFn = function(){ openForumIG('search'); };
-  openSubPage('探索', '<div style="padding:8px 12px;display:flex;justify-content:flex-end"><button type="button" onclick="if(confirm(\'清空全部探索内容？\')){ensureIG().explore=[];save();openForumIG(\'search\')}" style="border:none;background:transparent;color:#e74c3c;font-size:12px">清空</button></div><div id="igExploreSwipe" style="height:calc(100% - 40px)">'+renderOne(i)+'</div>', '', { replace: false });
+  openSubPage('探索', '<div style="display:flex;flex-direction:column;height:100%;background:#000">'
+    + '<div style="padding:6px 12px;display:flex;justify-content:flex-end;flex-shrink:0">'
+    + '<button type="button" onclick="if(confirm(\'清空全部探索内容？\')){ensureIG().explore=[];save();openForumIG(\'search\')}" style="border:none;background:transparent;color:#e74c3c;font-size:12px">清空</button></div>'
+    + '<div id="igExploreSwipe" style="flex:1;min-height:0;overflow:hidden">'+renderOne(state._igExploreIdx)+'</div></div>', '', { replace: false });
   setTimeout(function() {
     var el = document.getElementById('igExploreSwipe');
     if (!el) return;
     var sy = 0;
-    el.addEventListener('touchstart', function(e){ sy = e.touches[0].clientY; }, { passive: true });
-    el.addEventListener('touchend', function(e){
+    el.ontouchstart = function(e){ sy = e.touches[0].clientY; };
+    el.ontouchend = function(e){
       var dy = e.changedTouches[0].clientY - sy;
       if (Math.abs(dy) < 40) return;
       if (dy < 0 && state._igExploreIdx < list.length-1) state._igExploreIdx++;
       else if (dy > 0 && state._igExploreIdx > 0) state._igExploreIdx--;
       el.innerHTML = renderOne(state._igExploreIdx);
-    }, { passive: true });
+    };
   }, 50);
 }
 function igFeedFilter(ev) {
@@ -18767,7 +19398,19 @@ function openSmsThread(id) {
     : 'linear-gradient(180deg, rgba(200,200,205,.55), rgba(180,180,185,.4)), radial-gradient(ellipse at center, rgba(255,255,255,.5) 0%, rgba(160,160,168,.35) 100%)';
   const msgs = (t.messages||[]).map((m,i) => {
     const me = m.from === 'user';
-    return `<div class="sms-bubble-row ${me?'me':'other'}"><div class="sms-bubble ${me?'me':'other'}" onclick="smsBubbleMenu('${id}',${i})">${escapeHtml(m.content||'')}</div></div>`;
+    let body = (typeof cleanMsgContentForDisplay==='function') ? cleanMsgContentForDisplay(m.content) : (m.content||'');
+    let tr = m.translation || '';
+    if (!tr && /\[\[\s*\/?\s*tr\s*\]\]|\|\|\|/.test(String(m.content||''))) {
+      try {
+        const ex = extractInlineTranslations([m.content]);
+        if (ex.texts && ex.texts[0]) body = ex.texts[0];
+        if (ex.translations && ex.translations[0]) tr = ex.translations[0];
+      } catch(e) {}
+    }
+    return '<div class="sms-bubble-row '+(me?'me':'other')+'"><div class="sms-bubble-wrap">'
+      + '<div class="sms-bubble '+(me?'me':'other')+'" onclick="smsBubbleMenu(\''+id+'\','+i+')">'+escapeHtml(body)+'</div>'
+      + (tr ? ('<div class="sms-tr">'+escapeHtml(tr)+'</div>') : '')
+      + '</div></div>';
   }).join('');
   openSubPage(' ', `
     <div class="sms-im-wrap" style="background:${t.wallpaper?wp:wp};background-blend-mode:normal">
@@ -18845,7 +19488,12 @@ function appendSmsBubble(id, m, idx) {
   const me = m.from === 'user';
   const row = document.createElement('div');
   row.className = 'sms-bubble-row ' + (me ? 'me' : 'other');
-  row.innerHTML = '<div class="sms-bubble '+(me?'me':'other')+'" onclick="smsBubbleMenu(\''+id+'\','+idx+')">'+(escapeHtml(m.content||''))+'</div>';
+  var body = (typeof cleanMsgContentForDisplay==='function') ? cleanMsgContentForDisplay(m.content) : (m.content||'');
+  var tr = m.translation || '';
+  row.innerHTML = '<div class="sms-bubble-wrap"><div class="sms-bubble '+(me?'me':'other')+'" onclick="smsBubbleMenu(\''+id+'\','+idx+')">'
+    + escapeHtml(body) + '</div>'
+    + (tr ? ('<div class="sms-tr">'+escapeHtml(tr)+'</div>') : '')
+    + '</div>';
   area.appendChild(row);
   area.scrollTop = area.scrollHeight;
   return true;
@@ -18885,18 +19533,25 @@ async function generateSmsReply(id) {
       content: m.content || ''
     }));
     if (!hist.length) hist.push({ role:'user', content:'你好' });
-    const system = getOnlineChatRules('你在手机【短信/iMessage】里回复。你是'+(c?c.nick:t.name)+'。人设：'+(c&&c.persona||'')+'。性别：'+(c&&c.gender||'')+'。'+(t.anon?'对方可能匿名。':'')) + (ctx ? '\n【微信互通记忆】\n'+ctx : '');
+    const system = getOnlineChatRules('你在手机【短信/iMessage】里回复。你是'+(c?c.nick:t.name)+'。人设：'+(c&&c.persona||'')+'。性别：'+(c&&c.gender||'')+'。'+(t.anon?'对方可能匿名。':''))
+      + (c && typeof nationLangHint==='function' ? nationLangHint(c) : '')
+      + (ctx ? '\n【微信互通记忆】\n'+ctx : '');
     const { text: reply } = await apiChat([
       { role:'system', content: system },
       ...hist
     ], { max_tokens: 180, temperature: 0.85 });
     hideTypingBubble();
     if (reply) {
-      const parts = String(reply).split(/\n+/).map(s=>s.trim()).filter(Boolean).slice(0,5);
+      let parts = String(reply).split(/\n+/).map(s=>s.trim()).filter(Boolean).slice(0,10);
+      const extracted = (typeof extractInlineTranslations==='function') ? extractInlineTranslations(parts) : { texts: parts, translations: [] };
+      parts = (extracted.texts || []).slice(0, 5);
+      const trs = extracted.translations || [];
       for (let i=0;i<parts.length;i++) {
         await new Promise(r => setTimeout(r, i===0?200:400+Math.random()*300));
-        const p = parts[i].replace(/[。]+$/g,'').replace(/[“”"]/g,'');
+        const p = scrubTrMarkers(parts[i].replace(/[。]+$/g,'').replace(/[“”"]/g,''));
+        if (!p) continue;
         const msg = { from:'char', content:p, ts:Date.now() };
+        if (trs[i]) msg.translation = scrubTrMarkers(trs[i]);
         t.messages.push(msg);
         save();
         if (!appendSmsBubble(id, msg, t.messages.length-1)) openSmsThread(id);
@@ -21678,6 +22333,10 @@ function showLockScreen() {
             dots();
             if (raise) raise.style.display = 'flex';
             if (pinPanel) pinPanel.style.display = 'none';
+            // 解锁进主界面后弹出更新提醒
+            setTimeout(function(){
+              try { if (typeof showUpdateNoticeIfNeeded === 'function') showUpdateNoticeIfNeeded(); } catch(e) {}
+            }, 600);
           } else {
             if (err) err.textContent = '密码错误';
             buf = '';
@@ -22170,6 +22829,9 @@ async function worldAutoScheduleTick() {
 (async function bootEenook() {
   try { await loadFromIDB(); } catch (e) { console.warn('boot idb', e); }
   try {
+    if (typeof checkAppUpdate === 'function') checkAppUpdate();
+  } catch (e) {}
+  try {
     ensureHomeState();
     var gs = state.home.glassStrength;
     if (gs == null) {
@@ -22190,6 +22852,16 @@ async function worldAutoScheduleTick() {
   try { if (typeof renderHome === 'function') renderHome(); } catch (e) {}
   try {
     setTimeout(function(){ try { worldAutoScheduleTick(); } catch(e) {} }, 2500);
+  } catch(e) {}
+  // 无锁屏时直接进主界面也弹更新
+  try {
+    setTimeout(function(){
+      try {
+        if (state.lock && state.lock.enabled === false && typeof showUpdateNoticeIfNeeded === 'function') {
+          showUpdateNoticeIfNeeded();
+        }
+      } catch(e) {}
+    }, 900);
   } catch(e) {}
 })();
 
@@ -22299,9 +22971,14 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
         : 'transparent';
       var iconBlur = gStr > 0 ? ('blur(' + (gStr * 0.2).toFixed(1) + 'px)') : 'none';
       var iconShadow = gStr > 0 ? '0 2px 10px rgba(100,160,180,.12)' : 'none';
-      return '<div class="home-app" data-key="'+a.id+'" data-open="'+a.open+'" style="left:'+x+'px;top:'+y+'px;width:72px">'
-        + '<div class="ha-icon" style="width:56px;height:56px;margin:0 auto;border-radius:'+radius+'px;background:'+iconBg+';backdrop-filter:'+iconBlur+';-webkit-backdrop-filter:'+iconBlur+';box-shadow:'+iconShadow+';display:flex;align-items:center;justify-content:center;overflow:hidden">'+iconInner+'</div>'
-        + '<div class="ha-name" style="text-align:center;font-size:11px;margin-top:4px;color:#333">'+a.name+'</div>'
+      var sc = (state.home.appScale != null) ? +state.home.appScale : 1;
+      if (!(sc > 0.5 && sc < 2)) sc = 1;
+      var appW = Math.round(72 * sc);
+      var iconS = Math.round(56 * sc);
+      var nameFs = Math.max(10, Math.round(11 * sc));
+      return '<div class="home-app" data-key="'+a.id+'" data-open="'+a.open+'" style="left:'+x+'px;top:'+y+'px;width:'+appW+'px">'
+        + '<div class="ha-icon" style="width:'+iconS+'px;height:'+iconS+'px;margin:0 auto;border-radius:'+radius+'px;background:'+iconBg+';backdrop-filter:'+iconBlur+';-webkit-backdrop-filter:'+iconBlur+';box-shadow:'+iconShadow+';display:flex;align-items:center;justify-content:center;overflow:hidden">'+iconInner+'</div>'
+        + '<div class="ha-name" style="text-align:center;font-size:'+nameFs+'px;margin-top:4px;color:#333;max-width:'+appW+'px">'+a.name+'</div>'
         + (editMode ? '<span class="home-app-del" data-del="'+a.id+'" style="position:absolute;top:-4px;right:4px;width:20px;height:20px;border-radius:50%;background:#ff3b30;color:#fff;font-size:14px;line-height:20px;text-align:center;z-index:3">−</span>' : '')
         + '</div>';
     }).join('');
@@ -22392,7 +23069,7 @@ if (t === 'badge3d') {
       + widgetHtml + appHtml + '' /*sq removed*/
       + '</div></div>'
       + '<div style="position:absolute;left:0;right:0;bottom:96px;text-align:center;z-index:5;pointer-events:none">'+dots+'</div>'
-      + (editMode ? '<div style="position:absolute;top:10px;left:0;right:0;text-align:center;z-index:20;display:flex;justify-content:center;gap:8px;flex-wrap:wrap;padding:0 8px"><button type="button" id="homeEditDone" style="border:none;background:rgba(0,0,0,.55);color:#fff;border-radius:16px;padding:8px 16px;font-size:13px">完成</button> <button type="button" id="homeEditAdd" style="border:none;background:rgba(255,255,255,.9);border-radius:16px;padding:8px 12px;font-size:13px">＋App</button> <button type="button" id="homeEditAddPage" style="border:none;background:rgba(255,255,255,.9);border-radius:16px;padding:8px 12px;font-size:13px">＋界面</button> <button type="button" id="homeEditDelPage" style="border:none;background:rgba(255,255,255,.85);border-radius:16px;padding:8px 12px;font-size:13px;color:#c0392b">删本页</button></div>' : '')
+      + (editMode ? '<div style="position:absolute;top:10px;left:0;right:0;text-align:center;z-index:20;display:flex;justify-content:center;gap:6px;flex-wrap:wrap;padding:0 6px"><button type="button" id="homeEditDone" style="border:none;background:rgba(0,0,0,.55);color:#fff;border-radius:16px;padding:8px 14px;font-size:13px">完成</button> <button type="button" id="homeEditAlign" style="border:none;background:rgba(255,255,255,.95);border-radius:16px;padding:8px 12px;font-size:13px">对齐</button> <button type="button" id="homeEditAdd" style="border:none;background:rgba(255,255,255,.9);border-radius:16px;padding:8px 12px;font-size:13px">＋App</button> <button type="button" id="homeEditAddPage" style="border:none;background:rgba(255,255,255,.9);border-radius:16px;padding:8px 12px;font-size:13px">＋界面</button> <button type="button" id="homeEditDelPage" style="border:none;background:rgba(255,255,255,.85);border-radius:16px;padding:8px 12px;font-size:13px;color:#c0392b">删本页</button></div>' : '')
       + '<div class="home-bottom-dock" id="homeDock" style="position:absolute;z-index:12;display:flex;justify-content:space-evenly;align-items:center;padding:10px 12px;border-radius:28px;background:'+dockBarBg+';backdrop-filter:'+dockBarBlur+';-webkit-backdrop-filter:'+dockBarBlur+';border:'+dockBarBorder+';box-shadow:'+dockBarShadow+';min-height:64px;min-width:180px;touch-action:none;will-change:left,top;'
       + (function(){
           var dp = state.home.layout && state.home.layout.dock;
@@ -22466,6 +23143,13 @@ if (t === 'badge3d') {
             var newPage = page;
             if (nx > stageW - 56 && page < pages - 1) newPage = page + 1;
             else if (nx < 8 && page > 0) newPage = page - 1;
+            // 松手吸附到 4 列网格
+            if (newPage === page && typeof homeSnapToGrid === 'function') {
+              var sn = homeSnapToGrid(nx, ny);
+              nx = sn.x; ny = sn.y;
+              el.style.left = nx + 'px';
+              el.style.top = ny + 'px';
+            }
             state.home.layout[key].x = (newPage !== page) ? 12 : nx;
             state.home.layout[key].y = ny;
             state.home.layout[key].page = newPage;
@@ -22675,12 +23359,16 @@ if (t === 'badge3d') {
 
     var done = document.getElementById('homeEditDone');
     if (done) done.onclick = function(){
+      // 完成时仅吸附到网格（不重排）
+      try { homeAlignApps(); } catch(e) {}
       state.home.editMode = false;
       state._suppressLaunch = false;
       state._clickGuardUntil = 0;
       try { save(); } catch(e) {}
       renderHome();
     };
+    var alignBtn = document.getElementById('homeEditAlign');
+    if (alignBtn) alignBtn.onclick = function(){ homeAlignApps(); };
     var add = document.getElementById('homeEditAdd');
     if (add) add.onclick = function(){ openHomeAddApp(); };
     var dadd = document.getElementById('homeDockAdd');
@@ -22895,11 +23583,19 @@ if (t === 'badge3d') {
         + '<button type="button" class="btn btn-secondary" id="beautyWpReset" style="width:100%;margin-bottom:16px;font-size:13px">还原壁纸</button>'
         + '<div style="font-weight:600;margin-bottom:8px">图标圆角</div>'
         + '<input type="range" id="iconRadiusRange" min="4" max="28" value="'+radius+'" style="width:100%;margin-bottom:16px">'
+        + '<div style="font-weight:600;margin-bottom:8px">App 大小 <span id="appScaleLab">'+Math.round((state.home.appScale!=null?state.home.appScale:1)*100)+'%</span></div>'
+        + '<input type="range" id="appScaleRange" min="70" max="140" value="'+Math.round((state.home.appScale!=null?state.home.appScale:1)*100)+'" style="width:100%;margin-bottom:12px">'
+        + '<div style="display:flex;gap:8px;margin-bottom:16px">'
+        + '<button type="button" class="btn btn-secondary" id="beautyLayoutCenter" style="flex:1;font-size:12px">默认居中布局</button>'
+        + '<button type="button" class="btn btn-secondary" id="beautyLayoutAlign" style="flex:1;font-size:12px">对齐成直线</button></div>'
         + '<div style="font-weight:600;margin-bottom:10px">更换图标</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">'
         + all.map(function(a){
             var c = icons[a.id];
-            return '<div data-iconapp="'+a.id+'" style="text-align:center"><div style="width:52px;height:52px;margin:0 auto 6px;border-radius:'+radius+'px;background:rgba(255,255,255,.7);overflow:hidden;display:flex;align-items:center;justify-content:center">'
-              +(c?'<img src="'+c+'" style="width:100%;height:100%;object-fit:cover" onerror="this.remove()">'+(typeof homeAppIconSvg==='function'?homeAppIconSvg(a.id):'') : (typeof homeAppIconSvg==='function'?homeAppIconSvg(a.id):a.name.slice(0,1)))
+            var innerIcon = c
+              ? '<img src="'+c+'" alt="" style="width:100%;height:100%;object-fit:contain;background:transparent;display:block" onerror="this.remove()">'
+              : (typeof homeAppIconSvg==='function'?homeAppIconSvg(a.id):a.name.slice(0,1));
+            return '<div data-iconapp="'+a.id+'" style="text-align:center"><div style="width:52px;height:52px;margin:0 auto 6px;border-radius:'+radius+'px;background:rgba(255,255,255,.55);overflow:hidden;display:flex;align-items:center;justify-content:center">'
+              + innerIcon
               +'</div><div style="font-size:11px">'+escapeHtml(a.name)+'</div></div>';
           }).join('')
         + '</div></div>';
@@ -22968,7 +23664,21 @@ if (t === 'badge3d') {
       var wpReset = document.getElementById('beautyWpReset');
       if (wpReset) wpReset.onclick = function(){ state.home.wallpaper=''; try{sessionStorage.removeItem('eenook_home_wp')}catch(e){}; save(); renderHome(); openHomeBeauty('wallpaper'); };
       var range = document.getElementById('iconRadiusRange');
-      if (range) range.oninput = function(){ state.home.iconRadius=+range.value; save(); };
+      if (range) range.oninput = function(){ state.home.iconRadius=+range.value; document.documentElement.style.setProperty('--home-icon-radius', range.value+'px'); save(); };
+      var sc = document.getElementById('appScaleRange');
+      if (sc) sc.oninput = function(){
+        state.home.appScale = (+sc.value) / 100;
+        document.documentElement.style.setProperty('--home-app-scale', String(state.home.appScale));
+        var lab = document.getElementById('appScaleLab');
+        if (lab) lab.textContent = sc.value + '%';
+        save();
+        // 自定义图标走内联尺寸，需刷新主屏才看得见
+        try { if (typeof renderHome === 'function') renderHome(); } catch(e) {}
+      };
+      var blc = document.getElementById('beautyLayoutCenter');
+      if (blc) blc.onclick = function(){ state.home.layout = homeDefaultLayout(); save(); try{renderHome();}catch(e){} showToast('已居中'); };
+      var bla = document.getElementById('beautyLayoutAlign');
+      if (bla) bla.onclick = function(){ homeAlignApps(); };
       document.querySelectorAll('[data-iconapp]').forEach(function(el){
         el.onclick = function(){ state.fileTarget='homeAppIcon:'+el.getAttribute('data-iconapp'); var fi=document.getElementById('fileInput'); fi.accept='image/*'; fi.value=''; fi.click(); };
       });
