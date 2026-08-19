@@ -1748,7 +1748,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-19c';
+const EENOK_BUILD = '2026-08-19d';
 function checkAppUpdate() {
   try {
     const prev = localStorage.getItem('eenook_build');
@@ -12282,6 +12282,43 @@ function openCharPhone(cid) {
   }, 40);
 }
 
+/** 从微信 App 读取与某角色的真实消息（最多约 20 条） */
+function getRealWxMsgs(charId, limit) {
+  limit = limit || 20;
+  const chat = (state.chats && state.chats[charId]) || {};
+  const msgs = (chat.messages || []).slice();
+  return msgs.slice(-limit).map(function(m) {
+    let text = '';
+    if (m.type === 'text' || !m.type) text = m.content || '';
+    else if (m.type === 'image') text = '[图片]' + (m.desc || m.hiddenText || '');
+    else if (m.type === 'voice') text = '[语音]' + (m.content || '');
+    else if (m.type === 'transfer') text = '[转账] ¥' + (m.amount || '');
+    else if (m.type === 'redpacket') text = '[红包] ' + (m.desc || '');
+    else text = '[' + (m.type || '消息') + ']';
+    return {
+      from: m.from === 'user' ? 'other' : 'me', // 在角色手机里：user 是对方，角色是 me
+      text: String(text),
+      ts: m.ts || 0,
+      rawFrom: m.from
+    };
+  });
+}
+/** 构建角色手机里的会话列表：首位固定为与 user 的真实聊天 + 生成的其他会话 */
+function buildPhoneWxChatList(ch) {
+  const userNick = (state.user && (state.user.nick || state.user.realName)) || '我';
+  const realMsgs = getRealWxMsgs(ch.id, 20);
+  const lastReal = realMsgs.length ? realMsgs[realMsgs.length - 1].text : '暂无消息';
+  const realSession = {
+    name: userNick,
+    last: lastReal,
+    messages: realMsgs,
+    isRealUser: true,
+    charId: ch.id
+  };
+  const wd = (ch.phone && ch.phone.wechatData) || {};
+  const others = (wd.chats || []).filter(function(x){ return !x.isRealUser; });
+  return [realSession].concat(others);
+}
 function openPhoneWechat(tab) {
   state._clickGuardUntil = 0;
   const ch = state.chars.find(c=>c.id===state._phoneChar);
@@ -12298,16 +12335,17 @@ function openPhoneWechat(tab) {
   const genBtn = `<button type="button" id="phoneGenBtn" onclick="phoneApiGen('wechat','${tab}')" style="border:none;background:transparent;width:28px;height:28px;border-radius:50%;font-size:18px;cursor:pointer;line-height:1">○</button>`;
   let main = '';
   if (tab === 'chats') {
-    const list = wd.chats || [];
+    const list = buildPhoneWxChatList(ch);
+    state._phoneWxList = list;
     main = `<div style="background:#ededed;min-height:100%">
-      ${(list.length?list:[{name:'（点击右上角○生成）',last:'暂无会话'}]).map((item,ii)=>`
+      ${list.map((item,ii)=>`
         <div style="background:#fff;padding:12px 14px;display:flex;gap:12px;border-bottom:1px solid #e5e5e5;cursor:pointer" onclick="openPhoneWxSession(${ii})">
-          <div style="width:48px;height:48px;border-radius:6px;background:#ddd;flex-shrink:0"></div>
+          <div style="width:48px;height:48px;border-radius:6px;background:${item.isRealUser?'#95ec69':'#ddd'};flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:#333">${item.isRealUser?'你':''}</div>
           <div style="flex:1;min-width:0">
-            <div style="font-size:16px">${escapeHtml(item.name||'好友')}</div>
+            <div style="font-size:16px">${escapeHtml(item.name||'好友')}${item.isRealUser?' <span style="font-size:11px;color:#07c160">真实聊天</span>':''}</div>
             <div class="text-sub" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(item.last||'')}</div>
           </div>
-        </div>`).join('')}
+        </div>`).join('') || '<div class="empty" style="padding:40px">暂无会话</div>'}
     </div>`;
   } else if (tab === 'contacts') {
     const list = wd.contacts || [];
@@ -12367,22 +12405,30 @@ function openPhoneWechat(tab) {
 }
 function openPhoneWxSession(ii) {
   const ch = state.chars.find(c=>c.id===state._phoneChar);
-  if (!ch || !ch.phone || !ch.phone.wechatData) return;
-  const item = (ch.phone.wechatData.chats||[])[ii];
+  if (!ch) return;
+  // 优先用构建好的列表（含真实与 user 聊天）
+  const list = state._phoneWxList || buildPhoneWxChatList(ch);
+  const item = list[ii];
   if (!item) return;
-  const msgs = item.messages || [{from:'other',text:item.last||'你好'}];
+  let msgs = item.messages || [];
+  if (item.isRealUser) {
+    msgs = getRealWxMsgs(ch.id, 20);
+  } else if (!msgs.length) {
+    msgs = [{ from:'other', text: item.last || '你好' }];
+  }
   openSubPage('', `
     <div style="position:absolute;inset:0;display:flex;flex-direction:column;background:#ededed">
       <div style="padding:10px 12px;display:flex;align-items:center;background:#ededed">
         <button type="button" onclick="openPhoneWechat('chats')" style="border:none;background:transparent;font-size:22px">‹</button>
-        <div style="flex:1;text-align:center;font-weight:600">${escapeHtml(item.name||'会话')}</div>
+        <div style="flex:1;text-align:center;font-weight:600">${escapeHtml(item.name||'会话')}${item.isRealUser?' · 真实':''}</div>
         <div style="width:28px"></div>
       </div>
       <div style="flex:1;overflow:auto;padding:12px">
-        ${msgs.map(m=>`<div style="margin:8px 0;text-align:${m.from==='me'?'right':'left'}">
-          <span style="display:inline-block;max-width:70%;padding:8px 12px;border-radius:8px;background:${m.from==='me'?'#95ec69':'#fff'};font-size:14px">${escapeHtml(m.text||'')}</span>
-        </div>`).join('')}
+        ${msgs.length ? msgs.map(m=>`<div style="margin:8px 0;text-align:${m.from==='me'?'right':'left'}">
+          <span style="display:inline-block;max-width:70%;padding:8px 12px;border-radius:8px;background:${m.from==='me'?'#95ec69':'#fff'};font-size:14px;line-height:1.45">${escapeHtml(m.text||'')}</span>
+        </div>`).join('') : '<div class="empty" style="padding:32px;color:#999">暂无消息</div>'}
       </div>
+      ${item.isRealUser ? '<div style="padding:8px 12px;font-size:11px;color:#888;background:#f7f7f7;border-top:1px solid #eee">以上为微信 App 真实聊天（最多约20条）</div>' : ''}
     </div>
   `, '', { replace: true });
 }
@@ -16259,9 +16305,20 @@ function openPickupFoundCharSession(charId) {
   if (!state.pickupData) state.pickupData = {};
   if (!state.pickupData[charId]) state.pickupData[charId] = { foundChar: { threads: [], contacts: [] } };
   const pd = state.pickupData[charId].foundChar;
+  // 始终把真实与 user 的聊天放在第一位
+  const userNick = (state.user && (state.user.nick || state.user.realName)) || '我';
+  const realMsgs = getRealWxMsgs(charId, 20);
+  const realThread = {
+    name: userNick,
+    last: realMsgs.length ? realMsgs[realMsgs.length - 1].text : '暂无消息',
+    messages: realMsgs,
+    isRealUser: true
+  };
+  let threads = pd.threads || [];
+  threads = [realThread].concat(threads.filter(function(t){ return !t.isRealUser; }));
+  pd.threads = threads;
   state._homeDepth = 2;
   state._subBackFn = function(){ openPickupFoundCharList(); };
-  const threads = pd.threads || [];
   openSubPage(escapeHtml(ch.nick||'') + ' · 手机', `
     <div style="position:absolute;inset:0;display:flex;flex-direction:column;background:#ededed">
       <div style="padding:10px 12px;display:flex;align-items:center;background:#ededed;flex-shrink:0">
@@ -16270,14 +16327,14 @@ function openPickupFoundCharSession(charId) {
         <button type="button" onclick="pickupGenFoundCharChats('${charId}')" style="border:none;background:transparent;font-size:18px;width:28px;cursor:pointer">○</button>
       </div>
       <div style="flex:1;overflow:auto;padding-bottom:20px">
-        ${(threads.length?threads:[{name:'点右上角○生成会话',last:'假扮角色回复时会同步记忆'}]).map(function(t,i){
+        ${threads.map(function(t,i){
           return '<div onclick="openPickupFoundCharThread(\''+charId+'\','+i+')" style="background:#fff;padding:12px 14px;display:flex;gap:12px;border-bottom:1px solid #e5e5e5;cursor:pointer">'
-            + '<div style="width:48px;height:48px;border-radius:6px;background:#ddd;flex-shrink:0"></div>'
-            + '<div style="flex:1;min-width:0"><div style="font-size:16px">'+escapeHtml(t.name||'好友')+'</div>'
+            + '<div style="width:48px;height:48px;border-radius:6px;background:'+(t.isRealUser?'#95ec69':'#ddd')+';flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px">'+(t.isRealUser?'你':'')+'</div>'
+            + '<div style="flex:1;min-width:0"><div style="font-size:16px">'+escapeHtml(t.name||'好友')+(t.isRealUser?' <span style="font-size:11px;color:#07c160">真实</span>':'')+'</div>'
             + '<div class="text-sub" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escapeHtml(t.last||'')+'</div></div></div>';
-        }).join('')}
+        }).join('') || '<div class="empty" style="padding:40px">点右上角○生成其他会话</div>'}
       </div>
-      <div style="padding:10px 14px;background:#fff;border-top:1px solid #eee;font-size:11px;color:#888;line-height:1.4">你正在假扮「${escapeHtml(ch.nick||'')}」。对方是否识破取决于你回得像不像。互动会写入记忆。</div>
+      <div style="padding:10px 14px;background:#fff;border-top:1px solid #eee;font-size:11px;color:#888;line-height:1.4">与「你」的会话来自微信 App 真实记录。假扮回复会写入记忆。</div>
     </div>
   `, '', { replace: true, backFn: function(){ openPickupFoundCharList(); } });
 }
@@ -16286,20 +16343,38 @@ async function pickupGenFoundCharChats(charId) {
   const ch = (state.chars || []).find(c => c.id === charId);
   if (!ch) return;
   showToast('生成会话中…');
+  // 首位始终插入与 user 的真实聊天
+  const userNick = (state.user && (state.user.nick || state.user.realName)) || '我';
+  const realMsgs = getRealWxMsgs(charId, 20);
+  const realThread = {
+    name: userNick,
+    last: realMsgs.length ? realMsgs[realMsgs.length - 1].text : '暂无消息',
+    messages: realMsgs,
+    isRealUser: true
+  };
   try {
     const { text } = await apiChat([
-      { role:'system', content: buildPhonePersonaPrompt(ch) + '\n只输出合法 JSON 数组。场景：有人捡到了角色手机，里面有未读/进行中的会话。' },
-      { role:'user', content: '生成 3~5 个微信会话。JSON：[{name,last,messages:[{from:"other"|"me",text}]}]。me=角色本人历史发言，other=对方。日常自然。' }
-    ], { max_tokens: 1200, temperature: 0.85 });
+      { role:'system', content: buildPhonePersonaPrompt(ch) + '\n只输出合法 JSON 数组。场景：有人捡到了角色手机，里面有其他会话（不要生成与 user 的会话）。' },
+      { role:'user', content: '生成 2~4 个微信会话（不含与user）。JSON：[{name,last,messages:[{from:"other"|"me",text}]}]。me=角色，other=对方。' }
+    ], { max_tokens: 1000, temperature: 0.85 });
     let arr = [];
     try { arr = JSON.parse(String(text||'').replace(/```json|```/g,'').trim().match(/\[[\s\S]*\]/)[0]); } catch(e) {}
+    if (!Array.isArray(arr)) arr = [];
     if (!state.pickupData) state.pickupData = {};
     if (!state.pickupData[charId]) state.pickupData[charId] = { foundChar: { threads: [] } };
     if (!state.pickupData[charId].foundChar) state.pickupData[charId].foundChar = { threads: [] };
-    state.pickupData[charId].foundChar.threads = Array.isArray(arr) ? arr : [];
+    state.pickupData[charId].foundChar.threads = [realThread].concat(arr.filter(function(x){ return !x.isRealUser; }));
     save();
     openPickupFoundCharSession(charId);
-  } catch(e) { showToast('生成失败：'+(e.message||e)); }
+  } catch(e) {
+    // 即使生成失败也保留真实会话
+    if (!state.pickupData) state.pickupData = {};
+    if (!state.pickupData[charId]) state.pickupData[charId] = { foundChar: { threads: [] } };
+    state.pickupData[charId].foundChar.threads = [realThread];
+    save();
+    openPickupFoundCharSession(charId);
+    showToast('其他会话生成失败，已载入真实聊天');
+  }
 }
 
 function openPickupFoundCharThread(charId, ti) {
@@ -16307,25 +16382,29 @@ function openPickupFoundCharThread(charId, ti) {
   const pd = ((state.pickupData||{})[charId]||{}).foundChar || {};
   const thread = (pd.threads || [])[ti];
   if (!thread) return;
+  // 真实会话每次从微信 App 刷新
+  if (thread.isRealUser) {
+    thread.messages = getRealWxMsgs(charId, 20);
+    thread.last = thread.messages.length ? thread.messages[thread.messages.length - 1].text : '暂无消息';
+  }
   if (!thread.messages) thread.messages = [];
   state._pickupThread = { charId, ti };
   openSubPage(escapeHtml(thread.name||'会话'), `
     <div style="position:absolute;inset:0;display:flex;flex-direction:column;background:#ededed">
       <div style="padding:10px 12px;display:flex;align-items:center;background:#ededed">
         <button type="button" onclick="openPickupFoundCharSession('${charId}')" style="border:none;background:transparent;font-size:22px">‹</button>
-        <div style="flex:1;text-align:center;font-weight:600">${escapeHtml(thread.name||'')}</div>
+        <div style="flex:1;text-align:center;font-weight:600">${escapeHtml(thread.name||'')}${thread.isRealUser?' · 真实':''}</div>
         <div style="width:28px"></div>
       </div>
       <div id="pickupThreadMsgs" style="flex:1;overflow:auto;padding:12px">
-        ${thread.messages.map(function(m){
+        ${thread.messages.length ? thread.messages.map(function(m){
           const me = m.from === 'me';
           return '<div style="margin:8px 0;text-align:'+(me?'right':'left')+'"><span style="display:inline-block;max-width:75%;padding:8px 12px;border-radius:8px;background:'+(me?'#95ec69':'#fff')+';font-size:14px;line-height:1.45">'+escapeHtml(m.text||'')+'</span></div>';
-        }).join('')}
+        }).join('') : '<div class="empty" style="padding:32px;color:#999">暂无消息</div>'}
       </div>
-      <div style="padding:8px 10px;background:#f7f7f7;display:flex;gap:8px;align-items:center;border-top:1px solid #e5e5e5">
-        <input id="pickupFakeInput" placeholder="以角色身份回复…" style="flex:1;border:none;border-radius:18px;padding:10px 14px;background:#fff;font-size:14px;outline:none">
-        <button type="button" onclick="pickupFakeSend()" style="border:none;background:#07c160;color:#fff;border-radius:18px;padding:10px 16px;font-size:14px;cursor:pointer">发送</button>
-      </div>
+      ${thread.isRealUser
+        ? '<div style="padding:8px 12px;font-size:11px;color:#888;background:#f7f7f7;border-top:1px solid #eee">真实聊天只读（来自微信 App）。假扮请点其他会话。</div>'
+        : '<div style="padding:8px 10px;background:#f7f7f7;display:flex;gap:8px;align-items:center;border-top:1px solid #e5e5e5"><input id="pickupFakeInput" placeholder="以角色身份回复…" style="flex:1;border:none;border-radius:18px;padding:10px 14px;background:#fff;font-size:14px;outline:none"><button type="button" onclick="pickupFakeSend()" style="border:none;background:#07c160;color:#fff;border-radius:18px;padding:10px 16px;font-size:14px;cursor:pointer">发送</button></div>'}
     </div>
   `, '', { replace: true });
 }
@@ -16379,7 +16458,42 @@ async function pickupFakeSend() {
   } catch(e) { showToast('回复失败'); }
 }
 
-/** 模式二：角色捡到 user 手机，逐步查机 */
+/** 读取 user 微信里所有会话列表（真实） */
+function getUserRealWxChatList() {
+  const chars = (typeof visibleChars === 'function' ? visibleChars() : (state.chars || []));
+  const list = [];
+  chars.forEach(function(c) {
+    const chat = (state.chats && state.chats[c.id]) || {};
+    const msgs = chat.messages || [];
+    if (!msgs.length) return;
+    const last = msgs[msgs.length - 1];
+    let lastText = '';
+    if (last.type === 'text' || !last.type) lastText = last.content || '';
+    else lastText = '[' + (last.type || '消息') + ']';
+    list.push({
+      charId: c.id,
+      name: c.nick || c.realName || '好友',
+      avatar: avatarUrl(c),
+      last: lastText,
+      ts: last.ts || 0,
+      count: msgs.length
+    });
+  });
+  list.sort(function(a, b) { return (b.ts || 0) - (a.ts || 0); });
+  return list;
+}
+
+function pickupInterveneBar(charId) {
+  // 小尺寸干预按钮
+  return '<div style="display:flex;gap:6px;padding:6px 10px;background:rgba(247,247,247,.96);border-top:1px solid #e5e5e5;flex-shrink:0">'
+    + '<button type="button" onclick="pickupUserIntervene(\''+charId+'\',\'lock\')" style="flex:1;border:none;border-radius:10px;padding:6px 4px;background:#fff;font-size:11px;color:#333;box-shadow:0 1px 3px rgba(0,0,0,.06);cursor:pointer">锁屏</button>'
+    + '<button type="button" onclick="pickupUserIntervene(\''+charId+'\',\'stop\')" style="flex:1;border:none;border-radius:10px;padding:6px 4px;background:#fff;font-size:11px;color:#333;box-shadow:0 1px 3px rgba(0,0,0,.06);cursor:pointer">阻止</button>'
+    + '<button type="button" onclick="pickupUserIntervene(\''+charId+'\',\'allow\')" style="flex:1;border:none;border-radius:10px;padding:6px 4px;background:#07c160;color:#fff;font-size:11px;cursor:pointer">继续看</button>'
+    + '<button type="button" onclick="pickupUserIntervene(\''+charId+'\',\'force\')" style="flex:1;border:none;border-radius:10px;padding:6px 4px;background:#fff;font-size:11px;color:#e74c3c;box-shadow:0 1px 3px rgba(0,0,0,.06);cursor:pointer">夺回</button>'
+    + '</div>';
+}
+
+/** 模式二：角色捡到 user 手机 — 仿微信，一屏一屏看真实聊天 */
 function openPickupFoundUserSession(charId) {
   const ch = (state.chars || []).find(c => c.id === charId);
   if (!ch) { showToast('角色不存在'); return; }
@@ -16388,136 +16502,195 @@ function openPickupFoundUserSession(charId) {
   if (!state.pickupData) state.pickupData = {};
   if (!state.pickupData[charId]) state.pickupData[charId] = {};
   if (!state.pickupData[charId].foundUser) {
-    state.pickupData[charId].foundUser = { steps: [], status: 'checking', locked: false, password: '' };
+    state.pickupData[charId].foundUser = { steps: [], status: 'checking', locked: false, thoughts: {} };
   }
   const fu = state.pickupData[charId].foundUser;
   state._homeDepth = 2;
   state._subBackFn = function(){ openPickupFoundUserList(); };
-  // 若无步骤则自动开始生成第一步
-  openSubPage(escapeHtml(ch.nick||'') + ' 在查你的手机', `
-    <div style="position:absolute;inset:0;display:flex;flex-direction:column;background:linear-gradient(165deg,#e8f0f8,#d4e0f0)">
-      <div style="padding:10px 12px;display:flex;align-items:center;flex-shrink:0">
+  // 仿微信：聊天列表（真实读取）
+  const list = getUserRealWxChatList();
+  openSubPage('', `
+    <div style="position:absolute;inset:0;display:flex;flex-direction:column;background:#ededed">
+      <div style="padding:10px 12px;display:flex;align-items:center;background:#ededed;flex-shrink:0">
         <button type="button" onclick="openPickupFoundUserList()" style="border:none;background:transparent;font-size:22px">‹</button>
-        <div style="flex:1;text-align:center;font-weight:600;font-size:14px">查机过程</div>
-        <button type="button" onclick="pickupNextCheckStep('${charId}')" style="border:none;background:transparent;font-size:13px;color:#007aff;cursor:pointer">继续</button>
+        <div style="flex:1;text-align:center;font-weight:600;font-size:15px">微信 · ${escapeHtml(ch.nick||'')}在看</div>
+        <button type="button" onclick="pickupGenScreenThought('${charId}','chatlist')" style="border:none;background:transparent;font-size:12px;color:#07c160;cursor:pointer">想法</button>
       </div>
-      <div id="pickupCheckFeed" style="flex:1;overflow:auto;padding:12px 14px 100px">
-        ${renderPickupCheckSteps(charId)}
+      ${fu.locked ? '<div style="padding:8px;background:#333;color:#fff;text-align:center;font-size:13px">手机已锁定</div>' : ''}
+      ${fu.status === 'stopped' ? '<div style="padding:8px;background:#fff3cd;color:#856404;text-align:center;font-size:12px">角色已停止翻看</div>' : ''}
+      <div style="flex:1;overflow:auto;padding-bottom:8px">
+        ${list.length ? list.map(function(item){
+          return '<div onclick="openPickupUserWxThread(\''+charId+'\',\''+item.charId+'\')" style="background:#fff;padding:12px 14px;display:flex;gap:12px;border-bottom:1px solid #e5e5e5;cursor:pointer">'
+            + '<img src="'+item.avatar+'" style="width:48px;height:48px;border-radius:6px;object-fit:cover;flex-shrink:0">'
+            + '<div style="flex:1;min-width:0"><div style="font-size:16px">'+escapeHtml(item.name)+'</div>'
+            + '<div class="text-sub" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escapeHtml(item.last||'')+'</div></div>'
+            + '<div style="font-size:10px;color:#bbb;align-self:flex-start">'+(item.count||0)+'条</div></div>';
+        }).join('') : '<div class="empty" style="padding:48px 16px;color:#999">微信里还没有聊天记录</div>'}
       </div>
-      <div style="position:absolute;left:12px;right:12px;bottom:12px;display:flex;gap:8px;flex-wrap:wrap">
-        <button type="button" onclick="pickupUserIntervene('${charId}','lock')" style="flex:1;min-width:40%;border:none;border-radius:14px;padding:12px;background:rgba(255,255,255,.9);font-size:13px;cursor:pointer">锁屏</button>
-        <button type="button" onclick="pickupUserIntervene('${charId}','stop')" style="flex:1;min-width:40%;border:none;border-radius:14px;padding:12px;background:rgba(255,255,255,.9);font-size:13px;cursor:pointer">阻止 TA</button>
-        <button type="button" onclick="pickupUserIntervene('${charId}','allow')" style="flex:1;min-width:40%;border:none;border-radius:14px;padding:12px;background:rgba(94,184,176,.9);color:#fff;font-size:13px;cursor:pointer">任其翻看</button>
-        <button type="button" onclick="pickupUserIntervene('${charId}','force')" style="flex:1;min-width:40%;border:none;border-radius:14px;padding:12px;background:rgba(255,255,255,.9);font-size:13px;cursor:pointer">强行夺回</button>
+      <div id="pickupThoughtBar" style="padding:8px 12px;background:#fff8e6;border-top:1px solid #f0e0c0;font-size:12px;color:#8a6d3b;line-height:1.45;min-height:36px">
+        ${fu.thoughts && fu.thoughts.chatlist ? ('💭 '+escapeHtml(fu.thoughts.chatlist)) : '点右上角「想法」生成角色看到聊天列表时的内心独白'}
       </div>
+      ${pickupInterveneBar(charId)}
     </div>
   `, '', { replace: true, backFn: function(){ openPickupFoundUserList(); } });
-  if (!(fu.steps && fu.steps.length)) {
-    setTimeout(function(){ pickupNextCheckStep(charId); }, 400);
+  // 首次进入自动生成列表想法
+  if (!fu.thoughts || !fu.thoughts.chatlist) {
+    setTimeout(function(){ pickupGenScreenThought(charId, 'chatlist'); }, 300);
   }
 }
 
-function renderPickupCheckSteps(charId) {
-  const fu = ((state.pickupData||{})[charId]||{}).foundUser || {};
-  const steps = fu.steps || [];
-  if (!steps.length) return '<div style="text-align:center;color:#6a8a95;padding:40px 12px">角色正准备解锁你的手机…</div>';
-  return steps.map(function(s) {
-    return '<div style="background:rgba(255,255,255,.85);border-radius:16px;padding:14px;margin-bottom:12px;border:1px solid rgba(255,255,255,.6)">'
-      + '<div style="font-size:12px;color:#5b8def;font-weight:600;margin-bottom:6px">'+escapeHtml(s.app||'步骤')+'</div>'
-      + '<div style="font-size:14px;color:#1c3a44;line-height:1.55;white-space:pre-wrap">'+escapeHtml(s.content||'')+'</div>'
-      + (s.thought ? '<div style="margin-top:10px;padding:8px 10px;background:rgba(255,230,180,.35);border-radius:10px;font-size:12px;color:#8a6d3b;line-height:1.45">💭 '+escapeHtml(s.thought)+'</div>' : '')
-      + '</div>';
-  }).join('');
+/** 点开某条真实会话：显示真实消息 + 角色想法 */
+function openPickupUserWxThread(viewerId, targetCharId) {
+  const viewer = (state.chars || []).find(c => c.id === viewerId);
+  const target = (state.chars || []).find(c => c.id === targetCharId);
+  if (!viewer) return;
+  const fu = ((state.pickupData || {})[viewerId] || {}).foundUser || {};
+  if (fu.locked) { showToast('手机已锁定'); return; }
+  if (fu.status === 'stopped') { showToast('角色已停止翻看'); return; }
+  // 在 user 手机视角：from user = me（绿气泡），from char = other
+  const chat = (state.chats && state.chats[targetCharId]) || {};
+  const raw = (chat.messages || []).slice(-20);
+  const msgs = raw.map(function(m) {
+    let text = '';
+    if (m.type === 'text' || !m.type) text = m.content || '';
+    else if (m.type === 'image') text = '[图片]' + (m.desc || '');
+    else text = '[' + (m.type || '消息') + ']';
+    return { from: m.from === 'user' ? 'me' : 'other', text: String(text) };
+  });
+  const thoughtKey = 'thread_' + targetCharId;
+  const thought = (fu.thoughts && fu.thoughts[thoughtKey]) || '';
+  openSubPage('', `
+    <div style="position:absolute;inset:0;display:flex;flex-direction:column;background:#ededed">
+      <div style="padding:10px 12px;display:flex;align-items:center;background:#ededed;flex-shrink:0">
+        <button type="button" onclick="openPickupFoundUserSession('${viewerId}')" style="border:none;background:transparent;font-size:22px">‹</button>
+        <div style="flex:1;text-align:center;font-weight:600;font-size:15px">${escapeHtml((target&&(target.nick||target.realName))||'会话')}</div>
+        <button type="button" onclick="pickupGenScreenThought('${viewerId}','${thoughtKey}','${targetCharId}')" style="border:none;background:transparent;font-size:12px;color:#07c160;cursor:pointer">想法</button>
+      </div>
+      <div style="flex:1;overflow:auto;padding:12px">
+        ${msgs.length ? msgs.map(function(m){
+          return '<div style="margin:8px 0;text-align:'+(m.from==='me'?'right':'left')+'"><span style="display:inline-block;max-width:75%;padding:8px 12px;border-radius:8px;background:'+(m.from==='me'?'#95ec69':'#fff')+';font-size:14px;line-height:1.45">'+escapeHtml(m.text||'')+'</span></div>';
+        }).join('') : '<div class="empty" style="padding:32px;color:#999">暂无消息</div>'}
+      </div>
+      <div style="padding:8px 12px;background:#fff8e6;border-top:1px solid #f0e0c0;font-size:12px;color:#8a6d3b;line-height:1.45;max-height:80px;overflow:auto">
+        ${thought ? ('💭 '+escapeHtml(thought)) : '点右上角「想法」生成角色看完这段聊天后的内心'}
+      </div>
+      ${pickupInterveneBar(viewerId)}
+    </div>
+  `, '', { replace: true });
+  if (!thought) {
+    setTimeout(function(){ pickupGenScreenThought(viewerId, thoughtKey, targetCharId); }, 300);
+  }
 }
 
-async function pickupNextCheckStep(charId) {
-  const ch = (state.chars || []).find(c => c.id === charId);
+async function pickupGenScreenThought(viewerId, key, targetCharId) {
+  const ch = (state.chars || []).find(c => c.id === viewerId);
   if (!ch) return;
-  const fu = state.pickupData[charId].foundUser;
-  if (fu.locked) { showToast('手机已锁定，需解锁后继续'); return; }
-  if (fu.status === 'stopped') { showToast('角色已停止翻看'); return; }
-  showToast('角色继续翻看…');
-  const apps = ['锁屏界面','微信聊天列表','与你的对话','通讯录','相册缩略图','备忘录','短信','设置页'];
-  const stepIdx = (fu.steps || []).length;
-  const appName = apps[stepIdx % apps.length];
+  if (!state.pickupData[viewerId].foundUser.thoughts) state.pickupData[viewerId].foundUser.thoughts = {};
+  const fu = state.pickupData[viewerId].foundUser;
+  if (fu.locked || fu.status === 'stopped') return;
+  showToast('生成内心想法…');
+  let scene = '';
+  let extra = '';
+  if (key === 'chatlist') {
+    const list = getUserRealWxChatList();
+    scene = '角色刚打开 user 手机的微信聊天列表';
+    extra = '列表里有：' + list.slice(0, 8).map(function(x){ return x.name + '(' + (x.last||'').slice(0,20) + ')'; }).join('；');
+  } else if (key.indexOf('thread_') === 0) {
+    const tid = targetCharId || key.replace('thread_', '');
+    const target = (state.chars || []).find(c => c.id === tid);
+    const msgs = getRealWxMsgs(tid, 20);
+    // getRealWxMsgs 是角色手机视角；这里用原始 user 视角摘要
+    const chat = (state.chats && state.chats[tid]) || {};
+    const raw = (chat.messages || []).slice(-12);
+    const summary = raw.map(function(m){
+      const who = m.from === 'user' ? 'user' : (target && target.nick || '对方');
+      const t = (m.type==='text'||!m.type) ? (m.content||'') : ('['+(m.type||'')+']');
+      return who + '：' + String(t).slice(0,40);
+    }).join('\n');
+    scene = '角色正在看 user 与「'+(target&&(target.nick||target.realName)||'')+'」的聊天记录';
+    extra = '聊天摘要：\n' + summary;
+  } else {
+    scene = '角色在查看 user 手机';
+  }
   try {
     const { text } = await apiChat([
-      { role:'system', content: buildPhonePersonaPrompt(ch)
-        + '\n场景：角色捡到了 user 的手机，正在一步步查看。当前步骤：'+appName+'。'
-        + '\n输出 JSON：{"content":"角色看到的内容摘要（第三人称叙述看到了什么）","thought":"角色此刻内心独白第一人称"}。'
-        + '\n内容贴合人设与二人关系，有温度，不OOC，不恐吓不油腻。只输出 JSON。' },
-      { role:'user', content: '继续查机，第 '+(stepIdx+1)+' 步：'+appName }
-    ], { max_tokens: 400, temperature: 0.88 });
-    let data = {};
-    try { data = JSON.parse(String(text||'').replace(/```json|```/g,'').trim().match(/\{[\s\S]*\}/)[0]); } catch(e) {}
-    if (!fu.steps) fu.steps = [];
-    fu.steps.push({ app: appName, content: data.content || '（翻看中）', thought: data.thought || '', ts: Date.now() });
-    // 写入记忆
+      { role: 'system', content: buildPhonePersonaPrompt(ch)
+        + '\n场景：' + scene + '。请用第一人称写一句内心独白（20~60字），口语自然，符合人设，禁止OOC、禁止恐吓油腻。只输出独白正文。' },
+      { role: 'user', content: extra || '写内心想法' }
+    ], { max_tokens: 150, temperature: 0.88 });
+    const thought = (text || '').trim().replace(/^["「]|["」]$/g, '');
+    fu.thoughts[key] = thought || '……';
+    // 记忆
     try {
-      if (!state.chats[charId]) state.chats[charId] = { messages: [], timeAware: true };
-      const chat = state.chats[charId];
+      if (!state.chats[viewerId]) state.chats[viewerId] = { messages: [], timeAware: true };
+      const chat = state.chats[viewerId];
       if (!chat.shortMemory) chat.shortMemory = [];
-      chat.shortMemory.push({ text: '【捡手机·被查】'+(ch.nick||'')+'查看了我的手机「'+appName+'」：'+(data.content||'').slice(0,60), ts: Date.now() });
+      chat.shortMemory.push({ text: '【捡手机·被查】'+(ch.nick||'')+'看了我的手机（'+key+'）：'+(thought||'').slice(0,50), ts: Date.now() });
       if (chat.shortMemory.length > 50) chat.shortMemory = chat.shortMemory.slice(-50);
     } catch(e) {}
     save();
-    openPickupFoundUserSession(charId);
-  } catch(e) { showToast('生成失败：'+(e.message||e)); }
+    if (key === 'chatlist') openPickupFoundUserSession(viewerId);
+    else if (key.indexOf('thread_') === 0) openPickupUserWxThread(viewerId, targetCharId || key.replace('thread_', ''));
+  } catch(e) { showToast('想法生成失败'); }
+}
+
+async function pickupNextCheckStep(charId) {
+  // 兼容旧入口：改为打开仿微信列表
+  openPickupFoundUserSession(charId);
 }
 
 async function pickupUserIntervene(charId, action) {
   const ch = (state.chars || []).find(c => c.id === charId);
   if (!ch) return;
+  if (!state.pickupData[charId].foundUser) {
+    state.pickupData[charId].foundUser = { steps: [], status: 'checking', locked: false, thoughts: {} };
+  }
   const fu = state.pickupData[charId].foundUser;
   let userHint = '';
   if (action === 'lock') {
     fu.locked = true;
     fu.status = 'locked';
-    userHint = 'user 远程/当场把手机锁屏了';
+    userHint = 'user 把手机锁屏了';
   } else if (action === 'stop') {
     fu.status = 'stopped';
     userHint = 'user 当面阻止角色继续翻看';
   } else if (action === 'allow') {
     fu.locked = false;
     fu.status = 'checking';
-    userHint = 'user 表示可以继续看，不阻止';
+    userHint = 'user 表示可以继续看';
     save();
-    pickupNextCheckStep(charId);
+    showToast('角色继续翻看');
+    openPickupFoundUserSession(charId);
     return;
   } else if (action === 'force') {
     fu.status = 'seized';
+    fu.locked = true;
     userHint = 'user 强行夺回手机';
   }
   showToast('角色反应中…');
   try {
     const { text } = await apiChat([
       { role:'system', content: buildPhonePersonaPrompt(ch)
-        + '\n场景：角色正在/刚在翻 user 手机。突发：'+userHint+'。'
-        + '\n输出 JSON：{"speech":"角色当时可能说出口的话（可空）","thought":"内心独白","next":"locked|stopped|force_check|continue"}。'
-        + '\n按人设反应：可能尴尬、道歉、倔强继续、心虚等。不OOC。只输出 JSON。' },
+        + '\n场景：角色正在翻 user 手机微信。突发：'+userHint+'。'
+        + '\n输出 JSON：{"speech":"角色可能说的话（可空）","thought":"内心独白","next":"locked|stopped|force_check|continue"}。不OOC。只输出 JSON。' },
       { role:'user', content: userHint }
-    ], { max_tokens: 300, temperature: 0.9 });
+    ], { max_tokens: 280, temperature: 0.9 });
     let data = {};
     try { data = JSON.parse(String(text||'').replace(/```json|```/g,'').trim().match(/\{[\s\S]*\}/)[0]); } catch(e) {}
-    if (!fu.steps) fu.steps = [];
-    fu.steps.push({
-      app: '你的干预',
-      content: (data.speech ? ('角色：「'+data.speech+'」\n') : '') + userHint,
-      thought: data.thought || '',
-      ts: Date.now()
-    });
+    if (!fu.thoughts) fu.thoughts = {};
+    fu.thoughts.intervene = (data.thought || '') + (data.speech ? ('｜「'+data.speech+'」') : '');
     if (data.next === 'force_check') { fu.locked = false; fu.status = 'checking'; }
     if (data.next === 'stopped') fu.status = 'stopped';
     if (data.next === 'locked') { fu.locked = true; fu.status = 'locked'; }
     try {
+      if (!state.chats[charId]) state.chats[charId] = { messages: [], timeAware: true };
       const chat = state.chats[charId];
-      if (chat) {
-        if (!chat.shortMemory) chat.shortMemory = [];
-        chat.shortMemory.push({ text: '【捡手机·干预】'+userHint+(data.thought?('｜想法：'+data.thought.slice(0,40)):'') , ts: Date.now() });
-      }
+      if (!chat.shortMemory) chat.shortMemory = [];
+      chat.shortMemory.push({ text: '【捡手机·干预】'+userHint+(data.thought?('｜'+data.thought.slice(0,40)):''), ts: Date.now() });
     } catch(e) {}
     save();
     openPickupFoundUserSession(charId);
+    if (fu.thoughts.intervene) showToast(fu.thoughts.intervene.slice(0, 40));
   } catch(e) {
     save();
     openPickupFoundUserSession(charId);
