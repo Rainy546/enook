@@ -1748,7 +1748,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-19e';
+const EENOK_BUILD = '2026-08-19f';
 function checkAppUpdate() {
   try {
     const prev = localStorage.getItem('eenook_build');
@@ -12584,7 +12584,7 @@ function openPhoneApp(app, tab) {
             return '<div onclick="viewPhoneNote('+i+')" style="background:#fff;border-radius:12px;padding:14px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,.04);cursor:pointer">'
               + '<div style="font-weight:600;font-size:15px">'+escapeHtml(n.title||'无题')+'</div>'
               + '<div style="margin-top:6px;font-size:13px;color:#555;line-height:1.5;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap">'+escapeHtml(n.body||'')+'</div>'
-              + (n.thought?'<div style="margin-top:8px;font-size:11px;color:#8a6d3b">💭 '+escapeHtml(n.thought)+'</div>':'')
+              + (n.thought?'<div style="margin-top:8px;font-size:11px;color:#8a6d3b;display:flex;gap:6px;align-items:flex-start"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8a6d3b" stroke-width="1.6" style="flex-shrink:0;margin-top:1px"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>'+escapeHtml(n.thought)+'</span></div>':'')
               + '</div>';
           }).join('')}
         </div>
@@ -12730,7 +12730,7 @@ function openPhoneBrowserDetail(i) {
         <div style="font-size:18px;font-weight:700">${escapeHtml(it.title||'')}</div>
         <div style="font-size:12px;color:#8e8e93;margin-top:6px">${escapeHtml(it.url||'')} · ${escapeHtml(it.time||'')}</div>
         <div style="font-size:14px;line-height:1.7;margin-top:16px;color:#ddd">${escapeHtml(it.detail||it.snippet||'')}</div>
-        ${it.thought?`<div style="margin-top:20px;padding:12px;background:rgba(255,200,100,.12);border-radius:12px;font-size:13px;color:#e8c070;line-height:1.5">💭 内心：${escapeHtml(it.thought)}</div>`:''}
+        ${it.thought?`<div style="margin-top:20px;padding:12px;background:rgba(255,200,100,.12);border-radius:12px;font-size:13px;color:#e8c070;line-height:1.5;display:flex;gap:8px;align-items:flex-start"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e8c070" stroke-width="1.6" style="flex-shrink:0;margin-top:2px"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>${escapeHtml(it.thought)}</span></div>`:''}
       </div>
     </div>
   `, '', { replace: true });
@@ -12773,7 +12773,7 @@ function openPhonePhotoDetail(kind, i) {
       </div>
       <div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:24px">
         <div style="aspect-ratio:1;border-radius:16px;background:linear-gradient(145deg,#2a2a30,#1a1a1e);display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;font-size:15px;line-height:1.6;color:#ddd">${escapeHtml(p.desc||'')}</div>
-        ${p.thought?`<div style="margin-top:20px;padding:12px;background:rgba(255,255,255,.08);border-radius:12px;font-size:13px;line-height:1.5;color:#e0d0b0">💭 ${escapeHtml(p.thought)}</div>`:''}
+        ${p.thought?`<div style="margin-top:20px;padding:12px;background:rgba(255,255,255,.08);border-radius:12px;font-size:13px;line-height:1.5;color:#e0d0b0;display:flex;gap:8px;align-items:flex-start"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e0d0b0" stroke-width="1.6" style="flex-shrink:0;margin-top:2px"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>${escapeHtml(p.thought)}</span></div>`:''}
       </div>
     </div>
   `, '', { replace: true });
@@ -16442,6 +16442,8 @@ function openPickupFoundCharThread(charId, ti) {
   }
   if (!thread.messages) thread.messages = [];
   state._pickupThread = { charId, ti, isRealUser: !!thread.isRealUser };
+  const stickBottom = !!state._pickupStickBottom;
+  state._pickupStickBottom = false;
   openSubPage(escapeHtml(thread.name||'会话'), `
     <div style="position:absolute;inset:0;display:flex;flex-direction:column;background:#ededed">
       <div style="padding:10px 12px;display:flex;align-items:center;background:#ededed;flex-shrink:0">
@@ -16449,19 +16451,28 @@ function openPickupFoundCharThread(charId, ti) {
         <div style="flex:1;text-align:center;font-weight:600">${escapeHtml(thread.name||'')}${thread.isRealUser?' · 真实':''}</div>
         <div style="width:28px"></div>
       </div>
-      <div id="pickupThreadMsgs" style="flex:1;overflow:auto;padding:12px">
+      <div id="pickupThreadMsgs" style="flex:1;overflow:auto;padding:12px;-webkit-overflow-scrolling:touch">
         ${thread.messages.length ? thread.messages.map(function(m){
           const me = m.from === 'me';
-          return '<div style="margin:8px 0;text-align:'+(me?'right':'left')+'"><span style="display:inline-block;max-width:75%;padding:8px 12px;border-radius:8px;background:'+(me?'#95ec69':'#fff')+';font-size:14px;line-height:1.45">'+escapeHtml(m.text||'')+'</span></div>';
+          return '<div class="pickup-msg" style="margin:8px 0;text-align:'+(me?'right':'left')+'"><span style="display:inline-block;max-width:75%;padding:8px 12px;border-radius:8px;background:'+(me?'#95ec69':'#fff')+';font-size:14px;line-height:1.45">'+escapeHtml(m.text||'')+'</span></div>';
         }).join('') : '<div class="empty" style="padding:32px;color:#999">暂无消息</div>'}
       </div>
-      <div style="padding:8px 10px;background:#f7f7f7;display:flex;gap:8px;align-items:center;border-top:1px solid #e5e5e5">
+      <div style="padding:8px 10px;background:#f7f7f7;display:flex;gap:8px;align-items:center;border-top:1px solid #e5e5e5;flex-shrink:0">
         <input id="pickupFakeInput" placeholder="${thread.isRealUser?'以角色身份给自己发消息…':'以角色身份回复…'}" style="flex:1;border:none;border-radius:18px;padding:10px 14px;background:#fff;font-size:14px;outline:none" onkeydown="if(event.key==='Enter'){event.preventDefault();pickupFakeSend();}">
         <button type="button" onclick="pickupFakeSend()" style="border:none;background:#07c160;color:#fff;border-radius:18px;padding:10px 16px;font-size:14px;cursor:pointer">发送</button>
       </div>
-      ${thread.isRealUser ? '<div style="padding:6px 12px;font-size:11px;color:#888;background:#f0f0f0">假扮发送会同步到微信 App（角色气泡），不会自动生成回复；可去微信里自己回。</div>' : ''}
+      ${thread.isRealUser ? '<div style="padding:6px 12px;font-size:11px;color:#888;background:#f0f0f0;flex-shrink:0">假扮发送会同步到微信 App（角色气泡），不会自动生成回复；可去微信里自己回。</div>' : ''}
     </div>
   `, '', { replace: true });
+  // 发消息后滚到底部，避免弹回顶部
+  setTimeout(function() {
+    try {
+      var box = document.getElementById('pickupThreadMsgs');
+      if (box) box.scrollTop = box.scrollHeight;
+      var input = document.getElementById('pickupFakeInput');
+      if (input && stickBottom) try { input.focus(); } catch(e2) {}
+    } catch(e) {}
+  }, 40);
 }
 
 async function pickupFakeSend() {
@@ -16505,6 +16516,7 @@ async function pickupFakeSend() {
     try { save(); } catch(e) {}
     try { if (typeof renderChats === 'function') renderChats(); } catch(e) {}
     showToast('已同步到微信 · 不会自动回复');
+    state._pickupStickBottom = true;
     openPickupFoundCharThread(charId, ti);
     return;
   }
@@ -16520,6 +16532,7 @@ async function pickupFakeSend() {
     if (chat.shortMemory.length > 40) chat.shortMemory = chat.shortMemory.slice(-40);
   } catch(e) {}
   save();
+  state._pickupStickBottom = true;
   openPickupFoundCharThread(charId, ti);
   showToast('对方正在回复…');
   try {
@@ -16544,6 +16557,7 @@ async function pickupFakeSend() {
         }
       } catch(e) {}
       save();
+      state._pickupStickBottom = true;
       openPickupFoundCharThread(charId, ti);
     }
   } catch(e) { showToast('回复失败'); }
@@ -16619,7 +16633,9 @@ function openPickupFoundUserSession(charId) {
         }).join('') : '<div class="empty" style="padding:48px 16px;color:#999">微信里还没有聊天记录</div>'}
       </div>
       <div id="pickupThoughtBar" style="padding:8px 12px;background:#fff8e6;border-top:1px solid #f0e0c0;font-size:12px;color:#8a6d3b;line-height:1.45;min-height:36px">
-        ${fu.thoughts && fu.thoughts.chatlist ? ('💭 '+escapeHtml(fu.thoughts.chatlist)) : '点右上角「想法」生成角色看到聊天列表时的内心独白'}
+        ${fu.thoughts && fu.thoughts.chatlist
+          ? ('<span style="display:inline-flex;gap:6px;align-items:flex-start"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8a6d3b" stroke-width="1.6" style="flex-shrink:0;margin-top:2px"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>'+escapeHtml(fu.thoughts.chatlist)+'</span></span>')
+          : '点右上角「想法」生成角色看到聊天列表时的内心独白'}
       </div>
       ${pickupInterveneBar(charId)}
     </div>
@@ -16663,7 +16679,9 @@ function openPickupUserWxThread(viewerId, targetCharId) {
         }).join('') : '<div class="empty" style="padding:32px;color:#999">暂无消息</div>'}
       </div>
       <div style="padding:8px 12px;background:#fff8e6;border-top:1px solid #f0e0c0;font-size:12px;color:#8a6d3b;line-height:1.45;max-height:80px;overflow:auto">
-        ${thought ? ('💭 '+escapeHtml(thought)) : '点右上角「想法」生成角色看完这段聊天后的内心'}
+        ${thought
+          ? ('<span style="display:inline-flex;gap:6px;align-items:flex-start"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8a6d3b" stroke-width="1.6" style="flex-shrink:0;margin-top:2px"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>'+escapeHtml(thought)+'</span></span>')
+          : '点右上角「想法」生成角色看完这段聊天后的内心'}
       </div>
       ${pickupInterveneBar(viewerId)}
     </div>
