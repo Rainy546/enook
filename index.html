@@ -1748,7 +1748,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-19f';
+const EENOK_BUILD = '2026-08-19g';
 function checkAppUpdate() {
   try {
     const prev = localStorage.getItem('eenook_build');
@@ -1804,6 +1804,9 @@ async function idbDel(key) {
     });
   } catch (e) {}
 }
+// 兼容旧调用名
+async function idbPutKv(key, val) { return idbSet(key, val); }
+async function idbGetKv(key, def) { return idbGet(key, def); }
 async function idbClearAll() {
   try {
     const db = await openIDB();
@@ -2045,7 +2048,11 @@ function save() {
     ['divProfile', () => state.divProfile || {}],
     ['forumIG', () => state.forumIG || {}],
     ['countdown', () => state.countdown || {}],
-    ['lock', () => state.lock || { pin:'0000', enabled:true }],
+    // 锁屏壁纸单独走 IndexedDB，不写进 localStorage（避免超配额导致整段 lock 丢失）
+    ['lock', () => {
+      const L = state.lock || { pin:'0000', enabled:true };
+      return { pin: L.pin || '0000', enabled: L.enabled !== false };
+    }],
     ['offlineStyles', () => state.offlineStyles || []],
     ['memoryApp', () => state.memoryApp || { items: [] }],
   ];
@@ -2406,6 +2413,15 @@ async function loadFromIDB() {
         else state[k] = v;
       }
     }
+    // 锁屏壁纸单独键
+    try {
+      const wp = await idbGet('lockWp', null);
+      if (wp) {
+        if (!state.lock) state.lock = { pin: '0000', enabled: true };
+        state.lock.wallpaper = wp;
+        try { sessionStorage.setItem('eenook_lock_wp', wp); } catch(e) {}
+      }
+    } catch(e) {}
   } catch (e) { console.warn('idb load', e); }
 }
 function updateStatusTime() { document.getElementById('statusTime').textContent = nowStr(); }
@@ -5306,40 +5322,38 @@ function onFileSelected(e) {
       }
     } else if (state.fileTarget === 'lockWp') {
       ensureLockState();
-      // 压缩后更易持久化
       (async function() {
         let img = data;
         try {
-          if (typeof compressDataUrl === 'function' && data && data.length > 200000) {
-            img = await compressDataUrl(data, 1080, 0.82);
+          if (typeof compressDataUrl === 'function') {
+            img = await compressDataUrl(data, 900, 0.72);
           }
         } catch(e) {}
         state.lock.wallpaper = img;
         try { sessionStorage.setItem('eenook_lock_wp', img); } catch(e) {}
-        try { localStorage.setItem('eenook_lock_wp_flag', '1'); } catch(e) {}
+        // 必须用 idbSet 写入 graychat_idb（与主存储同一库）
+        var ok = false;
         try {
-          if (window.indexedDB) {
-            const req = indexedDB.open('eenook_idb', 1);
-            req.onupgradeneeded = function() { try { req.result.createObjectStore('kv'); } catch(e) {} };
-            req.onsuccess = function() {
-              try {
-                const db = req.result;
-                if (!db.objectStoreNames.contains('kv')) {
-                  try { db.close(); } catch(e) {}
-                  const req2 = indexedDB.open('eenook_idb', 2);
-                  req2.onupgradeneeded = function() { try { req2.result.createObjectStore('kv'); } catch(e) {} };
-                  req2.onsuccess = function() {
-                    try { req2.result.transaction('kv','readwrite').objectStore('kv').put(img, 'lockWp'); } catch(e) {}
-                  };
-                  return;
-                }
-                db.transaction('kv','readwrite').objectStore('kv').put(img, 'lockWp');
-              } catch(e) {}
-            };
-          }
-        } catch(e) {}
+          await idbSet('lockWp', img);
+          localStorage.setItem('eenook_lock_wp_flag', '1');
+          ok = true;
+        } catch(e) {
+          console.warn('lockWp idbSet', e);
+        }
+        if (!ok) {
+          try {
+            // 降级：小图塞 localStorage
+            if (img.length < 400000) localStorage.setItem('eenook_lock_wp_fallback', img);
+            else {
+              var small = img;
+              try { if (typeof compressDataUrl === 'function') small = await compressDataUrl(data, 640, 0.55); } catch(e3) {}
+              localStorage.setItem('eenook_lock_wp_fallback', small);
+              state.lock.wallpaper = small;
+              img = small;
+            }
+          } catch(e2) {}
+        }
         try { save(); } catch(e) {}
-        try { if (typeof saveAsync === 'function') saveAsync(); } catch(e) {}
         try {
           const ls = document.getElementById('lockScreen');
           if (ls) {
@@ -5351,7 +5365,7 @@ function onFileSelected(e) {
           const prev = document.getElementById('lockWpPreview');
           if (prev) prev.innerHTML = '<img src="'+img+'" style="width:100%;max-height:140px;object-fit:cover;border-radius:10px">';
         } catch(e) {}
-        showToast('锁屏壁纸已保存');
+        showToast(ok ? '锁屏壁纸已保存' : '壁纸已保存（降级存储）');
       })();
     } else if (state.fileTarget === 'squishImg') {
       ensureHomeState();
@@ -13293,6 +13307,13 @@ function editHomePolaroid() {
 function openChangelog() {
   const ver = (typeof EENOK_BUILD !== 'undefined') ? EENOK_BUILD : '';
   const logs = [
+    { v: '2026-08-19g', items: [
+      '锁屏壁纸：修复 IDB 写入错误（idbPutKv→idbSet），大退重进可恢复',
+      '线下状态栏：解析截断 JSON，不再把 {"thought":...} 原文显示出来',
+      '角色库/线下卡片：只保留头像+姓名',
+      'Galgame 生成角色：性别/国籍/第一印象/相遇时期/恋爱类别',
+      '捡手机真实会话可假扮发送并同步微信；发消息后滚到底部'
+    ]},
     { v: '2026-08-18q', items: [
       '世界：从主屏进入强制角色列表，防点击穿透进单个角色页',
       '记忆互通：挂载其它会话时带上近聊原文；API Base 规范化更稳'
@@ -13885,8 +13906,7 @@ function openCharLib() {
         <img src="${avatarUrl(c)}" style="width:100%;height:100%;object-fit:cover;object-position:center">
       </div>
       <div style="padding:10px 12px">
-        <div style="font-weight:600;font-size:15px">${escapeHtml(c.nick||c.realName||'角色')}</div>
-        <div class="text-sub" style="font-size:12px;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml((c.persona||c.signature||'').slice(0,28))}</div>
+        <div style="font-weight:600;font-size:15px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(c.nick||c.realName||'角色')}</div>
       </div>
     </div>
   `).join('') || '<div class="empty" style="grid-column:1/-1">暂无角色</div>';
@@ -14126,12 +14146,11 @@ function openOfflineApp() {
   const chars = state.chars || [];
   const cards = chars.map(c => {
     const av = c.avatar || defaultAvatar(c.nick || c.realName || '?');
-    return `<div onclick="openOfflineScene('${c.id}')" style="background:#fff;border-radius:16px;padding:14px 12px;box-shadow:0 2px 12px rgba(0,0,0,.04);border:0.5px solid #eee;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:8px">
+    return `<div onclick="openOfflineScene('${c.id}')" style="background:#fff;border-radius:16px;padding:14px 12px;box-shadow:0 2px 12px rgba(0,0,0,.04);border:0.5px solid #eee;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:10px">
       <div style="width:64px;height:64px;border-radius:50%;overflow:hidden;background:#f0f0f0">
         <img src="${av}" style="width:100%;height:100%;object-fit:cover" onerror="this.src='${defaultAvatar(c.nick||'?')}'">
       </div>
       <div style="font-size:13px;font-weight:600;color:#222;text-align:center;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(c.nick||c.realName||'角色')}</div>
-      <div style="font-size:11px;color:#999;text-align:center;height:28px;overflow:hidden;line-height:1.3">${escapeHtml((c.signature||c.persona||'').slice(0,28))}</div>
     </div>`;
   }).join('') || '<div class="empty" style="grid-column:1/-1;padding:40px">还没有角色，请先在微信添加</div>';
   openSubPage('线下', `
@@ -14250,6 +14269,53 @@ function openOfflineScene(charId) {
     if (el) el.scrollTop = el.scrollHeight;
   }, 40);
 }
+function parseOfflineStatusJson(raw) {
+  // 解析心声/小剧场，兼容截断 JSON、夹杂文字
+  let thought = '', theater = '';
+  const s = String(raw || '').replace(/```json|```/gi, '').trim();
+  if (!s) return { thought: '', theater: '' };
+  // 1) 完整 JSON
+  try {
+    const j = JSON.parse(s);
+    thought = String(j.thought || j.心声 || '').trim();
+    theater = String(j.theater || j.剧场 || j.parallel || '').trim();
+    if (thought || theater) return { thought: thought.slice(0, 60), theater: theater.slice(0, 120) };
+  } catch (e) {}
+  // 2) 截取首个 {...}
+  try {
+    const m = s.match(/\{[\s\S]*\}/);
+    if (m) {
+      let blob = m[0];
+      // 尝试补全截断引号
+      try {
+        const j2 = JSON.parse(blob);
+        thought = String(j2.thought || '').trim();
+        theater = String(j2.theater || '').trim();
+        if (thought || theater) return { thought: thought.slice(0, 60), theater: theater.slice(0, 120) };
+      } catch (e2) {
+        const tm = blob.match(/"thought"\s*:\s*"((?:\\.|[^"\\])*)"/);
+        const th = blob.match(/"theater"\s*:\s*"((?:\\.|[^"\\])*)"/);
+        if (tm) thought = tm[1].replace(/\\"/g, '"').replace(/\\n/g, '\n');
+        if (th) theater = th[1].replace(/\\"/g, '"').replace(/\\n/g, '\n');
+        // 截断时 theater 可能没有闭合引号
+        if (!theater) {
+          const th2 = blob.match(/"theater"\s*:\s*"([\s\S]*)/);
+          if (th2) theater = th2[1].replace(/"\s*,?\s*"?$/, '').replace(/"\s*}\s*$/, '');
+        }
+        if (!thought) {
+          const tm2 = blob.match(/"thought"\s*:\s*"([\s\S]*?)(?:"\s*,|"\s*})/);
+          if (tm2) thought = tm2[1];
+        }
+        if (thought || theater) return { thought: String(thought).slice(0, 60), theater: String(theater).slice(0, 120) };
+      }
+    }
+  } catch (e) {}
+  // 3) 纯文本：不把 JSON 原文塞进界面
+  if (/^\s*\{/.test(s)) {
+    return { thought: '……', theater: '（解析不完整，请点状态栏重试）' };
+  }
+  return { thought: '', theater: s.slice(0, 120) };
+}
 async function openOfflineStatus(charId, logIdx) {
   const c = state.chars.find(x => x.id === charId);
   if (!c) return;
@@ -14258,9 +14324,16 @@ async function openOfflineStatus(charId, logIdx) {
   if (!sess.statusCache) sess.statusCache = {};
   const cacheKey = (logIdx != null ? String(logIdx) : 'latest');
   let thought = '', theater = '';
-  if (sess.statusCache[cacheKey]) {
-    thought = sess.statusCache[cacheKey].thought;
-    theater = sess.statusCache[cacheKey].theater;
+  const cached = sess.statusCache[cacheKey];
+  // 缓存里若是脏数据（含 raw JSON），丢弃重生成
+  const cacheDirty = cached && (
+    (String(cached.thought || '').indexOf('{"thought"') >= 0) ||
+    (String(cached.theater || '').indexOf('{"thought"') >= 0) ||
+    (String(cached.theater || '').indexOf('"theater"') >= 0 && String(cached.thought || '') === '')
+  );
+  if (cached && !cacheDirty) {
+    thought = cached.thought || '';
+    theater = cached.theater || '';
   } else {
     showToast('生成状态…');
     try {
@@ -14268,15 +14341,13 @@ async function openOfflineStatus(charId, logIdx) {
       const focus = (logIdx != null && ctxLines[logIdx]) ? ctxLines[logIdx].text : '';
       const recent = ctxLines.slice(-4).map(function(l){ return l.text; }).join(' / ').slice(0, 180);
       const { text } = await apiChat([
-        { role: 'system', content: '你是'+c.nick+'。严格JSON：{"thought":"心声≤30字口语","theater":"平行小剧场必须≤80字，白描简洁。人设：'+(c.persona||'')+'"}' },
+        { role: 'system', content: '你是'+c.nick+'。只输出合法完整 JSON，不要 markdown，不要截断：{"thought":"心声≤30字口语第一人称","theater":"平行小剧场≤80字白描"}。人设：'+(c.persona||'').slice(0,120) },
         { role: 'user', content: (focus ? ('本句：'+focus+'\n') : '') + '最近：'+(recent||'刚见面') }
-      ], { max_tokens: 160, temperature: 0.8 });
-      try {
-        const j = JSON.parse((text||'').replace(/```json|```/g,'').trim());
-        thought = j.thought || '';
-        theater = (j.theater || '').slice(0, 80);
-      } catch(e) { theater = (text||'').trim().slice(0, 80); }
-    } catch(e) { theater = '（生成失败）'; }
+      ], { max_tokens: 220, temperature: 0.8 });
+      const parsed = parseOfflineStatusJson(text);
+      thought = parsed.thought || '……';
+      theater = parsed.theater || '';
+    } catch(e) { thought = '……'; theater = '（生成失败）'; }
     sess.statusCache[cacheKey] = { thought: thought, theater: theater };
     save();
   }
@@ -17530,25 +17601,85 @@ function galAddCustom() {
 }
 function doGalAddPrompt() {
   openModal('生成攻略角色', `
-    <div class="form-group"><label>人设描述</label><textarea id="galDesc" placeholder="性格、恋爱类型…"></textarea></div>
+    <div class="form-group"><label>性别</label>
+      <select id="galGender"><option value="男">男</option><option value="女" selected>女</option><option value="其他">其他</option></select>
+    </div>
+    <div class="form-group"><label>国籍 / 地区</label>
+      <input id="galNation" placeholder="如：中国 / 日本 / 法国" value="中国">
+    </div>
+    <div class="form-group"><label>第一印象</label>
+      <input id="galFirst" placeholder="如：冷淡、温柔、毒舌、阳光…">
+    </div>
+    <div class="form-group"><label>相遇时期</label>
+      <select id="galMeet">
+        <option value="校园">校园</option>
+        <option value="职场">职场</option>
+        <option value="偶然邂逅">偶然邂逅</option>
+        <option value="青梅竹马">青梅竹马</option>
+        <option value="相亲介绍">相亲介绍</option>
+        <option value="网络相识">网络相识</option>
+        <option value="自定义">自定义（写在补充里）</option>
+      </select>
+    </div>
+    <div class="form-group"><label>恋爱类别</label>
+      <select id="galLove">
+        <option value="甜宠">甜宠</option>
+        <option value="慢热治愈">慢热治愈</option>
+        <option value="欢喜冤家">欢喜冤家</option>
+        <option value="暗恋成真">暗恋成真</option>
+        <option value="破镜重圆">破镜重圆</option>
+        <option value="禁忌感">禁忌感（健康边界内）</option>
+        <option value="互攻">互攻 / 双向奔赴</option>
+      </select>
+    </div>
+    <div class="form-group"><label>补充描述（可选）</label>
+      <textarea id="galDesc" placeholder="性格细节、职业、禁忌等…"></textarea>
+    </div>
     <div class="form-group"><label>攻略模式</label>
       <select id="galMode"><option value="both">互相靠近</option><option value="you">你攻略角色</option><option value="them">角色攻略你</option></select>
     </div>
   `, `<button class="btn btn-secondary" onclick="closeModal()">取消</button>
-      <button class="btn btn-primary" onclick="doGalAdd()">创建</button>`);
+      <button class="btn btn-primary" onclick="doGalAdd()">生成</button>`);
 }
 async function doGalAdd() {
-  const desc = document.getElementById('galDesc').value.trim()||'温柔慢热';
-  const mode = document.getElementById('galMode').value;
+  const gender = (document.getElementById('galGender') || {}).value || '女';
+  const nation = ((document.getElementById('galNation') || {}).value || '中国').trim();
+  const first = ((document.getElementById('galFirst') || {}).value || '').trim() || '印象模糊';
+  const meet = (document.getElementById('galMeet') || {}).value || '偶然邂逅';
+  const love = (document.getElementById('galLove') || {}).value || '慢热治愈';
+  const desc = ((document.getElementById('galDesc') || {}).value || '').trim();
+  const mode = (document.getElementById('galMode') || {}).value || 'both';
   closeModal(); showToast('生成中…');
+  const pack = '性别:'+gender+'；国籍:'+nation+'；第一印象:'+first+'；相遇时期:'+meet+'；恋爱类别:'+love+(desc?('；补充:'+desc):'');
   try {
-    const { text } = await apiChat([{role:'user',content:'根据描述生成角色JSON：{"nick":"","persona":"","gender":"女或男"}。描述：'+desc+'。只输出JSON'}], {max_tokens:200,temperature:0.8});
+    const { text } = await apiChat([
+      { role:'system', content: '根据条件生成 galgame 攻略角色。只输出合法 JSON：{"nick":"称呼","persona":"人设120字内","gender":"男或女或其它","signature":"一句话签名"}。不要 markdown。' },
+      { role:'user', content: pack }
+    ], { max_tokens: 280, temperature: 0.85 });
     let data = {};
-    try { data = JSON.parse((text||'').replace(/```json|```/g,'').trim()); } catch(e) { data = { nick:'新角色', persona:desc }; }
+    try {
+      const m = String(text||'').replace(/```json|```/g,'').trim().match(/\{[\s\S]*\}/);
+      data = JSON.parse(m ? m[0] : text);
+    } catch(e) { data = { nick: '新角色', persona: pack }; }
     const id = 'gal'+Date.now();
     // galOnly：只存在于 galgame，不进微信/角色库/通讯录
-    state.chars.push({ id, nick: data.nick||'新角色', persona: data.persona||desc, gender: data.gender||'', signature:'', avatar:'', galOnly: true });
-    state.gal.chars[id] = { youToThem:0, themToYou:0, mode, log:[], play:'text' };
+    state.chars.push({
+      id,
+      nick: data.nick || '新角色',
+      persona: data.persona || pack,
+      gender: data.gender || gender,
+      signature: data.signature || (first + ' · ' + love),
+      avatar: '',
+      galOnly: true,
+      nation: nation,
+      meetPeriod: meet,
+      loveType: love,
+      firstImpression: first
+    });
+    state.gal.chars[id] = {
+      youToThem: 0, themToYou: 0, mode, log: [], play: 'text',
+      meta: { gender, nation, first, meet, love }
+    };
     save(); openGalApp('targets');
   } catch(e) { alert('失败：'+(e.message||e)); }
 }
@@ -21441,9 +21572,11 @@ function showLockScreen() {
   const el = document.getElementById('lockScreen');
   if (!el) return;
   el.classList.remove('hidden');
-  // 壁纸：锁屏壁纸 > 主界面壁纸 > session > 默认渐变
-  let wp = state.lock.wallpaper || (state.home && state.home.wallpaper) || '';
-  try { if (!wp) wp = sessionStorage.getItem('eenook_lock_wp') || sessionStorage.getItem('eenook_home_wp') || ''; } catch(e) {}
+  // 壁纸：内存 > session > localStorage 降级 > 主界面壁纸 > 默认渐变；并异步从 IDB 拉取
+  let wp = state.lock.wallpaper || '';
+  try { if (!wp) wp = sessionStorage.getItem('eenook_lock_wp') || ''; } catch(e) {}
+  try { if (!wp) wp = localStorage.getItem('eenook_lock_wp_fallback') || ''; } catch(e) {}
+  try { if (!wp) wp = (state.home && state.home.wallpaper) || sessionStorage.getItem('eenook_home_wp') || ''; } catch(e) {}
   const applyWp = function(url) {
     if (url) {
       el.style.backgroundImage = 'url("' + String(url).replace(/"/g,'') + '")';
@@ -21455,19 +21588,16 @@ function showLockScreen() {
     }
   };
   applyWp(wp);
+  // 正确库：graychat_idb / idbGet
   try {
-    if (!wp && window.indexedDB) {
-      const req = indexedDB.open('eenook_idb', 1);
-      req.onsuccess = function() {
-        try {
-          const db = req.result;
-          if (!db.objectStoreNames.contains('kv')) return;
-          const g = db.transaction('kv').objectStore('kv').get('lockWp');
-          g.onsuccess = function() {
-            if (g.result) { state.lock.wallpaper = g.result; applyWp(g.result); }
-          };
-        } catch(e) {}
-      };
+    if (typeof idbGet === 'function') {
+      idbGet('lockWp', null).then(function(v) {
+        if (v) {
+          state.lock.wallpaper = v;
+          try { sessionStorage.setItem('eenook_lock_wp', v); } catch(e) {}
+          applyWp(v);
+        }
+      }).catch(function(){});
     }
   } catch(e) {}
 
@@ -21572,9 +21702,9 @@ function openLockSettings() {
       <input id="lockPin" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="4" value="${escapeHtml(String(state.lock.pin||'0000'))}" placeholder="0000" style="font-size:20px;letter-spacing:8px;text-align:center">
     </div>
     <div class="form-group"><label>锁屏壁纸</label>
-      <div id="lockWpPreview" style="margin-bottom:8px">${state.lock.wallpaper?'<img src="'+state.lock.wallpaper+'" style="width:100%;max-height:140px;object-fit:cover;border-radius:10px">':'<div class="text-sub">未设置</div>'}</div>
+      <div id="lockWpPreview" style="margin-bottom:8px">${state.lock.wallpaper?'<img src="'+state.lock.wallpaper+'" style="width:100%;max-height:140px;object-fit:cover;border-radius:10px">':'<div class="text-sub">加载中…</div>'}</div>
       <button type="button" class="btn btn-secondary" style="width:100%;margin-bottom:8px" id="lockWpBtn">上传壁纸</button>
-      <button type="button" class="btn btn-secondary" style="width:100%" onclick="ensureLockState();state.lock.wallpaper='';save();var p=document.getElementById('lockWpPreview');if(p)p.innerHTML='<div class=\'text-sub\'>已清除</div>';showToast('已清除壁纸')">清除壁纸</button>
+      <button type="button" class="btn btn-secondary" style="width:100%" id="lockWpClearBtn">清除壁纸</button>
     </div>
   `, `<button class="btn btn-secondary" onclick="closeModal()">取消</button>
       <button class="btn btn-primary" onclick="saveLockSettings()">保存</button>`);
@@ -21589,6 +21719,37 @@ function openLockSettings() {
       fi.value = '';
       fi.click();
     };
+    const clr = document.getElementById('lockWpClearBtn');
+    if (clr) clr.onclick = async function() {
+      ensureLockState();
+      state.lock.wallpaper = '';
+      try { sessionStorage.removeItem('eenook_lock_wp'); } catch(e) {}
+      try { localStorage.removeItem('eenook_lock_wp_fallback'); localStorage.removeItem('eenook_lock_wp_flag'); } catch(e) {}
+      try { if (typeof idbDel === 'function') await idbDel('lockWp'); } catch(e) {}
+      try { save(); } catch(e) {}
+      var p = document.getElementById('lockWpPreview');
+      if (p) p.innerHTML = '<div class="text-sub">已清除</div>';
+      showToast('已清除壁纸');
+    };
+    // 从 IDB 恢复预览
+    (async function() {
+      try {
+        var v = state.lock.wallpaper;
+        if (!v && typeof idbGet === 'function') v = await idbGet('lockWp', null);
+        if (!v) try { v = localStorage.getItem('eenook_lock_wp_fallback'); } catch(e) {}
+        if (v) {
+          state.lock.wallpaper = v;
+          var p = document.getElementById('lockWpPreview');
+          if (p) p.innerHTML = '<img src="'+v+'" style="width:100%;max-height:140px;object-fit:cover;border-radius:10px">';
+        } else {
+          var p2 = document.getElementById('lockWpPreview');
+          if (p2 && !state.lock.wallpaper) p2.innerHTML = '<div class="text-sub">未设置</div>';
+        }
+      } catch(e) {
+        var p3 = document.getElementById('lockWpPreview');
+        if (p3 && !state.lock.wallpaper) p3.innerHTML = '<div class="text-sub">未设置</div>';
+      }
+    })();
   }, 50);
 }
 function saveLockSettings() {
