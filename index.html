@@ -248,30 +248,34 @@ body.night .sms-bubble.other { background: rgba(255,255,255,.2); color: #fff; }
   line-height: 1.4; max-width: 100%;
 }
 .sms-im-input {
-  position: absolute; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-  display: flex; align-items: center; gap: 10px;
-  padding: 8px 10px;
-  background: rgba(255,255,255,.55);
-  backdrop-filter: blur(18px) saturate(160%);
-  -webkit-backdrop-filter: blur(18px) saturate(160%);
-  border-radius: 28px;
-  border: 0.5px solid rgba(255,255,255,.5);
-  box-shadow: 0 4px 20px rgba(0,0,0,.08);
-  min-height: 48px;
+  position: absolute; left: 16px; right: 16px; bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px 6px 6px;
+  background: #ffffff;
+  border-radius: 24px;
+  border: none;
+  box-shadow: 0 2px 16px rgba(0,0,0,.12);
+  min-height: 44px;
   z-index: 5;
+  box-sizing: border-box;
 }
 .sms-im-input .sms-plus {
-  width: 34px; height: 34px; border-radius: 50%; border: none;
-  background: rgba(0,0,0,.06); font-size: 22px; line-height: 1; color: #333;
+  width: 32px; height: 32px; border-radius: 50%; border: none;
+  background: transparent; font-size: 18px; line-height: 1; color: #1c1c1e;
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  font-weight: 600;
 }
 .sms-im-input input {
-  flex: 1; border-radius: 18px; border: none;
-  padding: 8px 12px; font-size: 16px; background: transparent; outline: none;
+  flex: 1; min-width: 0; border-radius: 18px; border: none;
+  padding: 8px 4px; font-size: 16px; background: transparent; outline: none; color: #1c1c1e;
 }
+.sms-im-input input::placeholder { color: #8e8e93; }
 .sms-im-input .sms-send {
   border: none; background: #007aff; color: #fff;
-  border-radius: 16px; padding: 8px 12px; font-size: 14px;
+  border-radius: 16px; padding: 6px 12px; font-size: 14px; flex-shrink: 0;
+}
+.sms-im-input #smsMicBtn {
+  flex-shrink: 0; opacity: .9;
 }
 
 /* gal masonry */
@@ -1726,6 +1730,19 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 #phone > #page-sub.active {
   z-index: 60 !important;
   background: #f5f5f7 !important;
+  left: 0 !important;
+  right: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+#phone > #page-sub.active #subBody {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  overflow-x: hidden !important;
+  box-sizing: border-box !important;
 }
 /* 主屏 dock：默认贴底，允许拖动（不强制 left/transform） */
 .home-bottom-dock {
@@ -2050,7 +2067,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-20F';
+const EENOK_BUILD = '2026-08-20I';
 /** 检测版本变化；进入主界面后弹出「已更新」提醒 */
 function checkAppUpdate() {
   try {
@@ -3066,7 +3083,7 @@ function openSubPage(title, bodyHtml, rightHtml, opts) {
     p.style.setProperty('transform', 'translateX(-120%)', 'important');
     p.style.setProperty('z-index', '0', 'important');
   });
-  // 显示 page-sub 全屏
+  // 显示 page-sub 全屏（强制满宽，防止半屏/按钮移位）
   sub.classList.add('active');
   sub.style.setProperty('display', 'flex', 'important');
   sub.style.setProperty('flex-direction', 'column', 'important');
@@ -3080,8 +3097,21 @@ function openSubPage(title, bodyHtml, rightHtml, opts) {
   sub.style.setProperty('top', '0', 'important');
   sub.style.setProperty('bottom', '0', 'important');
   sub.style.setProperty('width', '100%', 'important');
+  sub.style.setProperty('max-width', '100%', 'important');
   sub.style.setProperty('height', '100%', 'important');
   sub.style.setProperty('transform', 'none', 'important');
+  sub.style.setProperty('overflow', 'hidden', 'important');
+  sub.style.setProperty('box-sizing', 'border-box', 'important');
+  try {
+    var sbody = document.getElementById('subBody');
+    if (sbody) {
+      sbody.style.setProperty('width', '100%', 'important');
+      sbody.style.setProperty('max-width', '100%', 'important');
+      sbody.style.setProperty('box-sizing', 'border-box', 'important');
+      sbody.style.setProperty('overflow-x', 'hidden', 'important');
+      sbody.style.setProperty('min-width', '0', 'important');
+    }
+  } catch(e) {}
   var aquaRoots = {countdown:1,memory:1,charlib:1,sk:1,scriptkill:1,worldbook:1,bookstore:1,tomato:1,pomodoro:1,offline:1,gal:1,melo:1,pickup:1,sms:1,settings:1,beauty:1,shop:1,takeout:1,prompts:1};
   var hr = state._homeRoot || state._subKind || '';
   var aquaBg = aquaRoots[hr] ? 'linear-gradient(165deg,#e8f4f8 0%,#d4ebea 50%,#c8e4e8 100%)' : '#f5f5f7';
@@ -3661,12 +3691,27 @@ function backToList() {
 }
 
 function scrollMsgBottom() {
-  const area = document.getElementById('msgArea');
-  if (area) area.scrollTop = area.scrollHeight;
+  function pin(el) {
+    if (!el) return;
+    try {
+      el.scrollTop = el.scrollHeight;
+      requestAnimationFrame(function(){ el.scrollTop = el.scrollHeight; });
+      setTimeout(function(){ try { el.scrollTop = el.scrollHeight; } catch(e) {} }, 60);
+    } catch(e) {}
+  }
+  pin(document.getElementById('msgArea'));
+  pin(document.getElementById('smsMsgArea'));
+  pin(document.getElementById('igDmMsgs'));
+  pin(document.getElementById('skMsgArea'));
+  pin(document.getElementById('callChatLog'));
 }
 function scrollSKBottom() {
   const area = document.getElementById('skMsgArea');
-  if (area) requestAnimationFrame(() => { area.scrollTop = area.scrollHeight; });
+  if (area) {
+    area.scrollTop = area.scrollHeight;
+    requestAnimationFrame(function(){ area.scrollTop = area.scrollHeight; });
+    setTimeout(function(){ try { area.scrollTop = area.scrollHeight; } catch(e) {} }, 60);
+  }
 }
 function appendSKMsg(m) {
   const area = document.getElementById('skMsgArea');
@@ -3675,6 +3720,7 @@ function appendSKMsg(m) {
     const only = area.firstElementChild;
     if (only && only.textContent && (only.textContent.indexOf('讨论') >= 0 || only.textContent.indexOf('房间') >= 0 || only.textContent.indexOf('开始') >= 0)) only.remove();
   }
+  // 追加后立刻滚到底，避免「发一条跳回顶部」
   let mi = 0;
   const list = skGetMsgList();
   if (list) mi = Math.max(0, list.length - 1);
@@ -4201,6 +4247,42 @@ function onInputKey(e) {
     sendMsg();
   }
 }
+/** 全局：各聊天输入框回车 = 发送 */
+(function bindGlobalEnterSend() {
+  if (window._eenookEnterSendBound) return;
+  window._eenookEnterSendBound = true;
+  document.addEventListener('keydown', function(e) {
+    if (e.key !== 'Enter' || e.shiftKey || e.isComposing || e.keyCode === 229) return;
+    var t = e.target;
+    if (!t || !t.id) return;
+    function fromOnKey(re) {
+      var oc = t.getAttribute('onkeydown') || '';
+      var mm = oc.match(re);
+      return mm ? mm[1] : null;
+    }
+    var handled = true;
+    try {
+      if (t.id === 'msgInput') { if (typeof sendMsg === 'function') sendMsg(); }
+      else if (t.id === 'smsInput') {
+        var sid = fromOnKey(/sendSms\('([^']+)'\)/);
+        if (sid && typeof sendSms === 'function') sendSms(sid);
+        else {
+          var sb = document.getElementById('smsSendBtn');
+          if (sb) sb.click();
+        }
+      }
+      else if (t.id === 'igDmInput') {
+        var iid = fromOnKey(/igDmSend\('([^']+)'\)/);
+        if (iid && typeof igDmSend === 'function') igDmSend(iid);
+      }
+      else if (t.id === 'skChatInput') { if (typeof sendSKChatMsg === 'function') sendSKChatMsg(); }
+      else if (t.id === 'callInput') { if (typeof callSendUser === 'function') callSendUser(); }
+      else if (t.id === 'pickupFakeInput') { if (typeof pickupFakeSend === 'function') pickupFakeSend(); }
+      else handled = false;
+    } catch(err) { console.warn('enter send', err); handled = false; }
+    if (handled) e.preventDefault();
+  }, true);
+})();
 
 /** 按条数自动触发短期/长期记忆（不阻塞发送） */
 function checkMemory(chatId) {
@@ -4325,7 +4407,11 @@ function sendMsg() {
   });
   state.quoteMsg = null;
   input.value = ''; input.placeholder = '说点什么...'; input.style.height = 'auto';
-  save(); renderMessages({forceBottom:true}); checkMemory(state.currentChatId);
+  save();
+  renderMessages({ forceBottom: true });
+  try { scrollMsgBottom(); } catch(e) {}
+  setTimeout(function(){ try { scrollMsgBottom(); } catch(e) {} }, 80);
+  checkMemory(state.currentChatId);
 }
 function autoHeight(el) {
   el.style.height = 'auto';
@@ -4655,11 +4741,14 @@ async function pushSentences(chat, sentences, fromMeta) {
       chat.messages.push(msg);
       save();
       try { renderMessages({ forceBottom: true }); } catch(e) {}
+      try { scrollMsgBottom(); } catch(e) {}
       if (away) showMsgBanner(bannerName, cleaned[i], bannerAv);
     }
+    try { scrollMsgBottom(); } catch(e) {}
   } finally {
     setTyping(false);
     hideTypingBubble();
+    try { scrollMsgBottom(); } catch(e) {}
   }
 }
 function generateReply() {
@@ -11170,18 +11259,19 @@ function openSKFriendChat(cid) {
   const msgs = chat.messages || [];
   const wp = chat.wallpaper || '';
   openSubPage(ch.nick||ch.realName||'聊天', `
-    <div style="display:flex;flex-direction:column;height:100%;background:${wp?`#111 url(${wp}) center/cover`:'#121214'};color:#f0f0f2">
-      <div id="skMsgArea" style="flex:1;overflow:auto;padding:12px;background:${wp?'rgba(0,0,0,.35)':'transparent'}">
+    <div style="display:flex;flex-direction:column;height:100%;width:100%;max-width:100%;min-width:0;box-sizing:border-box;background:${wp?`#111 url(${wp}) center/cover`:'#121214'};color:#f0f0f2;overflow:hidden">
+      <div id="skMsgArea" style="flex:1;overflow-y:auto;overflow-x:hidden;padding:12px;min-height:0;width:100%;box-sizing:border-box;background:${wp?'rgba(0,0,0,.35)':'transparent'}">
         ${msgs.map((m,mi) => skRenderMsg(m, mi)).join('') || '<div style="text-align:center;opacity:.4;padding:30px">开始讨论剧本吧</div>'}
       </div>
-      <div style="padding:10px 12px;border-top:1px solid #2a2a2e;display:flex;gap:8px;align-items:center;background:rgba(18,18,20,.92)">
+      <div style="padding:10px 12px;border-top:1px solid #2a2a2e;display:flex;gap:8px;align-items:center;background:rgba(18,18,20,.92);flex-shrink:0;width:100%;box-sizing:border-box;min-width:0">
         <button type="button" id="skGenMsgBtn" onclick="genSKChatMsg()" style="width:36px;height:36px;border-radius:50%;border:1px solid #3dd6c6;background:transparent;color:#3dd6c6;font-size:16px;cursor:pointer;flex-shrink:0">↑</button>
-        <input id="skChatInput" placeholder="输入消息…" onkeydown="if(event.key==='Enter'){event.preventDefault();sendSKChatMsg();}" style="flex:1;padding:10px 12px;border-radius:20px;border:1px solid #333;background:#1c1c1e;color:#eee">
-        <button type="button" onclick="sendSKChatMsg()" style="border:none;background:#3dd6c6;color:#111;border-radius:20px;padding:0 16px;height:36px;font-weight:600">发送</button>
+        <input id="skChatInput" placeholder="输入消息…" enterkeyhint="send" onkeydown="if(event.key==='Enter'){event.preventDefault();sendSKChatMsg();}" style="flex:1;min-width:0;padding:10px 12px;border-radius:20px;border:1px solid #333;background:#1c1c1e;color:#eee;box-sizing:border-box">
+        <button type="button" onclick="sendSKChatMsg()" style="border:none;background:#3dd6c6;color:#111;border-radius:20px;padding:0 14px;height:36px;font-weight:600;flex-shrink:0">发送</button>
       </div>
     </div>
   `, `<button type="button" onclick="openSKFriendSettings('${cid}')" style="border:none;background:transparent;color:var(--text);font-size:18px;padding:4px 8px">☰</button>`);
   setTimeout(scrollSKBottom, 40);
+  setTimeout(scrollSKBottom, 120);
 }
 function skRenderMsg(m, mi) {
   if (m.type === 'forum_card') {
@@ -11294,18 +11384,19 @@ function openSKRoomChat(ri) {
   state._subKind = 'scriptkill';
   const wp = r.wallpaper || '';
   openSubPage(r.name || '房间', `
-    <div style="display:flex;flex-direction:column;height:100%;background:${wp?`#111 url(${wp}) center/cover`:'#121214'};color:#f0f0f2">
-      <div style="flex:1;overflow:auto;padding:12px;background:${wp?'rgba(0,0,0,.35)':'transparent'}">
+    <div style="display:flex;flex-direction:column;height:100%;width:100%;max-width:100%;min-width:0;box-sizing:border-box;background:${wp?`#111 url(${wp}) center/cover`:'#121214'};color:#f0f0f2;overflow:hidden">
+      <div id="skMsgArea" style="flex:1;overflow-y:auto;overflow-x:hidden;padding:12px;min-height:0;width:100%;box-sizing:border-box;background:${wp?'rgba(0,0,0,.35)':'transparent'}">
         ${(r.messages||[]).map((m,mi) => skRenderMsg(m, mi)).join('') || '<div style="text-align:center;opacity:.4;padding:30px">房间已创建，开始讨论</div>'}
       </div>
-      <div style="padding:10px 12px;border-top:1px solid #2a2a2e;display:flex;gap:8px;align-items:center;background:rgba(18,18,20,.92)">
+      <div style="padding:10px 12px;border-top:1px solid #2a2a2e;display:flex;gap:8px;align-items:center;background:rgba(18,18,20,.92);flex-shrink:0;width:100%;box-sizing:border-box;min-width:0">
         <button type="button" id="skGenMsgBtn" onclick="genSKChatMsg()" style="width:36px;height:36px;border-radius:50%;border:1px solid #3dd6c6;background:transparent;color:#3dd6c6;font-size:16px;cursor:pointer;flex-shrink:0">↑</button>
-        <input id="skChatInput" placeholder="输入消息…" onkeydown="if(event.key==='Enter'){event.preventDefault();sendSKChatMsg();}" style="flex:1;padding:10px 12px;border-radius:20px;border:1px solid #333;background:#1c1c1e;color:#eee">
-        <button type="button" onclick="sendSKChatMsg()" style="border:none;background:#3dd6c6;color:#111;border-radius:20px;padding:0 16px;height:36px;font-weight:600">发送</button>
+        <input id="skChatInput" placeholder="输入消息…" enterkeyhint="send" onkeydown="if(event.key==='Enter'){event.preventDefault();sendSKChatMsg();}" style="flex:1;min-width:0;padding:10px 12px;border-radius:20px;border:1px solid #333;background:#1c1c1e;color:#eee;box-sizing:border-box">
+        <button type="button" onclick="sendSKChatMsg()" style="border:none;background:#3dd6c6;color:#111;border-radius:20px;padding:0 14px;height:36px;font-weight:600;flex-shrink:0">发送</button>
       </div>
     </div>
   `, `<button type="button" onclick="openSKRoomSettings(${ri})" style="border:none;background:transparent;color:var(--text);font-size:18px;padding:4px 8px">☰</button>`);
   setTimeout(scrollSKBottom, 40);
+  setTimeout(scrollSKBottom, 120);
 }
 function openSKRoomSettings(ri) {
   const r = state.scriptKill.rooms[ri];
@@ -11429,6 +11520,7 @@ function sendSKChatMsg() {
   }
   if (input) input.value = '';
   scrollSKBottom();
+  setTimeout(scrollSKBottom, 80);
 }
 
 async function genSKChatMsg() {
@@ -15329,6 +15421,18 @@ function editHomePolaroid() {
 
 function getChangelogData() {
   return [
+    { v: '2026-08-20I', items: [
+      '还原 Instagram 私信底栏（相机+虚线框+四图标，防裁切）',
+      '还原短信 iMessage 白底悬浮输入条（↑ 生成 + 麦克风）'
+    ]},
+    { v: '2026-08-20H', items: [
+      '自查：通话发消息自动对方接话；剧本杀房间补 skMsgArea；SK/IG 满宽',
+      '生成回复后强制滚底，减少发消息回顶'
+    ]},
+    { v: '2026-08-20G', items: [
+      '修复通话/视频底部按钮被裁切；字体预设保存键',
+      '子页满宽防半屏错位；发消息强制滚底；全局回车发送'
+    ]},
     { v: '2026-08-20F', items: [
       '美化侧栏新增「字体」页（跟随系统 / 上传 / 预设）'
     ]},
@@ -18657,8 +18761,8 @@ function openIgDm(id) {
   const followDays = t.followDays || 1;
   const mutual = t.mutual;
   openSubPage(' ', `
-    <div style="display:flex;flex-direction:column;height:100%;background:#fff">
-      <div style="display:flex;align-items:center;padding:8px 10px;border-bottom:0.5px solid #efefef;gap:8px">
+    <div style="display:flex;flex-direction:column;height:100%;width:100%;max-width:100%;min-width:0;box-sizing:border-box;background:#fff;overflow:hidden">
+      <div style="display:flex;align-items:center;padding:8px 10px;border-bottom:0.5px solid #efefef;gap:8px;flex-shrink:0;width:100%;box-sizing:border-box">
         <span onclick="openForumIG('dm')" style="padding:4px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="1.7"><path d="M15 18l-6-6 6-6"/></svg></span>
         <div onclick="igViewUserPosts('${id}')" style="width:36px;height:36px;border-radius:50%;background:${t.avatar?('url('+t.avatar+') center/cover'):'#ddd'};cursor:pointer"></div>
         <div onclick="igViewUserPosts('${id}')" style="flex:1;min-width:0;cursor:pointer">
@@ -18674,17 +18778,17 @@ function openIgDm(id) {
         <div class="text-sub" style="font-size:13px;margin-top:4px">${escapeHtml(c.id||id)} · 帖子 ${(c._igPosts||0)} · 粉丝</div>
         <div class="text-sub" style="font-size:12px;margin-top:6px">${mutual?'你们已在 Instagram 互关':'你已关注对方 '+followDays+' 天'}</div>
       </div>
-      <div style="flex:1;overflow-y:auto;padding:8px 0" id="igDmMsgs">${msgs||'<div class="empty">发一条消息吧</div>'}</div>
-      <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-top:0.5px solid #efefef;background:#fff">
-        <button type="button" onclick="igDmGen('${id}')" title="生成" style="width:42px;height:42px;border-radius:50%;border:none;background:#8b5cf6;color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 8px rgba(139,92,246,.35)">
+      <div style="flex:1;overflow-y:auto;overflow-x:hidden;padding:8px 0;min-height:0;width:100%;box-sizing:border-box" id="igDmMsgs">${msgs||'<div class="empty">发一条消息吧</div>'}</div>
+      <div style="flex-shrink:0;display:flex;align-items:center;gap:10px;padding:10px 12px calc(10px + env(safe-area-inset-bottom,0px));border-top:0.5px solid #efefef;background:#fff;width:100%;box-sizing:border-box;min-width:0">
+        <button type="button" onclick="igDmGen('${id}')" title="生成" style="width:44px;height:44px;border-radius:50%;border:none;background:#8b5cf6;color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 8px rgba(139,92,246,.35)">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="3.5"/></svg>
         </button>
-        <div style="flex:1;display:flex;align-items:center;gap:10px;padding:8px 14px;border:1.5px dashed #c7c7c7;border-radius:24px;background:#fafafa;min-height:42px">
-          <input id="igDmInput" placeholder="限时消息…" style="flex:1;border:none;background:transparent;font-size:15px;outline:none;min-width:0" onkeydown="if(event.key==='Enter'){event.preventDefault();igDmSend('${id}');}">
-          <button type="button" style="border:none;background:transparent;padding:0;opacity:.55;display:flex" title="语音"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="1.6"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v4"/></svg></button>
-          <button type="button" style="border:none;background:transparent;padding:0;opacity:.55;display:flex" title="图片"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></button>
-          <button type="button" style="border:none;background:transparent;padding:0;opacity:.55;display:flex" title="表情"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="1.6"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01M15 9h.01"/></svg></button>
-          <button type="button" style="border:none;background:transparent;padding:0;opacity:.55;display:flex" title="更多"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="1.6"><path d="M12 5v14M5 12h14"/></svg></button>
+        <div style="flex:1;min-width:0;display:flex;align-items:center;gap:8px;padding:8px 12px;border:1.5px dashed #c7c7c7;border-radius:24px;background:#fafafa;min-height:44px;box-sizing:border-box">
+          <input id="igDmInput" placeholder="限时消息…" enterkeyhint="send" style="flex:1;border:none;background:transparent;font-size:15px;outline:none;min-width:0;width:0" onkeydown="if(event.key==='Enter'){event.preventDefault();igDmSend('${id}');}">
+          <button type="button" style="border:none;background:transparent;padding:0;opacity:.55;display:flex;flex-shrink:0;width:22px;height:22px;align-items:center;justify-content:center" title="语音" onclick="showToast('装饰')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="1.6"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v4"/></svg></button>
+          <button type="button" style="border:none;background:transparent;padding:0;opacity:.55;display:flex;flex-shrink:0;width:22px;height:22px;align-items:center;justify-content:center" title="图片" onclick="showToast('装饰')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></button>
+          <button type="button" style="border:none;background:transparent;padding:0;opacity:.55;display:flex;flex-shrink:0;width:22px;height:22px;align-items:center;justify-content:center" title="表情" onclick="showToast('装饰')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="1.6"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01M15 9h.01"/></svg></button>
+          <button type="button" style="border:none;background:transparent;padding:0;opacity:.55;display:flex;flex-shrink:0;width:22px;height:22px;align-items:center;justify-content:center" title="更多" onclick="igDmSend('${id}')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="1.6"><path d="M12 5v14M5 12h14"/></svg></button>
         </div>
       </div>
     </div>
@@ -18734,6 +18838,10 @@ function igDmSend(id) {
   if (input) input.value = '';
   save();
   if (!appendIgDmBubble(id, msg, f.dms[id].messages.length-1)) openIgDm(id);
+  try {
+    var area = document.getElementById('igDmMsgs');
+    if (area) { area.scrollTop = area.scrollHeight; setTimeout(function(){ area.scrollTop = area.scrollHeight; }, 60); }
+  } catch(e) {}
 }
 async function igDmGen(id) {
   const f = ensureIG();
@@ -21135,69 +21243,88 @@ async function answerCallAuto() {
   const av = c ? avatarUrl(c) : '';
   const isVideo = !!ctx.video;
   const bgStyle = ctx.bg ? ('url('+ctx.bg+') center/cover') : (isVideo ? 'linear-gradient(180deg,#2a2a3a,#12121a)' : 'linear-gradient(180deg,#4a4a68,#222236)');
+  // 通话页：强制 subBody 铺满，避免底部按钮被裁切
+  try {
+    var sb = document.getElementById('subBody');
+    if (sb) {
+      sb.style.cssText = 'flex:1;overflow:hidden;position:relative;min-height:0;height:100%;width:100%;max-width:100%;box-sizing:border-box';
+    }
+    var sn = document.getElementById('subNav');
+    if (sn) sn.style.display = 'none';
+  } catch(e) {}
   if (isVideo) {
     openSubPage('', `
-      <div id="callScreenBg" style="position:absolute;inset:0;background:${bgStyle};color:#fff">
+      <div id="callScreenBg" style="position:absolute;inset:0;width:100%;height:100%;background:${bgStyle};color:#fff;overflow:hidden;box-sizing:border-box">
         <div style="position:absolute;inset:0;background:rgba(0,0,0,.28);pointer-events:none"></div>
-        <div style="position:relative;z-index:1;height:100%;display:flex;flex-direction:column">
-          <div style="padding:48px 16px 8px;text-align:center">
+        <div style="position:relative;z-index:1;height:100%;width:100%;display:flex;flex-direction:column;box-sizing:border-box">
+          <div style="padding:44px 16px 8px;text-align:center;flex-shrink:0">
             <div style="font-size:13px;opacity:.8" id="callTimer">00:00</div>
             <div style="font-size:18px;font-weight:600;margin-top:4px">${escapeHtml(display)}</div>
             <div style="font-size:12px;opacity:.65;margin-top:2px">视频通话中</div>
           </div>
-          <div style="flex:1;display:flex;align-items:center;justify-content:center;position:relative;min-height:0">
-            <div style="width:min(88vw,320px);height:min(58vh,400px);border-radius:16px;overflow:hidden;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.12)">
+          <div style="flex:1;display:flex;align-items:center;justify-content:center;position:relative;min-height:0;padding:0 12px">
+            <div style="width:min(86%,300px);aspect-ratio:3/4;max-height:48%;border-radius:16px;overflow:hidden;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.12)">
               ${av?`<img src="${av}" style="width:100%;height:100%;object-fit:cover" alt="">`:'<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;opacity:.5">对方画面</div>'}
             </div>
-            <div style="position:absolute;top:4px;right:14px;width:92px;height:122px;border-radius:12px;overflow:hidden;border:2px solid rgba(255,255,255,.4);background:rgba(0,0,0,.45);box-shadow:0 4px 16px rgba(0,0,0,.35)">
+            <div style="position:absolute;top:0;right:16px;width:84px;height:112px;border-radius:12px;overflow:hidden;border:2px solid rgba(255,255,255,.4);background:rgba(0,0,0,.45);box-shadow:0 4px 16px rgba(0,0,0,.35)">
               <img src="${avatarUrl(state.user)}" style="width:100%;height:100%;object-fit:cover" alt="">
             </div>
           </div>
-          <div id="callChatLog" style="max-height:16vh;overflow-y:auto;padding:6px 14px;font-size:13px;line-height:1.5"></div>
-          <div style="width:100%;padding:0 14px 8px;box-sizing:border-box;display:flex;gap:8px;align-items:center">
-            <input id="callInput" placeholder="说点什么…" style="flex:1;border:none;border-radius:20px;padding:10px 14px;background:rgba(255,255,255,.16);color:#fff;font-size:14px;outline:none">
-            <button type="button" onclick="callGenReply()" style="border:none;background:rgba(255,255,255,.2);color:#fff;border-radius:50%;width:40px;height:40px;cursor:pointer;flex-shrink:0">○</button>
-            <button type="button" onclick="callSendUser()" style="border:none;background:#34c759;color:#fff;border-radius:50%;width:40px;height:40px;cursor:pointer;flex-shrink:0">
+          <div id="callChatLog" style="max-height:12vh;overflow-y:auto;padding:4px 14px;font-size:13px;line-height:1.5;flex-shrink:0"></div>
+          <div style="flex-shrink:0;width:100%;padding:8px 14px 10px;box-sizing:border-box;display:flex;gap:8px;align-items:center;background:rgba(0,0,0,.25)">
+            <input id="callInput" placeholder="说点什么…" enterkeyhint="send" onkeydown="if(event.key==='Enter'){event.preventDefault();callSendUser();}" style="flex:1;min-width:0;border:none;border-radius:20px;padding:10px 14px;background:rgba(255,255,255,.18);color:#fff;font-size:14px;outline:none">
+            <button type="button" onclick="callGenReply()" title="生成" style="border:none;background:rgba(255,255,255,.22);color:#fff;border-radius:50%;width:42px;height:42px;cursor:pointer;flex-shrink:0;font-size:16px">↑</button>
+            <button type="button" onclick="callSendUser()" title="发送" style="border:none;background:#34c759;color:#fff;border-radius:50%;width:42px;height:42px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
             </button>
           </div>
-          <div style="padding:6px 16px 24px;display:flex;justify-content:center;gap:26px;align-items:flex-end">
-            <div style="text-align:center"><button type="button" onclick="state.fileTarget='callBg';document.getElementById('fileInput').accept='image/*';document.getElementById('fileInput').click()" style="width:52px;height:52px;border-radius:50%;border:none;background:rgba(255,255,255,.18);color:#fff;cursor:pointer;font-size:12px">背景</button><div style="font-size:11px;margin-top:6px;opacity:.8">上传</div></div>
-            <div style="text-align:center"><button type="button" onclick="endCall(true)" style="width:64px;height:64px;border-radius:50%;border:none;background:#ff3b30;color:#fff;cursor:pointer"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button><div style="font-size:11px;margin-top:6px;opacity:.8">挂断</div></div>
+          <div style="flex-shrink:0;padding:8px 16px max(18px,env(safe-area-inset-bottom));display:flex;justify-content:center;gap:36px;align-items:flex-end;background:rgba(0,0,0,.2)">
+            <div style="text-align:center"><button type="button" onclick="state.fileTarget='callBg';document.getElementById('fileInput').accept='image/*';document.getElementById('fileInput').click()" style="width:52px;height:52px;border-radius:50%;border:none;background:rgba(255,255,255,.2);color:#fff;cursor:pointer;font-size:12px">背景</button><div style="font-size:11px;margin-top:6px;opacity:.85">上传</div></div>
+            <div style="text-align:center"><button type="button" onclick="endCall(true)" style="width:64px;height:64px;border-radius:50%;border:none;background:#ff3b30;color:#fff;cursor:pointer"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button><div style="font-size:11px;margin-top:6px;opacity:.85">挂断</div></div>
           </div>
         </div>
       </div>
     `, '', { replace: true, backFn: function(){ endCall(true); } });
   } else {
     openSubPage('', `
-      <div id="callScreenBg" style="position:absolute;inset:0;background:${bgStyle};color:#fff;display:flex;flex-direction:column;align-items:center;padding:36px 16px 12px;box-sizing:border-box">
+      <div id="callScreenBg" style="position:absolute;inset:0;width:100%;height:100%;background:${bgStyle};color:#fff;overflow:hidden;box-sizing:border-box">
         <div style="position:absolute;inset:0;background:rgba(20,20,30,.45);pointer-events:none"></div>
-        <div style="position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;width:100%;height:100%">
-        <div style="position:absolute;top:12px;right:12px;z-index:2">
-          <button type="button" onclick="state.fileTarget='callBg';document.getElementById('fileInput').accept='image/*';document.getElementById('fileInput').click()" style="border:none;background:rgba(0,0,0,.25);color:#fff;border-radius:12px;padding:6px 10px;font-size:11px;cursor:pointer">壁纸</button>
+        <div style="position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;width:100%;height:100%;box-sizing:border-box;padding:36px 16px 0">
+          <div style="position:absolute;top:12px;right:12px;z-index:2">
+            <button type="button" onclick="state.fileTarget='callBg';document.getElementById('fileInput').accept='image/*';document.getElementById('fileInput').click()" style="border:none;background:rgba(0,0,0,.3);color:#fff;border-radius:12px;padding:6px 12px;font-size:12px;cursor:pointer">壁纸</button>
+          </div>
+          <div style="font-size:13px;opacity:.75;flex-shrink:0" id="callTimer">00:00</div>
+          <div style="font-size:24px;font-weight:600;margin:6px 0 16px;flex-shrink:0">${escapeHtml(display)}</div>
+          <div style="width:112px;height:112px;border-radius:50%;overflow:hidden;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.15);flex-shrink:0;margin-bottom:12px">
+            ${av?`<img src="${av}" style="width:100%;height:100%;object-fit:cover" alt="">`:'<div style="width:100%;height:100%;background:#666"></div>'}
+          </div>
+          <div id="callChatLog" style="flex:1;width:100%;max-width:360px;overflow-y:auto;font-size:14px;line-height:1.55;padding:8px 6px;text-align:center;min-height:0"></div>
+          <div style="width:100%;max-width:360px;display:flex;gap:8px;align-items:center;margin:8px 0 0;flex-shrink:0;box-sizing:border-box">
+            <input id="callInput" placeholder="说点什么…" enterkeyhint="send" onkeydown="if(event.key==='Enter'){event.preventDefault();callSendUser();}" style="flex:1;min-width:0;border:none;border-radius:20px;padding:10px 14px;background:rgba(255,255,255,.16);color:#fff;font-size:14px;outline:none">
+            <button type="button" onclick="callGenReply()" title="生成" style="border:none;background:rgba(255,255,255,.22);color:#fff;border-radius:50%;width:42px;height:42px;cursor:pointer;flex-shrink:0;font-size:16px">↑</button>
+            <button type="button" onclick="callSendUser()" title="发送" style="border:none;background:#34c759;color:#fff;border-radius:50%;width:42px;height:42px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+            </button>
+          </div>
+          <div style="flex-shrink:0;padding:14px 0 max(20px,env(safe-area-inset-bottom));display:flex;justify-content:center">
+            <button type="button" onclick="endCall(true)" style="width:64px;height:64px;border-radius:50%;border:none;background:#ff3b30;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
+            </button>
+          </div>
         </div>
-        <div style="font-size:13px;opacity:.75" id="callTimer">00:00</div>
-        <div style="font-size:24px;font-weight:600;margin:6px 0 16px">${escapeHtml(display)}</div>
-        <div style="width:112px;height:112px;border-radius:50%;overflow:hidden;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.15);flex-shrink:0;margin-bottom:12px">
-          ${av?`<img src="${av}" style="width:100%;height:100%;object-fit:cover" alt="">`:'<div style="width:100%;height:100%;background:#666"></div>'}
-        </div>
-        <div id="callChatLog" style="flex:1;width:100%;max-width:360px;overflow-y:auto;font-size:14px;line-height:1.55;padding:8px 6px;text-align:center"></div>
-        <div style="width:100%;max-width:360px;display:flex;gap:8px;align-items:center;margin:8px 0 12px">
-          <input id="callInput" placeholder="说点什么…" style="flex:1;border:none;border-radius:20px;padding:10px 14px;background:rgba(255,255,255,.14);color:#fff;font-size:14px;outline:none">
-          <button type="button" onclick="callGenReply()" title="生成" style="border:none;background:rgba(255,255,255,.2);color:#fff;border-radius:50%;width:40px;height:40px;cursor:pointer;display:flex;align-items:center;justify-content:center">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
-          </button>
-          <button type="button" onclick="callSendUser()" title="发送" style="border:none;background:#34c759;color:#fff;border-radius:50%;width:40px;height:40px;cursor:pointer;display:flex;align-items:center;justify-content:center">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
-          </button>
-        </div>
-        <button type="button" onclick="endCall(true)" style="width:64px;height:64px;border-radius:50%;border:none;background:#ff3b30;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;margin-bottom:8px">
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
-        </button>
       </div>
     `, '', { replace: true, backFn: function(){ endCall(true); } });
   }
-  try { document.getElementById('subNav').style.display = 'none'; } catch(e) {}
+  try {
+    document.getElementById('subNav').style.display = 'none';
+    var sb2 = document.getElementById('subBody');
+    if (sb2) {
+      sb2.style.position = 'relative';
+      sb2.style.overflow = 'hidden';
+      sb2.style.height = '100%';
+      sb2.style.width = '100%';
+    }
+  } catch(e) {}
   if (state._callTimer) clearInterval(state._callTimer);
   state._callTimer = setInterval(function(){
     const el = document.getElementById('callTimer');
@@ -21216,6 +21343,8 @@ function callSendUser() {
   ctx.logs.push({ role:'user', text: t });
   if (inp) inp.value = '';
   renderCallLog();
+  // 用户说完后自动让对方接话（避免通话无回复）
+  try { callGenReply(); } catch(e) {}
 }
 function normalizeApiText(raw) {
   if (raw == null) return '';
@@ -21516,12 +21645,14 @@ function openSmsThread(id) {
       </div>
       <div class="sms-im-msgs" id="smsMsgArea">${msgs||'<div class="empty" style="padding:40px;opacity:.55">发一条信息</div>'}</div>
       <div class="sms-im-input">
-        <button type="button" class="sms-plus" onclick="generateSmsReply('${id}')" title="生成">↑</button>
+        <button type="button" class="sms-plus" onclick="generateSmsReply('${id}')" title="生成" aria-label="生成">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1c1c1e" stroke-width="2.2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+        </button>
         <input id="smsInput" placeholder="iMessage 信息" enterkeyhint="send" onkeydown="if(event.key==='Enter'){event.preventDefault();sendSms('${id}');}" oninput="syncSmsSendBtn()">
-        <button type="button" id="smsMicBtn" onclick="showToast('语音')" style="border:none;background:transparent;width:36px;height:36px;flex-shrink:0;display:flex;align-items:center;justify-content:center">
+        <button type="button" id="smsMicBtn" onclick="showToast('语音')" title="语音" style="border:none;background:transparent;width:34px;height:34px;flex-shrink:0;display:flex;align-items:center;justify-content:center;padding:0">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8e8e93" stroke-width="1.7"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v4"/></svg>
         </button>
-        <button type="button" id="smsSendBtn" class="sms-send" onclick="sendSms('${id}')" style="display:none;width:auto;padding:0 14px;height:32px;border-radius:16px;color:#fff;font-size:14px">发送</button>
+        <button type="button" id="smsSendBtn" class="sms-send" onclick="sendSms('${id}')" style="display:none">发送</button>
       </div>
     </div>
   `);
@@ -26021,9 +26152,8 @@ if (t === 'badge3d') {
         + (t.fontData ? '<button type="button" class="btn btn-danger" id="beautyFontClear" style="width:100%;margin-bottom:10px">清除已上传字体</button>' : '')
         + '<button type="button" class="btn btn-primary" id="beautyFontApply" style="width:100%;margin-bottom:18px">应用当前字体</button>'
         + '<div style="font-weight:600;margin-bottom:8px">字体预设</div>'
-        + '<div style="display:flex;gap:8px;margin-bottom:10px">'
-        + '<input id="thFontPresetName" placeholder="预设名称" style="flex:1;padding:10px;border-radius:12px;border:1px solid rgba(94,184,176,.35);box-sizing:border-box">'
-        + '<button type="button" class="btn btn-primary" id="beautyFontSavePreset" style="flex-shrink:0">保存预设</button></div>'
+        + '<input id="thFontPresetName" placeholder="预设名称，如：苹果体" style="width:100%;padding:10px;border-radius:12px;border:1px solid rgba(94,184,176,.35);box-sizing:border-box;margin-bottom:8px">'
+        + '<button type="button" class="btn btn-primary" id="beautyFontSavePreset" style="width:100%;margin-bottom:12px;padding:12px;font-weight:600">保存为预设</button>'
         + '<div id="thFontPresetList" style="background:rgba(255,255,255,.75);border-radius:14px;padding:4px 12px">'+(typeof renderFontPresetListHtml==='function'?renderFontPresetListHtml():'')+'</div>'
         + '</div>';
     } else {
