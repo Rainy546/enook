@@ -210,6 +210,11 @@ body.night .home-bottom-dock { background: rgba(28,28,30,.9); border-color: #3a3
 }
 .sms-im-wrap { position: relative; height: 100%; display: flex; flex-direction: column; }
 .sms-im-msgs { flex: 1; overflow-y: auto; padding: 12px 14px 90px; -webkit-overflow-scrolling: touch; }
+.sms-im-msgs .msg-time {
+  font-size: 11px; color: rgba(60,60,67,.55); text-align: center;
+  margin: 12px 0 8px; font-weight: 400; letter-spacing: 0.2px;
+}
+body.night .sms-im-msgs .msg-time, .night .sms-im-msgs .msg-time { color: rgba(235,235,245,.45); }
 .sms-bubble-row {
   display: flex; width: 100%; margin: 6px 0;
   box-sizing: border-box;
@@ -354,7 +359,8 @@ body.glass-ui #page-sub, body.glass-ui #subBody {
 }
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
+  /* 默认跟随设备系统 UI 字体（Android 用户改系统字体时，支持的浏览器会跟着变） */
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   background: #111;
   color: var(--text);
   height: 100dvh;
@@ -2036,6 +2042,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
   <input type="file" id="emojiFileInput" accept="image/*" style="display:none" onchange="onEmojiFile(event)">
   <input type="file" id="fileInput" accept="image/*" style="position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0" onchange="onFileSelected(event)">
+  <input type="file" id="fontFileInput" accept=".ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2,application/font-woff,application/font-woff2,application/x-font-ttf,application/x-font-opentype,application/octet-stream,*/*" style="position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0" onchange="onFontFileSelected(event)">
   <input type="file" id="momentFileInput" accept="image/*" multiple style="display:none" onchange="onMomentFiles(event)">
 </div>
 
@@ -2043,7 +2050,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-19Z';
+const EENOK_BUILD = '2026-08-20F';
 /** 检测版本变化；进入主界面后弹出「已更新」提醒 */
 function checkAppUpdate() {
   try {
@@ -2218,6 +2225,21 @@ let state = {
   pomodoro: DB.get('pomodoro', null),
   scriptKill: DB.get('scriptKill', null),
   melo: DB.get('melo', null),
+  // 桌面美化：启动先读 localStorage 轻量备份，避免 IDB 未就绪时整页空白被覆盖
+  home: (function(){
+    try {
+      var h = DB.get('home', null);
+      if (h && typeof h === 'object') return h;
+    } catch(e) {}
+    try {
+      var raw = localStorage.getItem('graychat_home');
+      if (raw) {
+        var light = JSON.parse(raw);
+        if (light && typeof light === 'object') return light;
+      }
+    } catch(e) {}
+    return {};
+  })(),
   currentChatId: null,
   currentIsGroup: false,
   quoteMsg: null,
@@ -2231,30 +2253,71 @@ function safeSet(key, val) {
   // 大体积键只走 IndexedDB，避免 trebedit / 浏览器 localStorage 配额爆掉
   const IDB_ONLY = new Set(['sms','forumIG','icity','home','chats','moments','momentsBg','customEmojis','stickerLib','melo','bookstore','scriptKill','phoneApp','gal','shop','takeout','theme']);
   if (IDB_ONLY.has(key)) {
-    try { if (typeof idbSet === 'function') idbSet(key, val); } catch(e) {}
-    // home 额外写一份「轻量布局」到 localStorage，防止 IDB 未就绪时丢美化
+    try {
+      if (typeof idbSet === 'function') {
+        // theme 大字体单独存，避免整包 theme 写入失败
+        if (key === 'theme' && val && val.fontData) {
+          try { idbSet('themeFont', { data: val.fontData, fmt: val.fontFmt, name: val.fontFileName, size: val.fontFileSize }); } catch(e) {}
+          const slim = Object.assign({}, val);
+          delete slim.fontData;
+          idbSet(key, slim);
+        } else {
+          idbSet(key, val);
+        }
+      }
+    } catch(e) {}
+    // home：完整走 IDB；轻量布局 + 壁纸/图标分键备份，防止更新后桌面美化丢失
     if (key === 'home' && val && typeof val === 'object') {
+      try {
+        if (typeof idbSet === 'function') {
+          if (val.wallpaper) idbSet('homeWallpaper', val.wallpaper);
+          if (val.appIcons && typeof val.appIcons === 'object') idbSet('homeAppIcons', val.appIcons);
+          if (val.pageWidgets) idbSet('homePageWidgets', val.pageWidgets);
+          if (val.extraWidgets) idbSet('homeExtraWidgets', val.extraWidgets);
+          if (val.layout) idbSet('homeLayout', val.layout);
+          if (val.dockApps) idbSet('homeDockApps', val.dockApps);
+        }
+      } catch(e) {}
       try {
         const light = {
           clockStyle: val.clockStyle,
           weather: val.weather,
           weatherLevel: val.weatherLevel,
+          glassStrength: val.glassStrength,
+          page: val.page,
+          pages: val.pages,
           layout: val.layout,
           dockApps: val.dockApps,
           iconRadius: val.iconRadius,
-          wallpaper: (val.wallpaper && String(val.wallpaper).length < 80000) ? val.wallpaper : '',
+          iconScale: val.iconScale,
+          wallpaper: (val.wallpaper && String(val.wallpaper).length < 200000) ? val.wallpaper : (val.wallpaper ? '__IDB__' : ''),
           appIcons: {},
           widgets: val.widgets || {},
-          extraWidgets: (val.extraWidgets || []).map(w => ({ ...w, img: (w.img && String(w.img).length < 50000) ? w.img : '' })),
-          squish: val.squish ? { lines: val.squish.lines || [], img: (val.squish.img && String(val.squish.img).length < 80000) ? val.squish.img : '' } : undefined
+          pageWidgets: val.pageWidgets || {},
+          extraWidgets: (val.extraWidgets || []).map(function(w) {
+            var o = Object.assign({}, w);
+            if (o.img && String(o.img).length >= 80000) o.img = '__IDB__';
+            return o;
+          }),
+          squish: val.squish ? { lines: val.squish.lines || [], img: (val.squish.img && String(val.squish.img).length < 100000) ? val.squish.img : '' } : undefined,
+          _uiCleanWidgets: val._uiCleanWidgets
         };
         if (val.appIcons) {
-          Object.keys(val.appIcons).forEach(k => {
+          Object.keys(val.appIcons).forEach(function(k) {
             const im = val.appIcons[k];
-            if (im && String(im).length < 60000) light.appIcons[k] = im;
+            if (im && String(im).length < 100000) light.appIcons[k] = im;
+            else if (im) light.appIcons[k] = '__IDB__';
           });
         }
         localStorage.setItem('graychat_home', JSON.stringify(light));
+        try { localStorage.setItem('graychat_home', JSON.stringify(light)); } catch(e2) {
+          // 配额不够则再瘦身：去掉壁纸 base64
+          try {
+            light.wallpaper = val.wallpaper ? '__IDB__' : '';
+            light.appIcons = {};
+            localStorage.setItem('graychat_home', JSON.stringify(light));
+          } catch(e3) {}
+        }
       } catch (e) {}
     }
     return true;
@@ -2755,6 +2818,32 @@ function stripNearBlackBg(dataUrl) {
 function nowStr() {
   return new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
 }
+/** 合并桌面美化：IDB 完整包 + 分键备份 + localStorage 轻量，避免更新后丢失 */
+function mergeHomeState(primary, fallback) {
+  const a = (primary && typeof primary === 'object') ? primary : {};
+  const b = (fallback && typeof fallback === 'object') ? fallback : {};
+  const out = Object.assign({}, b, a);
+  // 布局：谁更完整用谁
+  if (!out.layout || !Object.keys(out.layout).length) out.layout = a.layout || b.layout || {};
+  if ((!out.dockApps || !out.dockApps.length) && (b.dockApps && b.dockApps.length)) out.dockApps = b.dockApps;
+  if ((!out.appIcons || !Object.keys(out.appIcons).length) && b.appIcons) out.appIcons = b.appIcons;
+  // 壁纸：优先非空、非占位
+  function realWp(v) { return v && v !== '__IDB__' && String(v).length > 20 ? v : ''; }
+  out.wallpaper = realWp(a.wallpaper) || realWp(b.wallpaper) || out.wallpaper || '';
+  // 图标：合并两边
+  out.appIcons = Object.assign({}, b.appIcons || {}, a.appIcons || {});
+  Object.keys(out.appIcons).forEach(function(k) {
+    if (out.appIcons[k] === '__IDB__') delete out.appIcons[k];
+  });
+  if ((!out.pageWidgets || !Object.keys(out.pageWidgets).length) && b.pageWidgets) out.pageWidgets = b.pageWidgets;
+  if ((!out.extraWidgets || !out.extraWidgets.length) && b.extraWidgets) out.extraWidgets = b.extraWidgets;
+  if (out.glassStrength == null && b.glassStrength != null) out.glassStrength = b.glassStrength;
+  if (out.iconScale == null && b.iconScale != null) out.iconScale = b.iconScale;
+  if (out.iconRadius == null && b.iconRadius != null) out.iconRadius = b.iconRadius;
+  if (b._uiCleanWidgets) out._uiCleanWidgets = 1;
+  if (a._uiCleanWidgets) out._uiCleanWidgets = 1;
+  return out;
+}
 async function loadFromIDB() {
   try {
     const keys = ['user','chars','groups','chats','moments','momentsBg','worldBooks','wallet','api','stickerLib',
@@ -2765,9 +2854,49 @@ async function loadFromIDB() {
       const v = await idbGet(k, undefined);
       if (v !== undefined) {
         if (k === 'momentsBg') state.momentsBg = v;
-        else state[k] = v;
+        else if (k === 'home') {
+          // 与启动时的轻量 home 合并，而不是整包覆盖导致壁纸/图标丢
+          state.home = mergeHomeState(v, state.home);
+        } else if (k === 'theme') {
+          state.theme = Object.assign({}, state.theme || {}, v || {});
+        } else state[k] = v;
       }
     }
+    // 桌面美化分键恢复（更新后主 home 包偶发缺失时仍能找回）
+    try {
+      if (!state.home) state.home = {};
+      const hwp = await idbGet('homeWallpaper', null);
+      if (hwp && (!state.home.wallpaper || state.home.wallpaper === '__IDB__')) state.home.wallpaper = hwp;
+      const icons = await idbGet('homeAppIcons', null);
+      if (icons && typeof icons === 'object') {
+        state.home.appIcons = Object.assign({}, icons, state.home.appIcons || {});
+      }
+      const pw = await idbGet('homePageWidgets', null);
+      if (pw && (!state.home.pageWidgets || !Object.keys(state.home.pageWidgets).length)) state.home.pageWidgets = pw;
+      const ew = await idbGet('homeExtraWidgets', null);
+      if (ew && Array.isArray(ew) && (!state.home.extraWidgets || !state.home.extraWidgets.length)) state.home.extraWidgets = ew;
+      const lay = await idbGet('homeLayout', null);
+      if (lay && (!state.home.layout || !Object.keys(state.home.layout).length)) state.home.layout = lay;
+      const dock = await idbGet('homeDockApps', null);
+      if (dock && Array.isArray(dock) && (!state.home.dockApps || !state.home.dockApps.length)) state.home.dockApps = dock;
+      // localStorage 轻量再补一层
+      try {
+        const raw = localStorage.getItem('graychat_home');
+        if (raw) state.home = mergeHomeState(state.home, JSON.parse(raw));
+      } catch(e) {}
+    } catch(e) { console.warn('home recover', e); }
+    // 主题字体单独键
+    try {
+      const tf = await idbGet('themeFont', null);
+      if (tf && tf.data) {
+        if (!state.theme) state.theme = {};
+        state.theme.fontData = tf.data;
+        if (tf.fmt) state.theme.fontFmt = tf.fmt;
+        if (tf.name) state.theme.fontFileName = tf.name;
+        if (tf.size) state.theme.fontFileSize = tf.size;
+        if (!state.theme.fontMode) state.theme.fontMode = 'file';
+      }
+    } catch(e) {}
     // 锁屏壁纸单独键
     try {
       const wp = await idbGet('lockWp', null);
@@ -4492,26 +4621,22 @@ async function pushSentences(chat, sentences, fromMeta) {
         bannerAv = avatarUrl(ch);
       }
     } catch(e) {}
-    // 自动翻译：整轮合并为 1 次 API（避免每条气泡各打一次导致 2～3 倍扣费）
+    // 自动翻译：默认走免费通道，不消耗聊天 API
     let batchTr = null;
-    if (chat && chat.autoTranslate && typeof hasChatApi === 'function' && hasChatApi()) {
+    if (chat && chat.autoTranslate) {
       const needIdx = [];
       cleaned.forEach(function(s, i) {
         if (!trs[i] && s && !isMostlyProperName(s)) needIdx.push(i);
       });
       if (needIdx.length) {
-        try {
-          const pack = needIdx.map(function(i){ return (i + 1) + '. ' + cleaned[i]; }).join('\n');
-          const { text: trAll } = await apiChat([
-            { role: 'system', content: '你是翻译器。把用户给出的多行编号文本逐行译成简体中文。每行一条译文，保持编号。只输出译文行，不要解释。' },
-            { role: 'user', content: pack.slice(0, 1800) }
-          ], { max_tokens: 800, temperature: 0.1, timeout: 60000 });
-          const lines = String(trAll || '').split(/\n+/).map(function(l){ return l.replace(/^\d+[\.\)、]\s*/, '').trim(); }).filter(Boolean);
-          batchTr = {};
-          needIdx.forEach(function(i, k) {
-            if (lines[k]) batchTr[i] = lines[k];
-          });
-        } catch(e) { console.warn('batch translate', e); }
+        batchTr = {};
+        // 并行免费翻译（有免费额度限制，逐条更稳）
+        await Promise.all(needIdx.map(async function(i) {
+          try {
+            const tr = await autoTranslateText(cleaned[i], chat.replyLang || 'zh');
+            if (tr) batchTr[i] = tr;
+          } catch(e) {}
+        }));
       }
     }
     for (let i = 0; i < cleaned.length; i++) {
@@ -5772,6 +5897,61 @@ async function readDocxText(file) {
   });
   return (out || texts.join('')).replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&');
 }
+function onFontFileSelected(e) {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  const name = file.name || 'font';
+  // 支持 ttf / otf / woff / woff2（不限制大小；超大文件会占存储，仅提示）
+  const okExt = /\.(ttf|otf|woff2?)$/i.test(name);
+  const okMime = /font|woff|ttf|opentype|octet-stream|sfnt/i.test(file.type || '');
+  if (!okExt && !okMime) {
+    showToast('请选择 .ttf / .otf / .woff / .woff2 字体文件');
+    return;
+  }
+  let fmt = 'truetype';
+  if (/\.woff2$/i.test(name) || /woff2/i.test(file.type||'')) fmt = 'woff2';
+  else if (/\.woff$/i.test(name) || /woff/i.test(file.type||'')) fmt = 'woff';
+  else if (/\.otf$/i.test(name) || /opentype|otf/i.test(file.type||'')) fmt = 'opentype';
+  else if (/\.ttf$/i.test(name) || /ttf|truetype|sfnt/i.test(file.type||'')) fmt = 'truetype';
+  const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+  if (file.size > 15 * 1024 * 1024) {
+    showToast('字体约 ' + sizeMB + 'MB，读取中…（较大可能稍慢）');
+  } else {
+    showToast('正在导入字体…');
+  }
+  const reader = new FileReader();
+  reader.onload = function() {
+    try {
+      if (!state.theme) state.theme = {};
+      state.theme.fontData = reader.result;
+      state.theme.fontFmt = fmt;
+      state.theme.fontMode = 'file';
+      state.theme.fontFileName = name;
+      state.theme.fontFileSize = file.size;
+      try { save(); } catch(se) {
+        // 超大 dataURL 可能撑爆同步存储，仍尽量应用本页
+        console.warn('font save', se);
+        showToast('字体已应用（保存可能失败，刷新后需重新上传）');
+      }
+      try { if (typeof saveAsync === 'function') saveAsync(); } catch(e) {}
+      applyTheme();
+      const tip = sizeMB + 'MB · ' + name;
+      showToast('字体已应用（' + tip + '）');
+      try { closeAllModals(); } catch(err) {}
+      setTimeout(function(){
+        try {
+          if (typeof openHomeBeauty === 'function') openHomeBeauty('font');
+          else if (typeof openHomeBeautyFont === 'function') openHomeBeautyFont();
+        } catch(err) {}
+      }, 80);
+    } catch(err) {
+      showToast('字体加载失败：' + (err && err.message ? err.message : '未知错误'));
+    }
+  };
+  reader.onerror = function(){ showToast('读取字体失败，请换一个文件试试'); };
+  reader.readAsDataURL(file);
+}
 function onFileSelected(e) {
   const files = [...(e.target.files || [])];
   if (!files.length) return;
@@ -6490,7 +6670,7 @@ function openChatSettings() {
       <div class="setting-item text-sub" style="font-size:11px;opacity:.75;line-height:1.45;padding-top:0">开启后强制：真实日期/时刻、季节、时区、距上一段对话间隔；跨天禁止当成刚聊完</div>
       <div class="setting-item" onclick="openChatLangSettings()">角色语言 · ${(!chat.replyLang||chat.replyLang==='follow'||chat.replyLang==='auto')?'跟随角色':(({zh:'中文',ja:'日语',en:'英语',fr:'法语',de:'德语',ru:'俄语',ko:'韩语',yue:'粤语',sv:'瑞典语'})[chat.replyLang]||chat.replyLang)} <span class="right">›</span></div>
       <div class="setting-item" onclick="toggleAutoTranslate()">自动翻译 <span class="right"><div class="switch ${chat.autoTranslate ? 'on' : ''}" id="swTrans"></div></span></div>
-      <div class="setting-item text-sub" style="font-size:11px;opacity:.75;padding-top:0">开启后每轮生成的气泡下方自动显示译文</div>
+      <div class="setting-item text-sub" style="font-size:11px;opacity:.75;padding-top:0;line-height:1.45">开启后气泡下方显示译文。默认走免费翻译，不消耗聊天 API；质量一般时可在设置里另开「翻译走聊天API」</div>
       <div class="setting-item" onclick="openBeautify()">聊天美化 <span class="right">›</span></div>
       <div class="setting-item" onclick="toggleBlockMe()">拉黑对方 <span class="right"><div class="switch ${chat.blockedByMe ? 'on' : ''}" id="swBlockMe"></div></span></div>
       
@@ -7058,26 +7238,73 @@ function isMostlyProperName(text) {
   if (/^[\u4e00-\u9fffA-Za-z\s]{1,10}(啊|呀|呢|哦|噢|嘛|啦|哈)*$/.test(t) && t.length <= 10) return true;
   return false;
 }
+/** 检测源语言 → MyMemory langpair（免费，不走聊天 API） */
+function detectTranslatePair(text, fromLang) {
+  const t = String(text || '');
+  if (fromLang && fromLang !== 'zh' && fromLang !== 'auto' && fromLang !== 'follow') {
+    const map = { ko:'ko', ja:'ja', en:'en', fr:'fr', de:'de', ru:'ru', yue:'zh-TW', sv:'sv' };
+    if (map[fromLang]) return map[fromLang] + '|zh-CN';
+  }
+  if (/[가-힣]/.test(t)) return 'ko|zh-CN';
+  if (/[ぁ-んァ-ン]/.test(t)) return 'ja|zh-CN';
+  if (/[а-яА-ЯёЁ]/.test(t)) return 'ru|zh-CN';
+  if (/[äöüßÄÖÜ]/.test(t) || /\b(der|die|das|und)\b/i.test(t)) return 'de|zh-CN';
+  if (/[àâäéèêëïîôùûüÿç]/i.test(t)) return 'fr|zh-CN';
+  if (/[a-zA-Z]{4,}/.test(t)) return 'en|zh-CN';
+  return 'en|zh-CN';
+}
+/** 免费翻译（MyMemory），不消耗聊天 API 额度 */
+async function freeTranslateText(text, fromLang) {
+  const src = String(text || '').trim().slice(0, 450);
+  if (!src) return '';
+  const pair = detectTranslatePair(src, fromLang);
+  const url = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(src) + '&langpair=' + encodeURIComponent(pair);
+  const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(function(){ try{ctrl.abort();}catch(e){} }, 12000) : null;
+  try {
+    const res = await fetch(url, ctrl ? { signal: ctrl.signal } : undefined);
+    const data = await res.json().catch(function(){ return {}; });
+    let out = (data && data.responseData && data.responseData.translatedText) || '';
+    out = String(out).trim().replace(/^["「『]|["」』]$/g, '');
+    // 无效结果过滤
+    if (!out || /MYMEMORY WARNING|QUERY LENGTH|INVALID/i.test(out)) return '';
+    if (out === src || out.replace(/\s/g,'') === src.replace(/\s/g,'')) return '';
+    return out;
+  } catch(e) {
+    console.warn('free translate', e);
+    return '';
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 async function autoTranslateText(text, fromLang) {
   if (!text || !String(text).trim()) return '';
   const src = String(text).trim();
   if (isMostlyProperName(src)) return '';
   // 源语言为中文且几乎全是汉字 → 不译
   if ((!fromLang || fromLang === 'zh') && /[\u4e00-\u9fff]/.test(src) && !/[a-zA-Zぁ-んァ-ン가-힣]{4,}/.test(src)) return '';
+  // 默认只用免费通道，不打聊天 API、不扣聊天费
   try {
-    const { text: tr } = await apiChat([
-      { role: 'system', content: '你是翻译器。把用户消息译成简体中文。只输出译文。人名/昵称可保留原文。不要解释、不要引号。' },
-      { role: 'user', content: src.slice(0, 600) }
-    ], { max_tokens: 400, temperature: 0.1, timeout: 60000 });
-    let out = (tr || '').trim().replace(/^["「『]|["」』]$/g, '');
-    if (!out) return '';
-    if (out === src || out.replace(/\s/g,'') === src.replace(/\s/g,'')) return '';
-    if (isMostlyProperName(out)) return '';
-    return out;
-  } catch(e) {
-    console.warn('translate fail', e);
-    return '';
+    const free = await freeTranslateText(src, fromLang);
+    if (free) return free;
+  } catch(e) {}
+  // 仅当用户显式开启「翻译走聊天API」时才回落（默认关闭）
+  if (state.api && state.api.translateUseChat && typeof hasChatApi === 'function' && hasChatApi()) {
+    try {
+      const { text: tr } = await apiChat([
+        { role: 'system', content: '你是翻译器。把用户消息译成简体中文。只输出译文。人名/昵称可保留原文。不要解释、不要引号。' },
+        { role: 'user', content: src.slice(0, 600) }
+      ], { max_tokens: 400, temperature: 0.1, timeout: 60000 });
+      let out = (tr || '').trim().replace(/^["「『]|["」』]$/g, '');
+      if (!out) return '';
+      if (out === src || out.replace(/\s/g,'') === src.replace(/\s/g,'')) return '';
+      if (isMostlyProperName(out)) return '';
+      return out;
+    } catch(e) {
+      console.warn('translate fail', e);
+    }
   }
+  return '';
 }
 async function translateBubbleMsg(idx) {
   const chat = state.chats[state.currentChatId];
@@ -7862,9 +8089,6 @@ function openBeautifyCenter() {
       <button class="btn btn-secondary" style="width:100%" onclick="state.fileTarget='themeContactsWp';document.getElementById('fileInput').click()">选择本地图片</button>
       ${t.contactsWp?`<img src="${t.contactsWp}" style="width:100%;max-height:80px;object-fit:cover;border-radius:8px;margin-top:8px">`:''}
     </div>
-    <div class="form-group"><label style="display:flex;align-items:center">自定义字体 URL ${resetBtn('fontUrl')}</label>
-      <input id="thFont" placeholder="https://.../font.woff2" value="${escapeHtml(t.fontUrl||'')}">
-    </div>
     <div class="form-group"><label style="display:flex;align-items:center">全局 CSS ${resetBtn('globalCss')}</label>
       <textarea id="thCss" placeholder="例如：.msg-bubble{border-radius:16px}" style="min-height:100px">${escapeHtml(t.globalCss||'')}</textarea>
     </div>
@@ -7894,8 +8118,175 @@ function saveTheme() {
   state.theme.mode = 'light';
   try { document.body.classList.remove('night'); document.documentElement.removeAttribute('data-theme'); } catch(e) {}
   state.theme.ui = document.getElementById('thUI').value;
-  state.theme.fontUrl = document.getElementById('thFont').value.trim();
+  // 字体已迁到「美化」App，此处不再读写字体表单
   save(); applyTheme(); closeModal();
+}
+function ensureFontPresets() {
+  if (!state.theme) state.theme = {};
+  if (!Array.isArray(state.theme.fontPresets)) state.theme.fontPresets = [];
+  return state.theme.fontPresets;
+}
+function renderFontPresetListHtml() {
+  const list = ensureFontPresets();
+  if (!list.length) return '<div class="text-sub" style="font-size:12px;padding:6px 0">暂无预设，配置好字体后点「保存预设」</div>';
+  return list.map(function(p, i) {
+    const modeTip = p.fontMode === 'file' ? ('文件·' + (p.fontFileName || '本地'))
+      : p.fontMode === 'name' ? ('名称·' + (p.fontName || ''))
+      : p.fontMode === 'url' ? '在线URL'
+      : '跟随系统';
+    return '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:0.5px solid var(--line)">'
+      + '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:500">' + escapeHtml(p.name || ('预设'+(i+1))) + '</div>'
+      + '<div class="text-sub" style="font-size:11px">' + escapeHtml(modeTip) + '</div></div>'
+      + '<button type="button" class="btn btn-secondary" style="padding:4px 10px;font-size:12px" onclick="applyFontPreset('+i+')">应用</button>'
+      + '<button type="button" class="btn btn-danger" style="padding:4px 10px;font-size:12px" onclick="deleteFontPreset('+i+')">删</button>'
+      + '</div>';
+  }).join('');
+}
+function saveFontPreset() {
+  if (!state.theme) state.theme = {};
+  // 先把表单当前值写入 theme
+  try {
+    const modeEl = document.getElementById('thFontMode');
+    const nameEl = document.getElementById('thFontName');
+    const urlEl = document.getElementById('thFont');
+    if (modeEl) state.theme.fontMode = modeEl.value || 'system';
+    if (nameEl) state.theme.fontName = nameEl.value.trim();
+    if (urlEl) state.theme.fontUrl = urlEl.value.trim();
+  } catch(e) {}
+  let name = ((document.getElementById('thFontPresetName')||{}).value || '').trim();
+  if (!name) {
+    name = state.theme.fontMode === 'file' ? (state.theme.fontFileName || '本地字体')
+      : state.theme.fontMode === 'name' ? (state.theme.fontName || '自定义名')
+      : state.theme.fontMode === 'url' ? '在线字体'
+      : '跟随系统';
+    name = name + ' · ' + new Date().toLocaleString('zh-CN', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' });
+  }
+  const preset = {
+    id: 'fp_' + Date.now(),
+    name: name,
+    fontMode: state.theme.fontMode || 'system',
+    fontName: state.theme.fontName || '',
+    fontUrl: state.theme.fontUrl || '',
+    fontFmt: state.theme.fontFmt || '',
+    fontFileName: state.theme.fontFileName || '',
+    fontFileSize: state.theme.fontFileSize || 0,
+    // 文件型预设带上 data（可能较大，仅存 IDB）
+    fontData: state.theme.fontMode === 'file' ? (state.theme.fontData || '') : ''
+  };
+  const list = ensureFontPresets();
+  list.unshift(preset);
+  if (list.length > 20) list.length = 20;
+  try { save(); } catch(e) {}
+  try {
+    if (typeof idbSet === 'function' && preset.fontData) {
+      idbSet('fontPreset_' + preset.id, { data: preset.fontData, fmt: preset.fontFmt });
+    }
+  } catch(e) {}
+  showToast('已保存字体预设「' + name + '」');
+  const box = document.getElementById('thFontPresetList');
+  if (box) box.innerHTML = renderFontPresetListHtml();
+  const inp = document.getElementById('thFontPresetName');
+  if (inp) inp.value = '';
+}
+async function applyFontPreset(i) {
+  const list = ensureFontPresets();
+  const p = list[i];
+  if (!p) return;
+  if (!state.theme) state.theme = {};
+  state.theme.fontMode = p.fontMode || 'system';
+  state.theme.fontName = p.fontName || '';
+  state.theme.fontUrl = p.fontUrl || '';
+  state.theme.fontFmt = p.fontFmt || '';
+  state.theme.fontFileName = p.fontFileName || '';
+  state.theme.fontFileSize = p.fontFileSize || 0;
+  if (p.fontData) {
+    state.theme.fontData = p.fontData;
+  } else if (p.fontMode === 'file' && p.id && typeof idbGet === 'function') {
+    try {
+      const stored = await idbGet('fontPreset_' + p.id, null);
+      if (stored && stored.data) {
+        state.theme.fontData = stored.data;
+        if (stored.fmt) state.theme.fontFmt = stored.fmt;
+      }
+    } catch(e) {}
+  } else if (p.fontMode !== 'file') {
+    state.theme.fontData = '';
+  }
+  try { save(); } catch(e) {}
+  applyTheme();
+  showToast('已应用「' + (p.name || '预设') + '」');
+  try { closeAllModals(); } catch(e) {}
+  setTimeout(function(){
+    try {
+      if (typeof openHomeBeauty === 'function') openHomeBeauty('font');
+      else if (typeof openHomeBeautyFont === 'function') openHomeBeautyFont();
+    } catch(e) {}
+  }, 60);
+}
+function deleteFontPreset(i) {
+  const list = ensureFontPresets();
+  const p = list[i];
+  if (!p) return;
+  if (!confirm('删除预设「' + (p.name || '') + '」？')) return;
+  try {
+    if (p.id && typeof idbSet === 'function') idbSet('fontPreset_' + p.id, null);
+  } catch(e) {}
+  list.splice(i, 1);
+  save();
+  showToast('已删除');
+  const box = document.getElementById('thFontPresetList');
+  if (box) box.innerHTML = renderFontPresetListHtml();
+  try {
+    if (state._beautyTab === 'font' && typeof openHomeBeauty === 'function') openHomeBeauty('font');
+  } catch(e) {}
+}
+function openHomeBeautyFont() {
+  ensureHomeState();
+  if (!state.theme) state.theme = {};
+  const t = state.theme;
+  state._homeRoot = 'beauty';
+  openSubPage('字体', `
+    <div style="padding:14px 14px 40px;overflow-y:auto;height:100%;box-sizing:border-box;background:linear-gradient(180deg,#e8f6f4,#f5fbfa)">
+      <div style="font-size:12px;color:#5a7a80;line-height:1.55;margin-bottom:12px">全局生效（微信 / 短信 / 桌面等）。「跟随系统」尽量使用手机默认字体；主题商店字体请用本地上传。</div>
+      <div style="font-size:13px;color:#5a7a80;margin-bottom:6px">字体模式</div>
+      <select id="thFontMode" style="width:100%;margin-bottom:12px;padding:10px;border-radius:12px;border:1px solid rgba(94,184,176,.35);background:#fff">
+        <option value="system" ${(!t.fontMode||t.fontMode==='system')?'selected':''}>跟随系统（手机默认字体）</option>
+        <option value="name" ${t.fontMode==='name'?'selected':''}>指定字体名称</option>
+        <option value="file" ${t.fontMode==='file'?'selected':''}>本地上传字体文件</option>
+        <option value="url" ${t.fontMode==='url'?'selected':''}>在线字体 URL</option>
+      </select>
+      <div style="font-size:13px;color:#5a7a80;margin-bottom:6px">字体名称</div>
+      <input id="thFontName" placeholder="如：Source Han Sans SC、MiSans" value="${escapeHtml(t.fontName||'')}" style="width:100%;margin-bottom:12px;padding:10px;border-radius:12px;border:1px solid rgba(94,184,176,.35);box-sizing:border-box">
+      <div style="font-size:13px;color:#5a7a80;margin-bottom:6px">在线字体 URL</div>
+      <input id="thFont" placeholder="https://.../font.woff2" value="${escapeHtml(t.fontUrl||'')}" style="width:100%;margin-bottom:12px;padding:10px;border-radius:12px;border:1px solid rgba(94,184,176,.35);box-sizing:border-box">
+      <button type="button" class="btn btn-secondary" style="width:100%;margin-bottom:8px" onclick="document.getElementById('fontFileInput').click()">上传本地字体（ttf / otf / woff2）${t.fontData?' · 已上传':''}</button>
+      ${t.fontData ? ('<div style="font-size:11px;color:#5a7a80;margin-bottom:8px">当前：' + escapeHtml(t.fontFileName || '已上传') + (t.fontFileSize ? (' · ' + (t.fontFileSize/1024/1024).toFixed(2) + 'MB') : '') + '</div>') : ''}
+      ${t.fontData ? '<button type="button" class="btn btn-danger" style="width:100%;margin-bottom:12px" onclick="state.theme.fontData=\'\';state.theme.fontFileName=\'\';state.theme.fontFileSize=0;state.theme.fontMode=\'system\';save();applyTheme();showToast(\'已清除\');openHomeBeautyFont()">清除已上传字体</button>' : ''}
+      <button type="button" class="btn btn-primary" style="width:100%;margin-bottom:18px" onclick="saveHomeBeautyFont()">应用当前字体</button>
+      <div style="font-size:13px;color:#5a7a80;margin-bottom:8px;font-weight:600">字体预设</div>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <input id="thFontPresetName" placeholder="预设名称，如：手写体" style="flex:1;padding:10px;border-radius:12px;border:1px solid rgba(94,184,176,.35);box-sizing:border-box">
+        <button type="button" class="btn btn-primary" style="flex-shrink:0" onclick="saveFontPreset()">保存预设</button>
+      </div>
+      <div id="thFontPresetList" style="background:rgba(255,255,255,.75);border-radius:14px;padding:4px 12px;margin-bottom:16px">${renderFontPresetListHtml()}</div>
+      <button type="button" onclick="openHomeBeauty()" style="width:100%;border:none;border-radius:14px;padding:12px;background:transparent;color:#5eb8b0;font-size:14px;cursor:pointer">← 返回美化</button>
+    </div>
+  `, '', { replace: false, backFn: function(){ openHomeBeauty(); } });
+}
+function saveHomeBeautyFont() {
+  if (!state.theme) state.theme = {};
+  const modeEl = document.getElementById('thFontMode');
+  const nameEl = document.getElementById('thFontName');
+  const urlEl = document.getElementById('thFont');
+  if (modeEl) state.theme.fontMode = modeEl.value || 'system';
+  if (nameEl) state.theme.fontName = nameEl.value.trim();
+  if (urlEl) state.theme.fontUrl = urlEl.value.trim();
+  if (state.theme.fontMode === 'system') {
+    // 跟随系统时可不保留文件，也可保留以便切回 file
+  }
+  try { save(); } catch(e) {}
+  applyTheme();
+  showToast('字体已应用');
 }
 function applyTheme() {
   if (!state.theme) state.theme = {};
@@ -7959,11 +8350,32 @@ function applyTheme() {
       el.innerHTML = dockDefaults[k];
     }
   });
-  if (state.theme.fontUrl) {
-    const fu = state.theme.fontUrl;
-    const fmt = fu.match(/\.ttf/i) ? 'truetype' : fu.match(/\.otf/i) ? 'opentype' : fu.match(/\.woff2/i) ? 'woff2' : fu.match(/\.woff/i) ? 'woff' : 'truetype';
-    css += `@font-face{font-family:'AppCustom';src:url('${fu}') format('${fmt}');font-display:swap;}body,#phone{font-family:'AppCustom',-apple-system,sans-serif!important;}`;
-  }
+  // 字体：system / name / file(data) / url
+  (function applyAppFont() {
+    const mode = state.theme.fontMode || (state.theme.fontData ? 'file' : (state.theme.fontUrl ? 'url' : 'system'));
+    const name = (state.theme.fontName || '').trim();
+    if (mode === 'file' && state.theme.fontData) {
+      const fd = state.theme.fontData;
+      const fmt = /woff2/i.test(fd.slice(0,40)) || state.theme.fontFmt === 'woff2' ? 'woff2'
+        : /woff/i.test(state.theme.fontFmt||'') ? 'woff'
+        : /otf/i.test(state.theme.fontFmt||'') ? 'opentype' : 'truetype';
+      css += `@font-face{font-family:'AppCustom';src:url('${fd}') format('${fmt}');font-display:swap;}`
+        + `html,body,#phone,#phone *{font-family:'AppCustom',system-ui,-apple-system,"PingFang SC","Noto Sans SC",sans-serif!important;}`;
+    } else if (mode === 'url' && state.theme.fontUrl) {
+      const fu = state.theme.fontUrl;
+      const fmt = fu.match(/\.ttf/i) ? 'truetype' : fu.match(/\.otf/i) ? 'opentype' : fu.match(/\.woff2/i) ? 'woff2' : fu.match(/\.woff/i) ? 'woff' : 'truetype';
+      css += `@font-face{font-family:'AppCustom';src:url('${fu}') format('${fmt}');font-display:swap;}`
+        + `html,body,#phone,#phone *{font-family:'AppCustom',system-ui,-apple-system,sans-serif!important;}`;
+    } else if (mode === 'name' && name) {
+      const safe = name.replace(/['"]/g, '');
+      css += `html,body,#phone,#phone *{font-family:"${safe}",local("${safe}"),system-ui,-apple-system,sans-serif!important;}`;
+    } else {
+      // 跟随手机系统默认字体（不写死苹方/雅黑，让浏览器映射到系统 UI 字体）
+      // 不用 #phone * !important，避免盖掉图标字体；子元素 inherit
+      css += `html,body,#phone{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif!important;}`
+        + `#phone button,#phone input,#phone textarea,#phone select,#phone .msg-bubble,#phone .chat-item,#phone .setting-item{font-family:inherit!important;}`;
+    }
+  })();
   if (state.theme.dockStyle === 'cute') {
     css += `.dock-item .icon{width:28px;height:28px;stroke-width:1.8}
 .dock-item .icon svg{stroke-linecap:round;stroke-linejoin:round;stroke-width:1.9}
@@ -14339,10 +14751,19 @@ function viewPhoneNote(i) {
 // ========== 主屏幕 ==========
 function ensureHomeState() {
   if (!state.home || typeof state.home !== 'object') state.home = {};
-  // 清除图一图二类装饰小组件（默认空桌面，只保留用户主动添加的拍立得等）
+  // 仅首次清空旧版装饰组件；若已有用户布局/小组件则绝不覆盖
   if (!state.home._uiCleanWidgets) {
-    state.home.pageWidgets = { 0: [], 1: [] };
-    state.home.extraWidgets = [];
+    const hasUserWidgets = (state.home.extraWidgets && state.home.extraWidgets.length)
+      || (state.home.pageWidgets && Object.keys(state.home.pageWidgets).some(function(k){
+        return (state.home.pageWidgets[k]||[]).length > 0;
+      }))
+      || (state.home.layout && Object.keys(state.home.layout).length > 0)
+      || (state.home.wallpaper && state.home.wallpaper !== '__IDB__')
+      || (state.home.appIcons && Object.keys(state.home.appIcons).length > 0);
+    if (!hasUserWidgets) {
+      state.home.pageWidgets = state.home.pageWidgets || { 0: [], 1: [] };
+      state.home.extraWidgets = state.home.extraWidgets || [];
+    }
     state.home._uiCleanWidgets = 1;
   }
 
@@ -14350,6 +14771,7 @@ function ensureHomeState() {
   if (!state.home.appIcons) state.home.appIcons = {};
   if (!state.home.layout) state.home.layout = {};
   if (!state.home.extraWidgets) state.home.extraWidgets = [];
+  if (!state.home.pageWidgets) state.home.pageWidgets = { 0: [], 1: [] };
   if (!state.icity || typeof state.icity !== 'object') state.icity = { posts: [], myPosts: [], profile: {} };
   if (!state.icity.profile) state.icity.profile = {};
   if (!state.icity.posts) state.icity.posts = [];
@@ -14907,6 +15329,26 @@ function editHomePolaroid() {
 
 function getChangelogData() {
   return [
+    { v: '2026-08-20F', items: [
+      '美化侧栏新增「字体」页（跟随系统 / 上传 / 预设）'
+    ]},
+    { v: '2026-08-20E', items: [
+      '字体设置从「我的-美化」迁到桌面「美化」App'
+    ]},
+    { v: '2026-08-20D', items: [
+      '短信聊天时间条与微信一致（首条/间隔约2小时显示）',
+      '跟随系统字体'
+    ]},
+    { v: '2026-08-20C', items: [
+      '修复更新后桌面美化丢失：home 多路备份与合并恢复（壁纸/图标/布局）'
+    ]},
+    { v: '2026-08-20B', items: [
+      '字体本地上传不限大小，支持 ttf / otf / woff / woff2'
+    ]},
+    { v: '2026-08-20A', items: [
+      '自动翻译默认走免费通道，不消耗聊天 API 额度',
+      '美化中心支持跟随系统/字体名/本地上传字体文件'
+    ]},
     { v: '2026-08-19Z', items: [
       '聊天/语音/生图 API 完全独立，互不回落',
       '未接语音：点击直接提示未连接；未接生图：一律虚拟图、不提示生图中',
@@ -15468,6 +15910,11 @@ function openHomeBeauty() {
         <div style="font-weight:700;color:#2a4a55;margin-bottom:8px">✨ 玻璃质感 UI</div>
         <button type="button" onclick="openGlassUIPage()" style="width:100%;border:none;border-radius:12px;padding:12px;background:#fff;color:#2a4a55;font-weight:600;cursor:pointer;margin-bottom:8px">进入玻璃质感设置</button>
         <div style="font-size:11px;color:#5a7a80">单独一页开关，不会找不到</div>
+      </div>
+      <div style="margin:0 0 14px;padding:14px;border-radius:14px;background:linear-gradient(145deg,rgba(168,212,230,.45),rgba(200,230,240,.5));border:1px solid rgba(120,180,200,.35)">
+        <div style="font-weight:700;color:#2a4a55;margin-bottom:8px">字体</div>
+        <button type="button" onclick="openHomeBeautyFont()" style="width:100%;border:none;border-radius:12px;padding:12px;background:#fff;color:#2a4a55;font-weight:600;cursor:pointer;margin-bottom:8px">进入字体设置</button>
+        <div style="font-size:11px;color:#5a7a80">跟随系统 / 本地上传 / 字体预设</div>
       </div>
       ${typeof renderGlassSwitchHtml==='function'?renderGlassSwitchHtml():''}
       <div style="font-size:13px;color:var(--sub);margin-bottom:8px">壁纸</div>
@@ -21027,6 +21474,7 @@ function openSmsThread(id) {
   const wp = t.wallpaper
     ? `url(${t.wallpaper}) center/cover`
     : 'linear-gradient(180deg, rgba(200,200,205,.55), rgba(180,180,185,.4)), radial-gradient(ellipse at center, rgba(255,255,255,.5) 0%, rgba(160,160,168,.35) 100%)';
+  let lastTs = 0;
   const msgs = (t.messages||[]).map((m,i) => {
     const me = m.from === 'user';
     let body = (typeof cleanMsgContentForDisplay==='function') ? cleanMsgContentForDisplay(m.content) : (m.content||'');
@@ -21038,7 +21486,16 @@ function openSmsThread(id) {
         if (ex.translations && ex.translations[0]) tr = ex.translations[0];
       } catch(e) {}
     }
-    return '<div class="sms-bubble-row '+(me?'me':'other')+'"><div class="sms-bubble-wrap">'
+    const ts = m.ts || Date.now();
+    const gap = lastTs ? (ts - lastTs) : 0;
+    // 与微信聊天一致：首条或间隔超过约 2 小时显示时间条
+    let timeHtml = '';
+    if (!lastTs || gap > 2 * 3600 * 1000) {
+      timeHtml = '<div class="msg-time">' + escapeHtml(formatTime(ts)) + '</div>';
+    }
+    lastTs = ts;
+    return timeHtml
+      + '<div class="sms-bubble-row '+(me?'me':'other')+'"><div class="sms-bubble-wrap">'
       + '<div class="sms-bubble '+(me?'me':'other')+'" onclick="smsBubbleMenu(\''+id+'\','+i+')">'+escapeHtml(body)+'</div>'
       + (tr ? ('<div class="sms-tr">'+escapeHtml(tr)+'</div>') : '')
       + '</div></div>';
@@ -21116,6 +21573,20 @@ function syncSmsSendBtn() {
 function appendSmsBubble(id, m, idx) {
   const area = document.getElementById('smsMsgArea');
   if (!area) return false;
+  // 时间条：与微信相同规则（首条或与上一条间隔 > 2 小时）
+  try {
+    const t = state.sms && state.sms.threads && state.sms.threads[id];
+    const list = (t && t.messages) || [];
+    const prev = idx > 0 ? list[idx - 1] : null;
+    const ts = m.ts || Date.now();
+    const gap = prev && prev.ts ? (ts - prev.ts) : 0;
+    if (!prev || gap > 2 * 3600 * 1000) {
+      const timeEl = document.createElement('div');
+      timeEl.className = 'msg-time';
+      timeEl.textContent = formatTime(ts);
+      area.appendChild(timeEl);
+    }
+  } catch(e) {}
   const me = m.from === 'user';
   const row = document.createElement('div');
   row.className = 'sms-bubble-row ' + (me ? 'me' : 'other');
@@ -24670,13 +25141,20 @@ async function worldAutoScheduleTick() {
 
 // 启动：从 IndexedDB 恢复（主界面美化 / 短信 / IG 等大体积数据）
 (async function bootEenook() {
-  // IDB 最多等 3.5s，避免卡死在「主屏幕加载中」
+  // IDB 最多等 5s；超时后仍用 localStorage 轻量 home，避免桌面美化被空状态覆盖
   try {
     await Promise.race([
       (typeof loadFromIDB === 'function' ? loadFromIDB() : Promise.resolve()),
-      new Promise(function(r){ setTimeout(r, 3500); })
+      new Promise(function(r){ setTimeout(r, 5000); })
     ]);
   } catch (e) { console.warn('boot idb', e); }
+  // 再补一次桌面轻量备份（防竞态）
+  try {
+    var rawH = localStorage.getItem('graychat_home');
+    if (rawH && typeof mergeHomeState === 'function') {
+      state.home = mergeHomeState(state.home, JSON.parse(rawH));
+    }
+  } catch(e) {}
   try {
     if (typeof checkAppUpdate === 'function') checkAppUpdate();
   } catch (e) {}
@@ -24687,6 +25165,10 @@ async function worldAutoScheduleTick() {
       try { gs = +(localStorage.getItem('eenok_glass_str') || 0); } catch(e) { gs = 0; }
     }
     if (typeof setGlassStrength === 'function') setGlassStrength(+gs || 0);
+    // 启动后立刻把当前桌面再写入 IDB/轻量备份，固化美化
+    try {
+      if (state.home && typeof safeSet === 'function') safeSet('home', state.home);
+    } catch(e) {}
   } catch (e) { console.warn('boot home', e); }
   try { if (typeof showLockScreen === 'function') showLockScreen(); } catch (e) {}
   try {
@@ -25455,6 +25937,7 @@ if (t === 'badge3d') {
       + '<div data-btab="wallpaper" style="padding:12px 8px;text-align:center;font-size:11px;line-height:1.3;'+(tab==='wallpaper'?'background:#fff;font-weight:600':'')+'">壁纸<br>与图标</div>'
       + '<div data-btab="widgets" style="padding:12px 8px;text-align:center;font-size:11px;line-height:1.3;'+(tab==='widgets'?'background:#fff;font-weight:600':'')+'">小组件</div>'
       + '<div data-btab="theme" style="padding:12px 8px;text-align:center;font-size:11px;line-height:1.3;'+(tab==='theme'?'background:#fff;font-weight:600':'')+'">颜色</div>'
+      + '<div data-btab="font" style="padding:12px 8px;text-align:center;font-size:11px;line-height:1.3;'+(tab==='font'?'background:#fff;font-weight:600':'')+'">字体</div>'
       + '<div data-btab="other" style="padding:12px 8px;text-align:center;font-size:11px;line-height:1.3;'+(tab==='other'?'background:#fff;font-weight:600':'')+'">其他</div></div>';
     var main = '';
     if (tab === 'wallpaper') {
@@ -25515,6 +25998,34 @@ if (t === 'badge3d') {
         + '</div>'
         + '<button type="button" class="btn btn-primary" id="themeColorApply" style="width:100%;margin-bottom:8px">应用主题色</button>'
         + '<button type="button" class="btn btn-secondary" id="themeColorReset" style="width:100%">还原青绿色</button></div>';
+    } else if (tab === 'font') {
+      if (!state.theme) state.theme = {};
+      var t = state.theme;
+      var fm = t.fontMode || 'system';
+      main = '<div style="padding:16px">'
+        + '<div style="font-weight:600;margin-bottom:8px">字体</div>'
+        + '<div class="text-sub" style="font-size:12px;line-height:1.55;margin-bottom:12px">全局生效（微信 / 短信 / 桌面等）。「跟随系统」尽量使用手机默认字体；主题商店字体请上传本地文件。</div>'
+        + '<div style="font-size:13px;color:#5a7a80;margin-bottom:6px">字体模式</div>'
+        + '<select id="thFontMode" style="width:100%;margin-bottom:12px;padding:10px;border-radius:12px;border:1px solid rgba(94,184,176,.35);background:#fff">'
+        + '<option value="system"'+(fm==='system'?' selected':'')+'>跟随系统（手机默认字体）</option>'
+        + '<option value="name"'+(fm==='name'?' selected':'')+'>指定字体名称</option>'
+        + '<option value="file"'+(fm==='file'?' selected':'')+'>本地上传字体文件</option>'
+        + '<option value="url"'+(fm==='url'?' selected':'')+'>在线字体 URL</option>'
+        + '</select>'
+        + '<div style="font-size:13px;color:#5a7a80;margin-bottom:6px">字体名称</div>'
+        + '<input id="thFontName" placeholder="如：MiSans、Source Han Sans SC" value="'+escapeHtml(t.fontName||'')+'" style="width:100%;margin-bottom:12px;padding:10px;border-radius:12px;border:1px solid rgba(94,184,176,.35);box-sizing:border-box">'
+        + '<div style="font-size:13px;color:#5a7a80;margin-bottom:6px">在线字体 URL</div>'
+        + '<input id="thFont" placeholder="https://.../font.woff2" value="'+escapeHtml(t.fontUrl||'')+'" style="width:100%;margin-bottom:12px;padding:10px;border-radius:12px;border:1px solid rgba(94,184,176,.35);box-sizing:border-box">'
+        + '<button type="button" class="btn btn-secondary" id="beautyFontUpload" style="width:100%;margin-bottom:8px">上传本地字体（ttf / otf / woff2）'+(t.fontData?' · 已上传':'')+'</button>'
+        + (t.fontData ? ('<div class="text-sub" style="font-size:11px;margin-bottom:8px">当前：'+escapeHtml(t.fontFileName||'已上传')+(t.fontFileSize?(' · '+(t.fontFileSize/1024/1024).toFixed(2)+'MB'):'')+'</div>') : '')
+        + (t.fontData ? '<button type="button" class="btn btn-danger" id="beautyFontClear" style="width:100%;margin-bottom:10px">清除已上传字体</button>' : '')
+        + '<button type="button" class="btn btn-primary" id="beautyFontApply" style="width:100%;margin-bottom:18px">应用当前字体</button>'
+        + '<div style="font-weight:600;margin-bottom:8px">字体预设</div>'
+        + '<div style="display:flex;gap:8px;margin-bottom:10px">'
+        + '<input id="thFontPresetName" placeholder="预设名称" style="flex:1;padding:10px;border-radius:12px;border:1px solid rgba(94,184,176,.35);box-sizing:border-box">'
+        + '<button type="button" class="btn btn-primary" id="beautyFontSavePreset" style="flex-shrink:0">保存预设</button></div>'
+        + '<div id="thFontPresetList" style="background:rgba(255,255,255,.75);border-radius:14px;padding:4px 12px">'+(typeof renderFontPresetListHtml==='function'?renderFontPresetListHtml():'')+'</div>'
+        + '</div>';
     } else {
       var glassOn = !!(state.home && state.home.glassUI);
       main = '<div style="padding:12px">'
@@ -25650,6 +26161,54 @@ if (t === 'badge3d') {
       document.querySelectorAll('[data-tc]').forEach(function(el){
         el.onclick = function(){ applyThemeColor(el.getAttribute('data-tc')); openHomeBeauty('theme'); };
       });
+      // 字体页
+      var beautyFontUpload = document.getElementById('beautyFontUpload');
+      if (beautyFontUpload) beautyFontUpload.onclick = function(){
+        var fi = document.getElementById('fontFileInput');
+        if (fi) fi.click();
+      };
+      var beautyFontClear = document.getElementById('beautyFontClear');
+      if (beautyFontClear) beautyFontClear.onclick = function(){
+        if (!state.theme) state.theme = {};
+        state.theme.fontData = '';
+        state.theme.fontFileName = '';
+        state.theme.fontFileSize = 0;
+        state.theme.fontMode = 'system';
+        try { save(); } catch(e) {}
+        try { applyTheme(); } catch(e) {}
+        showToast('已清除上传字体');
+        openHomeBeauty('font');
+      };
+      var beautyFontApply = document.getElementById('beautyFontApply');
+      if (beautyFontApply) beautyFontApply.onclick = function(){
+        if (typeof saveHomeBeautyFont === 'function') saveHomeBeautyFont();
+        else {
+          if (!state.theme) state.theme = {};
+          var modeEl = document.getElementById('thFontMode');
+          var nameEl = document.getElementById('thFontName');
+          var urlEl = document.getElementById('thFont');
+          if (modeEl) state.theme.fontMode = modeEl.value || 'system';
+          if (nameEl) state.theme.fontName = nameEl.value.trim();
+          if (urlEl) state.theme.fontUrl = urlEl.value.trim();
+          try { save(); } catch(e) {}
+          try { applyTheme(); } catch(e) {}
+          showToast('字体已应用');
+        }
+      };
+      var beautyFontSavePreset = document.getElementById('beautyFontSavePreset');
+      if (beautyFontSavePreset) beautyFontSavePreset.onclick = function(){
+        try {
+          var modeEl = document.getElementById('thFontMode');
+          var nameEl = document.getElementById('thFontName');
+          var urlEl = document.getElementById('thFont');
+          if (!state.theme) state.theme = {};
+          if (modeEl) state.theme.fontMode = modeEl.value || 'system';
+          if (nameEl) state.theme.fontName = nameEl.value.trim();
+          if (urlEl) state.theme.fontUrl = urlEl.value.trim();
+        } catch(e) {}
+        if (typeof saveFontPreset === 'function') saveFontPreset();
+        setTimeout(function(){ openHomeBeauty('font'); }, 80);
+      };
       var expBtn = document.getElementById('beautyExportDesk');
       if (expBtn) expBtn.onclick = function(){
         try {
