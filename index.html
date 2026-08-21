@@ -240,9 +240,33 @@ body.night .sms-im-msgs .msg-time, .night .sms-im-msgs .msg-time { color: rgba(2
   overflow-wrap: anywhere;
   box-sizing: border-box;
 }
-.sms-bubble.me { background: #007aff; color: #fff; border-bottom-right-radius: 6px; }
-.sms-bubble.other { background: rgba(60,60,67,.32); color: #000; border-bottom-left-radius: 6px; }
-body.night .sms-bubble.other { background: rgba(255,255,255,.2); color: #fff; }
+/* 短信气泡：纯 CSS 仿 iMessage（左灰右蓝，无尾巴、无叠色） */
+.sms-bubble.me {
+  background: #007aff !important;
+  background-image: none !important;
+  color: #fff !important;
+  border: none !important;
+  border-radius: 18px !important;
+  box-shadow: none !important;
+  padding: 10px 14px !important;
+}
+.sms-bubble.me::before,
+.sms-bubble.me::after,
+.sms-bubble.other::before,
+.sms-bubble.other::after {
+  display: none !important;
+  content: none !important;
+}
+.sms-bubble.other {
+  background: #e9e9eb !important;
+  background-image: none !important;
+  color: #000 !important;
+  border: none !important;
+  border-radius: 18px !important;
+  box-shadow: none !important;
+  padding: 10px 14px !important;
+}
+body.night .sms-bubble.other { color: #fff !important; background: #3a3a3c !important; }
 .sms-tr {
   font-size: 11px; color: #8e8e93; margin-top: 4px; padding: 0 6px;
   line-height: 1.4; max-width: 100%;
@@ -893,38 +917,41 @@ body {
 #page-chat[data-chat-theme="ios26"] .chat-header .nav-btn:last-child svg {
   display: none !important;
 }
-/* 右上角视频图标 = 聊天设置 */
+/* 右上角：人物+弧线 = 聊天设置（仿图一第三排第一个） */
 #page-chat[data-chat-theme="ios26"] .chat-header .nav-btn:last-child::before {
   content: '';
   display: block;
-  width: 22px; height: 14px;
+  width: 26px; height: 26px;
   margin: 0 auto;
-  border: 1.8px solid #007aff;
-  border-radius: 4px;
-  box-shadow: 3px 2px 0 -1px #fff, 4px 3px 0 -1px #007aff;
-  box-sizing: border-box;
+  background: #007aff;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round'%3E%3Ccircle cx='12' cy='9' r='4'/%3E%3Cpath d='M6.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5'/%3E%3Cpath d='M5 15.5c-1.2 1-2 2.2-2 3.5'/%3E%3Cpath d='M19 15.5c1.2 1 2 2.2 2 3.5'/%3E%3C/svg%3E") center / 22px 22px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round'%3E%3Ccircle cx='12' cy='9' r='4'/%3E%3Cpath d='M6.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5'/%3E%3Cpath d='M5 15.5c-1.2 1-2 2.2-2 3.5'/%3E%3Cpath d='M19 15.5c1.2 1 2 2.2 2 3.5'/%3E%3C/svg%3E") center / 22px 22px no-repeat;
 }
 #page-chat[data-chat-theme="ios26"] .chat-header .name { color: #000; font-weight: 600; }
 #page-chat[data-chat-theme="ios26"] .chat-header .status { color: #8e8e93; }
 #page-chat[data-chat-theme="ios26"] #msgArea {
   background-color: #ffffff;
 }
+
 #page-chat[data-chat-theme="ios26"] .msg-bubble:not(.bare) {
-  border-radius: 18px !important;
-  box-shadow: none !important;
+  background-image: none !important;
   border: none !important;
-  backdrop-filter: none !important;
-  padding: 8px 12px !important;
+  box-shadow: none !important;
+  padding: 10px 14px !important;
+  border-radius: 18px !important;
 }
 #page-chat[data-chat-theme="ios26"] .msg-row.me .msg-bubble:not(.bare) {
   background: #007aff !important;
   color: #fff !important;
-  border-bottom-right-radius: 6px !important;
 }
 #page-chat[data-chat-theme="ios26"] .msg-row.other .msg-bubble:not(.bare) {
   background: #e9e9eb !important;
   color: #000 !important;
-  border-bottom-left-radius: 6px !important;
+}
+#page-chat[data-chat-theme="ios26"] .msg-row .msg-bubble:not(.bare)::before,
+#page-chat[data-chat-theme="ios26"] .msg-row .msg-bubble:not(.bare)::after {
+  display: none !important;
+  content: none !important;
 }
 #page-chat[data-chat-theme="ios26"] .msg-row .msg-bubble:not(.bare)::after,
 #page-chat[data-chat-theme="ios26"] .msg-row .msg-bubble:not(.bare)::before {
@@ -1004,14 +1031,11 @@ body {
 #page-chat[data-chat-theme="ios26"] .input-btn.gen::before {
   content: '';
   display: block;
-  width: 26px; height: 20px;
+  width: 28px; height: 28px;
   margin: 0 auto;
-  border: 1.8px solid #8e8e93;
-  border-radius: 5px;
-  box-sizing: border-box;
-  background:
-    radial-gradient(circle at 50% 58%, transparent 3.5px, #8e8e93 4px, #8e8e93 5.5px, transparent 6px),
-    linear-gradient(#8e8e93, #8e8e93) 50% 2px / 9px 2.5px no-repeat;
+  background: #8e8e93;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linejoin='round'%3E%3Cpath d='M4 8h3l1.5-2.5h7L17 8h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z'/%3E%3Ccircle cx='12' cy='14' r='3.5'/%3E%3C/svg%3E") center / 24px 24px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linejoin='round'%3E%3Cpath d='M4 8h3l1.5-2.5h7L17 8h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z'/%3E%3Ccircle cx='12' cy='14' r='3.5'/%3E%3C/svg%3E") center / 24px 24px no-repeat;
 }
 /* App Store 线条图标 = 面板，紧挨相机 */
 #page-chat[data-chat-theme="ios26"] .input-btn[onclick="togglePanel()"] {
@@ -1021,16 +1045,11 @@ body {
 #page-chat[data-chat-theme="ios26"] .input-btn[onclick="togglePanel()"]::before {
   content: '';
   display: block;
-  width: 22px; height: 22px;
+  width: 26px; height: 26px;
   margin: 0 auto;
-  border-radius: 6px;
-  border: 1.8px solid #8e8e93;
-  box-sizing: border-box;
-  background:
-    linear-gradient(#8e8e93,#8e8e93) 5px 5px / 5px 5px no-repeat,
-    linear-gradient(#8e8e93,#8e8e93) 12px 5px / 5px 5px no-repeat,
-    linear-gradient(#8e8e93,#8e8e93) 5px 12px / 5px 5px no-repeat,
-    linear-gradient(#8e8e93,#8e8e93) 12px 12px / 5px 5px no-repeat;
+  background: #8e8e93;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='7' height='7' rx='1.5'/%3E%3Crect x='14' y='3' width='7' height='7' rx='1.5'/%3E%3Crect x='3' y='14' width='7' height='7' rx='1.5'/%3E%3Crect x='14' y='14' width='7' height='7' rx='1.5'/%3E%3C/svg%3E") center / 22px 22px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='7' height='7' rx='1.5'/%3E%3Crect x='14' y='3' width='7' height='7' rx='1.5'/%3E%3Crect x='3' y='14' width='7' height='7' rx='1.5'/%3E%3Crect x='14' y='14' width='7' height='7' rx='1.5'/%3E%3C/svg%3E") center / 22px 22px no-repeat;
 }
 #page-chat[data-chat-theme="ios26"] .input-btn[onclick="togglePanel()"]::after { content: none !important; display: none !important; }
 /* 隐藏独立发送键 */
@@ -2160,7 +2179,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
     <div class="input-bar wx-input-bar">
       <!-- 最左说话/声波键 = 生成 -->
       <button type="button" class="input-btn gen" onclick="generateReply()" title="生成" aria-label="生成">
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#1a1a1a" stroke-width="1.7" stroke-linecap="round"><path d="M4 10v4"/><path d="M8 7v10"/><path d="M12 4v16"/><path d="M16 7v10"/><path d="M20 10v4"/><circle cx="12" cy="12" r="9.2" opacity=".35"/></svg>
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#1a1a1a" stroke-width="2" stroke-linecap="round"><path d="M8 8v8"/><path d="M12 5v14"/><path d="M16 8v8"/></svg>
       </button>
       <div class="wx-input-pill">
         <textarea id="msgInput" rows="1" placeholder="" oninput="autoHeight(this)" onkeydown="onInputKey(event)"></textarea>
@@ -2348,7 +2367,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-20O';
+const EENOK_BUILD = '2026-08-21D';
 /** 检测版本变化；进入主界面后弹出「已更新」提醒 */
 function checkAppUpdate() {
   try {
@@ -2673,7 +2692,7 @@ function compressDataUrl(dataUrl, maxW, quality, keepAlpha) {
       // 立牌 / 图标 / 通话壁纸等需要透明底：强制 PNG，禁止压成 JPEG
       var ft = String(state.fileTarget || '');
       var isWidgetUpload = ft.indexOf('homeWidget') === 0 || ft.indexOf('homeWidgetImg') === 0;
-      var forcePng = !!keepAlpha || isWidgetUpload || ft === 'standee' || ft === 'standee_l' || ft.indexOf('homeAppIcon') === 0 || ft === 'callBg' || ft.indexOf('pw3Cell') === 0 || (dataUrl.indexOf('image/png') >= 0 && (ft === 'homeWallpaper' || ft.indexOf('dock') >= 0));
+      var forcePng = !!keepAlpha || isWidgetUpload || ft === 'standee' || ft === 'standee_l' || ft === 'heart_standee' || ft === 'heart_badge' || ft.indexOf('homeAppIcon') === 0 || ft === 'callBg' || ft.indexOf('pw3Cell') === 0 || (dataUrl.indexOf('image/png') >= 0 && (ft === 'homeWallpaper' || ft.indexOf('dock') >= 0));
       const img = new Image();
       img.onload = () => {
         let w = img.width, h = img.height;
@@ -3135,8 +3154,26 @@ function mergeHomeState(primary, fallback) {
   Object.keys(out.appIcons).forEach(function(k) {
     if (out.appIcons[k] === '__IDB__') delete out.appIcons[k];
   });
-  if ((!out.pageWidgets || !Object.keys(out.pageWidgets).length) && b.pageWidgets) out.pageWidgets = b.pageWidgets;
+  // pageWidgets：按页合并，谁内容更多用谁，避免空数组覆盖
+  (function(){
+    var pa = (a.pageWidgets && typeof a.pageWidgets === 'object') ? a.pageWidgets : {};
+    var pb = (b.pageWidgets && typeof b.pageWidgets === 'object') ? b.pageWidgets : {};
+    var keys = {};
+    Object.keys(pa).forEach(function(k){ keys[k]=1; });
+    Object.keys(pb).forEach(function(k){ keys[k]=1; });
+    var merged = {};
+    Object.keys(keys).forEach(function(k){
+      var la = Array.isArray(pa[k]) ? pa[k] : [];
+      var lb = Array.isArray(pb[k]) ? pb[k] : [];
+      merged[k] = la.length >= lb.length ? la : lb;
+    });
+    if (Object.keys(merged).length) out.pageWidgets = merged;
+    else if (b.pageWidgets) out.pageWidgets = b.pageWidgets;
+  })();
   if ((!out.extraWidgets || !out.extraWidgets.length) && b.extraWidgets) out.extraWidgets = b.extraWidgets;
+  // pages 数取较大值，避免加页后被旧备份打回
+  var pagesA = (a.pages|0) || 0, pagesB = (b.pages|0) || 0;
+  out.pages = Math.max(pagesA, pagesB, out.pages|0, 1);
   if (out.glassStrength == null && b.glassStrength != null) out.glassStrength = b.glassStrength;
   if (out.iconScale == null && b.iconScale != null) out.iconScale = b.iconScale;
   if (out.iconRadius == null && b.iconRadius != null) out.iconRadius = b.iconRadius;
@@ -4295,7 +4332,6 @@ function renderMessages(opts) {
           </span>
           <div class="ios-voice-wave">${waves}</div>
           <span style="font-size:12px;opacity:.85;flex-shrink:0">0:${dur < 10 ? '0'+dur : dur}</span>
-          <span style="opacity:.7;font-size:14px">🔊</span>
         </div>${textBelow}`;
       } else {
         const bars = [5, 10, 7, 14, 9, 12].map(function(h){ return '<span style="height:'+h+'px"></span>'; }).join('');
@@ -7156,6 +7192,24 @@ function onFileSelected(e) {
         showToast('主界面壁纸已更新');
       };
       applyHomeWp(data);
+    } else if (state.fileTarget && String(state.fileTarget).startsWith('homeWidget2_')) {
+      // homeWidget2_{page}_{index} → img2（双人星轨第二个头像）
+      const parts2 = String(state.fileTarget).split('_');
+      const pg2 = parseInt(parts2[1], 10);
+      const wi2 = parseInt(parts2[2], 10);
+      const pageIdx2 = isNaN(pg2) ? (state._widgetUploadPage != null ? state._widgetUploadPage : (state.home.page||0)) : pg2;
+      const wIdx2 = isNaN(wi2) ? 0 : wi2;
+      ensureHomeState();
+      if (!state.home.pageWidgets) state.home.pageWidgets = {};
+      if (!state.home.pageWidgets[pageIdx2]) state.home.pageWidgets[pageIdx2] = [];
+      if (!state.home.pageWidgets[pageIdx2][wIdx2]) state.home.pageWidgets[pageIdx2][wIdx2] = { id:'w'+Date.now(), x:16, y:40, w:200, h:180 };
+      state.home.pageWidgets[pageIdx2][wIdx2].img2 = data;
+      state.home.page = pageIdx2;
+      state._widgetFixedSize = false;
+      try { save(); if (typeof saveAsync==='function') saveAsync(); } catch(e) {}
+      renderHome();
+      try { closeModal(); } catch(e) {}
+      showToast('头像B已更新');
     } else if (state.fileTarget && String(state.fileTarget).startsWith('homeWidget_')) {
       // homeWidget_{page}_{index}
       const parts = String(state.fileTarget).split('_');
@@ -7178,7 +7232,8 @@ function onFileSelected(e) {
       }
       state.home.page = pageIdx;
       // 空白照片墙等：尺寸不随图片改变
-      var fixed = state._widgetFixedSize || (state.home.pageWidgets[pageIdx][wIdx].type === 'pw_blank' || state.home.pageWidgets[pageIdx][wIdx].type === 'photowall3');
+      var _wt = state.home.pageWidgets[pageIdx][wIdx].type;
+var fixed = state._widgetFixedSize || (_wt === 'pw_blank' || _wt === 'photowall3' || _wt === 'airdrop_card' || _wt === 'music_player' || _wt === 'dual_orbit' || _wt === 'about_me' || _wt === 'heart_badge' || _wt === 'heart_standee' || _wt === 'badge3d' || _wt === 'standee' || _wt === 'standee_l');
       state._widgetFixedSize = false;
       if (!fixed) {
         try {
@@ -17208,7 +17263,9 @@ function openHomeBeauty() {
   const wtypes = [
     {t:'polaroid_l',n:'大拍立得'},{t:'polaroid_m',n:'中拍立得'},
     {t:'photowall',n:'横屏照片墙'},{t:'ins_card',n:'仿ins卡片'},{t:'text_banner',n:'横屏文案'},
-    {t:'badge3d',n:'立体吧唧'},{t:'standee',n:'立体立牌'}
+    {t:'badge3d',n:'立体吧唧'},{t:'heart_badge',n:'爱心吧唧'},
+    {t:'standee',n:'立体立牌'},{t:'heart_standee',n:'立体爱心摆件'},
+    {t:'airdrop_card',n:'分享卡片'},{t:'music_player',n:'音乐播放器'},{t:'dual_orbit',n:'双人星轨'},{t:'about_me',n:'关于我'}
   ];
   openSubPage('美化', `
     <div style="padding:12px 14px 40px;overflow-y:auto;height:100%;box-sizing:border-box">
@@ -17276,6 +17333,38 @@ function toggleDockApp(id, name, open, on) {
   if (!on && i >= 0) state.home.dockApps.splice(i, 1);
   save();
 }
+
+function moveHomeWidget(fromPage, wi, toPage) {
+  ensureHomeState();
+  if (!state.home.pageWidgets) state.home.pageWidgets = {};
+  var list = state.home.pageWidgets[fromPage] || [];
+  if (wi < 0 || wi >= list.length) return;
+  toPage = toPage | 0;
+  fromPage = fromPage | 0;
+  if (toPage === fromPage) return;
+  if (!state.home.pageWidgets[toPage]) state.home.pageWidgets[toPage] = [];
+  var item = list.splice(wi, 1)[0];
+  if (!item) return;
+  item.x = Math.min(item.x || 16, 40);
+  item.y = Math.min(item.y || 40, 80);
+  state.home.pageWidgets[toPage].push(item);
+  state.home.page = toPage;
+  save();
+  if (typeof saveAsync === 'function') saveAsync();
+  showToast('已移到第'+(toPage+1)+'页');
+  renderHome();
+}
+function openMoveWidgetSheet(fromPage, wi) {
+  var pages = state.home.pages || 2;
+  var btns = '';
+  for (var pi = 0; pi < pages; pi++) {
+    if (pi === fromPage) continue;
+    btns += '<button type="button" class="btn btn-secondary" style="width:100%;margin:6px 0" onclick="closeModal();moveHomeWidget('+fromPage+','+wi+','+pi+')">移到第 '+(pi+1)+' 页</button>';
+  }
+  if (!btns) { showToast('没有其他页面'); return; }
+  openModal('移动小组件', btns, '<button class="btn btn-secondary" onclick="closeModal()">取消</button>');
+}
+
 function addHomeWidget(itemOrType) {
   ensureHomeState();
   if (!state.home.pageWidgets) state.home.pageWidgets = { 0: [], 1: [] };
@@ -17291,6 +17380,29 @@ function addHomeWidget(itemOrType) {
     polaroid_m: { type: 'polaroid_m', w: 120, h: 150, caption: '', content: '' },
     polaroid: { type: 'polaroid_m', w: 120, h: 150, caption: '', content: '' },
     badge3d: { type: 'badge3d', w: 110, h: 110, img: '', rot: 0 },
+    heart_badge: { type: 'heart_badge', w: 148, h: 140, img: '', rot: 0 },
+    heart_standee: {
+      type: 'heart_standee', w: 200, h: 280,
+      img: 'https://nos.netease.com/ysf/45a6a753afa717d8cf7da2002d14cc33.png'
+    },
+    standee: { type: 'standee', w: 100, h: 160, img: '' },
+    standee_l: { type: 'standee_l', w: 140, h: 220, img: '' },
+    airdrop_card: {
+      type: 'airdrop_card', w: 200, h: 260,
+      title: 'AirDrop', subtitle: 'would like to share a photo.', img: '', fromName: 'vibes'
+    },
+    music_player: {
+      type: 'music_player', w: 200, h: 230,
+      img: '', nick: '昵称', uid: '@id', title: 'Now Playing'
+    },
+    dual_orbit: {
+      type: 'dual_orbit', w: 200, h: 180,
+      img: '', img2: '', caption: '我们的轨迹', sub: ''
+    },
+    about_me: {
+      type: 'about_me', w: 220, h: 200,
+      img: '', text: 'about me', bubble: ''
+    },
     clock_sm: { type: 'clock_sm', w: 150, h: 80 },
     photowall3: { type: 'photowall3', w: 200, h: 140, imgs: [] },
     pw_blank: { type: 'pw_blank', w: 100, h: 100, img: '' },
@@ -19682,7 +19794,7 @@ async function doIgGenFeed() {
       const placeImg = igMakePlaceholderImg(imgDesc || caption, (c && c.id) || i);
       f.posts.unshift({
         nick: c ? (c.realName || c.nick) : 'explore', avatar: c && c.avatar || '', charId: c && c.id || '',
-        caption, imgDesc, img: placeImg, ts: Date.now(), likes: Math.floor(Math.random()*200), comments: [], mine: false
+        caption, imgDesc, img: placeImg, ts: Date.now(), likes: Math.floor(Math.random()*200), comments: (typeof igSeedComments==='function'?igSeedComments(caption,3):[]), mine: false
       });
     }
     save(); openForumIG('home');
@@ -19838,7 +19950,7 @@ async function igGenCharPosts(id) {
       let caption = (text||'').trim(), imgDesc = '';
       try { const j = JSON.parse(caption.replace(/```json|```/g,'').trim()); caption=(j.caption||caption).slice(0,60); imgDesc=(j.imgDesc||'').slice(0,40); } catch(e) { caption = caption.slice(0,60); }
       const placeImg = igMakePlaceholderImg(imgDesc || caption, id + i);
-      f.posts.unshift({ nick: c.realName||c.nick||id, avatar: c.avatar||'', charId: id, caption, imgDesc, img: placeImg, ts:Date.now(), likes:Math.floor(Math.random()*80), comments:[], mine:false });
+      f.posts.unshift({ nick: c.realName||c.nick||id, avatar: c.avatar||'', charId: id, caption, imgDesc, img: placeImg, ts:Date.now(), likes:Math.floor(Math.random()*80), comments: (typeof igSeedComments==='function'?igSeedComments(caption,3):[]), mine:false });
     }
     if (f.profiles && f.profiles[id]) f.profiles[id].postsCount = (f.posts||[]).filter(x=>x.charId===id).length;
     save(); showToast('已生成'); igViewUserPosts(id);
@@ -19941,12 +20053,62 @@ function igComment(i) {
       <button class="btn btn-secondary" onclick="igGenComment(${i})">生成评论</button>
       <button class="btn btn-primary" onclick="const t=document.getElementById('igCmt').value.trim();if(!t)return;ensureIG().posts[${i}].comments.push({nick:ensureIG().profile.nick,text:t});save();closeModal();igComment(${i})">发布</button>`);
 }
+
+function igSeedComments(caption, count) {
+  count = count || 3;
+  var nicks = ['不吃香菜','一只路过的鸽子','数学真的很难','晚风吹过','便利店灯光','地铁末班车','阳台绿植','路过的猫','德彪西','楼主家教'];
+  var samples = [
+    '好有感觉，收藏了。',
+    '这排版也太干净了吧。',
+    '学到了，想试试同样的风格。',
+    '笑死，楼主这语气太真实了。',
+    '氛围感绝了。',
+    '求同款滤镜。',
+    '看完突然想去散步。',
+    '简洁但很有力量。'
+  ];
+  var out = [];
+  for (var i = 0; i < count; i++) {
+    out.push({
+      nick: nicks[(Math.floor(Math.random()*nicks.length)+i)%nicks.length],
+      text: samples[(Math.floor(Math.random()*samples.length)+i)%samples.length],
+      ts: Date.now() - i * 1000
+    });
+  }
+  return out;
+}
+
 async function igGenComment(i) {
   try {
-    const { text } = await apiChat([{role:'user',content:'用一句很短的中文社交媒体评论，自然口语，不要引号。'}],{max_tokens:40,temperature:0.9});
-    ensureIG().posts[i].comments.push({ nick: '用户'+(Math.floor(Math.random()*90)+10), text: (text||'').trim() });
-    save(); igComment(i);
-  } catch(e) { alert(e.message||e); }
+    showToast('生成评论中…');
+    const p = ensureIG().posts[i];
+    if (!p) return;
+    if (!p.comments) p.comments = [];
+    const nicks = ['不吃香菜','一只路过的鸽子','数学真的很难','晚风吹过','便利店灯光','地铁末班车','阳台绿植','路过的猫'];
+    let batch = [];
+    try {
+      const { text } = await apiChat([
+        { role:'user', content: '为一条 Instagram 帖子写 3 条中文评论，每条一行，格式：昵称|评论内容。口语自然、温和，不要引号、不要编号。帖子文案：' + String(p.caption||p.content||'').slice(0,80) }
+      ], { max_tokens: 180, temperature: 0.92 });
+      String(text||'').split(/\n+/).forEach(function(line){
+        line = line.trim();
+        if (!line) return;
+        var parts = line.split('|');
+        if (parts.length >= 2) batch.push({ nick: parts[0].trim().replace(/^\d+[\.\、\s]*/, ''), text: parts.slice(1).join('|').trim() });
+        else batch.push({ nick: nicks[Math.floor(Math.random()*nicks.length)], text: line.replace(/^\d+[\.\、\s]*/, '') });
+      });
+    } catch(e) {}
+    if (!batch.length) {
+      batch = [
+        { nick: nicks[Math.floor(Math.random()*nicks.length)], text: '好有感觉，收藏了。' },
+        { nick: nicks[Math.floor(Math.random()*nicks.length)], text: '这排版也太干净了吧。' },
+        { nick: nicks[Math.floor(Math.random()*nicks.length)], text: '学到了，想试试同样的风格。' }
+      ];
+    }
+    batch.slice(0, 4).forEach(function(c){ p.comments.push({ nick: c.nick, text: c.text, ts: Date.now() }); });
+    save();
+    igOpenComments(i);
+  } catch(e) { showToast(e.message||String(e)); }
 }
 function igRepost(i) {
   const f = ensureIG();
@@ -20102,20 +20264,31 @@ function igOpenComments(i) {
   const p = ensureIG().posts[i];
   if (!p) return;
   if (!p.comments) p.comments = [];
+  const n = p.comments.length;
   const list = p.comments.map((c,ci)=>`
-    <div style="padding:10px 0;border-bottom:0.5px solid #eee;display:flex;gap:10px">
-      <div style="width:32px;height:32px;border-radius:50%;background:#eee;flex-shrink:0"></div>
-      <div style="flex:1"><div style="font-weight:600;font-size:13px">${escapeHtml(c.nick||'用户')}</div>
-      <div style="font-size:14px;margin-top:2px">${escapeHtml(c.text||'')}</div></div>
-    </div>`).join('') || '<div class="empty" style="padding:24px">还没有评论</div>';
-  openModal('评论', `
-    <div style="max-height:40vh;overflow:auto">${list}</div>
-    <div style="display:flex;gap:8px;margin-top:10px">
-      <input id="igCmtIn" placeholder="写评论…" style="flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:20px">
-      <button type="button" class="btn btn-primary" onclick="igAddComment(${i})">发送</button>
-      <button type="button" class="btn btn-secondary" onclick="igGenComment(${i})">○</button>
+    <div style="padding:14px 0;border-bottom:0.5px solid #f0f0f0">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <span style="font-weight:600;font-size:14px;color:#1c1c1e">${escapeHtml(c.nick||'用户')}</span>
+        <span onclick="(function(){var P=ensureIG().posts[${i}];if(!P||!P.comments)return;P.comments.splice(${ci},1);save();igOpenComments(${i});})()" style="font-size:12px;color:#bbb;cursor:pointer;padding:2px 6px">删除</span>
+      </div>
+      <div style="font-size:14px;line-height:1.55;color:#333">${escapeHtml(c.text||'')}</div>
+    </div>`).join('') || '<div style="padding:40px 16px;text-align:center;color:#999;font-size:13px">还没有评论</div>';
+  openModal('', `
+    <div style="margin:-16px -16px 0;display:flex;flex-direction:column;max-height:70vh">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px 10px;border-bottom:0.5px solid #f0f0f0;flex-shrink:0">
+        <div style="font-size:16px;font-weight:700;color:#1c1c1e">全部评论(${n})</div>
+        <span onclick="closeModal()" style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:20px;color:#999;cursor:pointer">×</span>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:0 16px;min-height:120px">${list}</div>
+      <div style="padding:10px 16px;text-align:center;flex-shrink:0">
+        <button type="button" onclick="igGenComment(${i})" style="border:1px solid #e5e5ea;background:#fff;border-radius:20px;padding:8px 18px;font-size:13px;color:#666;cursor:pointer">加载更多评论</button>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;padding:10px 16px 12px;border-top:0.5px solid #f0f0f0;flex-shrink:0;background:#fafafa">
+        <input id="igCmtIn" placeholder="写下你的温和评论…" style="flex:1;padding:10px 14px;border:none;border-radius:22px;background:#f0f0f2;font-size:14px;outline:none">
+        <button type="button" onclick="igAddComment(${i})" style="border:none;background:#1c1c1e;color:#fff;border-radius:22px;padding:10px 18px;font-size:14px;font-weight:600;cursor:pointer">发送</button>
+      </div>
     </div>
-  `, `<button class="btn btn-secondary" onclick="closeModal()">关闭</button>`);
+  `, '');
 }
 function igAddComment(i) {
   const t = (document.getElementById('igCmtIn')||{}).value||'';
@@ -20125,20 +20298,7 @@ function igAddComment(i) {
   p.comments.push({ nick: state.user.nick||'我', text: t.trim(), ts: Date.now() });
   save(); closeModal(); igOpenComments(i);
 }
-async function igGenComment(i) {
-  const p = ensureIG().posts[i];
-  if (!p) return;
-  try {
-    const c = state.chars.find(x=>x.id===p.charId);
-    const { text } = await apiChat([
-      { role:'system', content: getOnlineChatRules('写一条短评论。'+(c?('你是'+c.nick+'，人设：'+(c.persona||'')):'路人')+'。少用emoji。只输出评论。') },
-      { role:'user', content: '动态：'+(p.caption||'') }
-    ], { max_tokens: 60, temperature: 0.9 });
-    p.comments = p.comments||[];
-    p.comments.push({ nick: c?c.nick:'用户', text: (text||'').trim().slice(0,80), ts: Date.now() });
-    save(); closeModal(); igOpenComments(i);
-  } catch(e) { alert(e.message||e); }
-}
+
 function igEditProfile() {
   const p = ensureIG().profile;
   openModal('编辑主页', `
@@ -26783,8 +26943,25 @@ async function worldAutoScheduleTick() {
       var hi = document.getElementById('homeInner');
       if (!hi) return;
       var t = (hi.textContent || '');
-      if (t.indexOf('主屏幕加载中') >= 0 || (t.indexOf('加载中') >= 0 && t.indexOf('App') < 0 && hi.querySelectorAll('.home-app').length === 0)) {
-        tryRenderHome('rescue');
+      var stuck = t.indexOf('主屏幕加载中') >= 0 || (t.indexOf('加载中') >= 0 && hi.querySelectorAll('.home-app').length === 0 && hi.querySelectorAll('.home-widget').length === 0);
+      if (stuck) {
+        try { tryRenderHome('rescue'); } catch(e1) {}
+        // 仍卡住则画最小可点桌面，避免白屏死锁
+        setTimeout(function(){
+          try {
+            var hi2 = document.getElementById('homeInner');
+            if (!hi2) return;
+            var t2 = hi2.textContent || '';
+            if (t2.indexOf('主屏幕加载中') >= 0 || (hi2.querySelectorAll('.home-app').length === 0 && t2.indexOf('加载中') >= 0)) {
+              hi2.innerHTML = '<div style="padding:28px 20px;text-align:center">'
+                + '<div style="font-size:15px;color:#333;margin-bottom:12px">主屏恢复模式</div>'
+                + '<div style="font-size:12px;color:#888;margin-bottom:16px;line-height:1.5">布局渲染失败，可点下方重试或清理异常小组件</div>'
+                + '<button type="button" onclick="try{state.home.pageWidgets={0:[],1:[]};save();location.reload();}catch(e){location.reload();}" style="padding:10px 18px;border-radius:14px;border:none;background:#007aff;color:#fff;font-size:14px;margin:4px">清空小组件并刷新</button>'
+                + '<button type="button" onclick="location.reload()" style="padding:10px 18px;border-radius:14px;border:1px solid #ccc;background:#fff;font-size:14px;margin:4px">仅刷新</button>'
+                + '</div>';
+            }
+          } catch(e2) {}
+        }, 600);
       }
     } catch(e) {}
   }
@@ -26926,8 +27103,9 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     }).join('');
 
     var widgetHtml = widgets.map(function(w, wi) {
+      try {
       var t = w.type || 'photo';
-      var del = editMode ? '<span class="home-w-del" data-widx="'+wi+'" style="position:absolute;top:4px;right:4px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.4);color:#fff;font-size:13px;line-height:20px;text-align:center;z-index:3">×</span>' : '';
+      var del = editMode ? ('<span class="home-w-move" data-widx="'+wi+'" title="移动到其他页" style="position:absolute;top:4px;right:28px;width:20px;height:20px;border-radius:50%;background:rgba(0,122,255,.85);color:#fff;font-size:11px;line-height:20px;text-align:center;z-index:3">⇄</span><span class="home-w-del" data-widx="'+wi+'" style="position:absolute;top:4px;right:4px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.4);color:#fff;font-size:13px;line-height:20px;text-align:center;z-index:3">×</span>') : '';
       var base = 'left:'+(w.x||12)+'px;top:'+(w.y||8)+'px;width:'+(w.w||150)+'px;height:'+(w.h||100)+'px;position:absolute;z-index:2;';
       var inner = '';
       if (t === 'polaroid_l' || t === 'polaroid_m' || t === 'polaroid') {
@@ -26951,7 +27129,137 @@ if (t === 'badge3d') {
           + '</div>';
         return '<div class="home-widget" data-widx="'+wi+'" data-wtype="badge3d" style="'+base+'overflow:visible;background:transparent;box-shadow:none">'+inner+del+'</div>';
       }
-      if (t === 'clock_sm') {
+      if (t === 'heart_badge') {
+        var src = w.img || '';
+        var rot = w.rot || 0;
+        if (!w.w || w.w < 120) w.w = 148;
+        if (!w.h || w.h < 120) w.h = 140;
+        var hp = 'M50 90 C20 68,4 48,12 30 C18 16,34 14,50 32 C66 14,82 16,88 30 C96 48,80 68,50 90 Z';
+        // 圆润饱满心形，无粉色光晕
+        inner = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:transparent;transform:rotate('+rot+'deg)">'
+          + '<svg viewBox="0 0 100 100" width="100%" height="100%" style="overflow:visible;filter:drop-shadow(0 4px 8px rgba(0,0,0,.18))">'
+          + '<defs><clipPath id="hbClip'+wi+'"><path d="'+hp+'"/></clipPath>'
+          + '<linearGradient id="hbGrad'+wi+'" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#ff8fab"/><stop offset="100%" stop-color="#ff4d6d"/></linearGradient></defs>'
+          + (src
+            ? '<image href="'+src+'" x="0" y="0" width="100" height="100" preserveAspectRatio="xMidYMid slice" clip-path="url(#hbClip'+wi+')"/>'
+            : '<path d="'+hp+'" fill="url(#hbGrad'+wi+')"/>')
+          + '<path d="'+hp+'" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="1.5"/>'
+          + '</svg></div>';
+        return '<div class="home-widget" data-widx="'+wi+'" data-wtype="heart_badge" style="'+base+'overflow:visible;background:transparent;box-shadow:none;border:none">'+inner+del+'</div>';
+      }
+      if (t === 'heart_standee') {
+        var himg = w.img || 'https://nos.netease.com/ysf/45a6a753afa717d8cf7da2002d14cc33.png';
+        if (!w.w || w.w < 160) w.w = 200;
+        if (!w.h || w.h < 220) w.h = 280;
+        inner = '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;background:transparent;pointer-events:none">'
+          + '<img src="'+himg+'" alt="爱心" style="width:100%;height:calc(100% - 10px);object-fit:contain;object-position:center bottom;filter:drop-shadow(0 10px 16px rgba(0,0,0,.25));display:block;background:transparent" draggable="false" onerror="this.onerror=null;this.style.background=\'linear-gradient(145deg,#ff9eb5,#ff5a7a)\';this.style.borderRadius=\'20px\'">'
+          + '<div style="width:40%;height:6px;margin-top:4px;border-radius:3px;background:rgba(0,0,0,.14)"></div></div>';
+        return '<div class="home-widget" data-widx="'+wi+'" data-wtype="heart_standee" style="'+base+'overflow:visible;background:transparent !important;box-shadow:none;border:none">'+inner+del+'</div>';
+      }
+      if (t === 'airdrop_card') {
+        var fromN = escapeHtml(w.fromName || 'vibes');
+        var sub = escapeHtml(w.subtitle || 'would like to share a photo.');
+        var ttl = escapeHtml(w.title || 'AirDrop');
+        var photo = w.img
+          ? '<img class="ad-photo" src="'+w.img+'" style="width:100%;height:100%;object-fit:cover;display:block" draggable="false">'
+          : '<div class="ad-photo" style="width:100%;height:100%;background:linear-gradient(160deg,#c8d0d8,#9aa8b4);display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.85);font-size:13px">点击换图</div>';
+        inner = '<div style="width:100%;height:100%;border-radius:18px;overflow:hidden;background:#f2f2f7;box-shadow:0 12px 32px rgba(0,0,0,.18);display:flex;flex-direction:column">'
+          + '<div style="padding:14px 14px 10px;text-align:center;background:#f7f7f8;flex-shrink:0">'
+          + '<div style="font-size:16px;font-weight:700;color:#1c1c1e">'+ttl+'</div>'
+          + '<div style="font-size:12px;color:#6e6e73;margin-top:4px;line-height:1.35">'+fromN+' '+sub+'</div></div>'
+          + '<div class="ad-photo-wrap" data-widx="'+wi+'" style="flex:1;min-height:0;background:#000;cursor:pointer">'+photo+'</div>'
+          + '<div style="display:flex;border-top:0.5px solid #d1d1d6;background:#fff;flex-shrink:0">'
+          + '<div style="flex:1;text-align:center;padding:12px 0;font-size:16px;color:#007aff;border-right:0.5px solid #d1d1d6">Decline</div>'
+          + '<div style="flex:1;text-align:center;padding:12px 0;font-size:16px;color:#007aff;font-weight:600">Accept</div>'
+          + '</div></div>';
+        return '<div class="home-widget" data-widx="'+wi+'" data-wtype="airdrop_card" style="'+base+'overflow:visible;background:transparent;box-shadow:none;border:none">'+inner+del+'</div>';
+      }
+      
+      if (t === 'music_player') {
+        if (!w.w || w.w < 160) w.w = 200;
+        if (!w.h || w.h < 200) w.h = 230;
+        var av = w.img || '';
+        var nick = escapeHtml(w.nick || '昵称');
+        var uid = escapeHtml(w.uid || '@id');
+        var avInner = av
+          ? '<img src="'+av+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block" draggable="false">'
+          : '<div style="width:100%;height:100%;border-radius:50%;background:linear-gradient(145deg,#ddd,#bbb);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px">头像</div>';
+        inner = '<div style="width:100%;height:100%;border-radius:22px;background:#ffffff;box-shadow:0 8px 24px rgba(0,0,0,.08);border:0.5px solid rgba(0,0,0,.06);display:flex;flex-direction:column;align-items:center;padding:10px 12px 8px;box-sizing:border-box;position:relative">'
+          + '<div style="position:relative;width:72px;height:72px;margin-top:2px">'
+          + '<div style="position:absolute;inset:-10px;border:2px solid rgba(180,180,185,.55);border-radius:50%"></div>'
+          + '<div style="position:absolute;top:-6px;right:-2px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.12);display:flex;align-items:center;justify-content:center">'
+          + '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2"><path d="M20.8 4.6c-1.8-1.6-4.6-1.4-6.3.4L12 7.5 9.5 5c-1.7-1.8-4.5-2-6.3-.4-2 1.8-2.1 4.8-.3 6.7L12 21l9.1-9.7c1.8-1.9 1.7-4.9-.3-6.7z"/></svg></div>'
+          + '<div style="position:absolute;left:-8px;top:18px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.12);display:flex;align-items:center;justify-content:center">'
+          + '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" stroke-linecap="round"><path d="M4 12c2-3 4-3 6 0s4 3 6 0 4-3 6 0"/></svg></div>'
+          + '<div style="width:72px;height:72px;border-radius:50%;overflow:hidden;border:2px solid #fff;box-shadow:0 4px 12px rgba(0,0,0,.1)">'+avInner+'</div></div>'
+          + '<div class="mp-name" style="margin-top:8px;font-size:13px;font-weight:600;color:#1c1c1e;max-width:90%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+nick+'</div>'
+          + '<div class="mp-uid" style="font-size:11px;color:#8e8e93;margin-top:1px">'+uid+'</div>'
+          + '<div style="width:88%;margin-top:10px">'
+          + '<div style="height:3px;background:#c8c8cc;border-radius:2px;position:relative"><div style="width:38%;height:100%;background:#1c1c1e;border-radius:2px"></div><div style="position:absolute;left:38%;top:50%;width:8px;height:8px;margin:-4px 0 0 -4px;border-radius:50%;background:#1c1c1e"></div></div>'
+          + '<div style="display:flex;justify-content:space-between;font-size:10px;color:#8e8e93;margin-top:4px"><span>1:15</span><span>-2:38</span></div></div>'
+          + '<div style="display:flex;align-items:center;justify-content:center;gap:26px;margin-top:8px;color:#1c1c1e">'
+          + '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg>'
+          + '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>'
+          + '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg></div>'
+          + '<div style="margin-top:8px;width:78%;height:28px;border-radius:14px;background:rgba(255,255,255,.7);display:flex;align-items:center;justify-content:center;gap:3px;padding:0 10px;box-sizing:border-box">'
+          + [4,8,5,12,7,10,6,14,9,5,11,7,4,9,6].map(function(h){return '<span style="width:2px;height:'+h+'px;background:#b0b0b5;border-radius:1px;display:inline-block"></span>';}).join('')
+          + '</div></div>';
+        return '<div class="home-widget" data-widx="'+wi+'" data-wtype="music_player" style="'+base+'overflow:visible;background:transparent;box-shadow:none;border:none">'+inner+del+'</div>';
+      }
+
+      if (t === 'dual_orbit') {
+        if (!w.w || w.w < 160) w.w = 200;
+        if (!w.h || w.h < 150) w.h = 180;
+        var a1 = w.img || '';
+        var a2 = w.img2 || '';
+        var cap = escapeHtml(w.caption || '我们的轨迹');
+        var sub = escapeHtml(w.sub || '');
+        var avHtml1 = a1
+          ? '<img src="'+a1+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block" draggable="false">'
+          : '<div style="width:100%;height:100%;border-radius:50%;background:linear-gradient(145deg,#d0d0d5,#b8b8be);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px">A</div>';
+        var avHtml2 = a2
+          ? '<img src="'+a2+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block" draggable="false">'
+          : '<div style="width:100%;height:100%;border-radius:50%;background:linear-gradient(145deg,#d0d0d5,#b8b8be);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px">B</div>';
+        inner = '<div style="width:100%;height:100%;border-radius:20px;background:transparent;box-shadow:none;border:none;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px 10px 10px;box-sizing:border-box">'
+          + '<div style="position:relative;width:150px;height:88px;margin:0 auto">'
+          + '<div style="position:absolute;left:50%;top:50%;width:140px;height:78px;margin:-39px 0 0 -70px;border:1.5px solid rgba(120,160,200,.45);border-radius:50%;transform:rotate(-18deg)"></div>'
+          + '<div style="position:absolute;left:50%;top:50%;width:150px;height:70px;margin:-35px 0 0 -75px;border:1px dashed rgba(140,180,220,.55);border-radius:50%;transform:rotate(12deg)"></div>'
+          + '<div style="position:absolute;left:50%;top:50%;width:120px;height:86px;margin:-43px 0 0 -60px;border:1px solid rgba(100,140,180,.3);border-radius:50%;transform:rotate(-8deg)"></div>'
+          + '<div class="do-av1" data-av="1" style="position:absolute;left:12px;top:50%;margin-top:-28px;width:56px;height:56px;border-radius:50%;overflow:hidden;border:2.5px solid #fff;box-shadow:0 4px 12px rgba(0,0,0,.12);z-index:2;cursor:pointer">'+avHtml1+'</div>'
+          + '<div class="do-av2" data-av="2" style="position:absolute;right:12px;top:50%;margin-top:-28px;width:56px;height:56px;border-radius:50%;overflow:hidden;border:2.5px solid #fff;box-shadow:0 4px 12px rgba(0,0,0,.12);z-index:2;cursor:pointer">'+avHtml2+'</div>'
+          + '<div style="position:absolute;left:50%;top:8px;width:6px;height:6px;margin-left:-3px;border-radius:50%;background:rgba(100,150,200,.7)"></div>'
+          + '<div style="position:absolute;left:22px;bottom:10px;width:5px;height:5px;border-radius:50%;background:rgba(100,150,200,.5)"></div>'
+          + '<div style="position:absolute;right:20px;top:14px;width:4px;height:4px;border-radius:50%;background:rgba(100,150,200,.55)"></div>'
+          + '</div>'
+          + '<div class="do-cap" style="margin-top:8px;font-size:13px;font-weight:600;color:#1c1c1e;max-width:92%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center">'+cap+'</div>'
+          + (sub ? '<div class="do-sub" style="font-size:11px;color:#8e8e93;margin-top:2px;max-width:92%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center">'+sub+'</div>' : '')
+          + '</div>';
+        return '<div class="home-widget" data-widx="'+wi+'" data-wtype="dual_orbit" style="'+base+'overflow:visible;background:transparent;box-shadow:none;border:none">'+inner+del+'</div>';
+      }
+
+      if (t === 'about_me') {
+        if (!w.w || w.w < 180) w.w = 220;
+        if (!w.h || w.h < 160) w.h = 200;
+        var av = w.img || '';
+        var txt = escapeHtml(w.text || 'about me');
+        var bub = escapeHtml(w.bubble || '');
+        var avInner = av
+          ? '<img src="'+av+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block" draggable="false">'
+          : '';
+        inner = '<div style="width:100%;height:100%;background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;box-sizing:border-box;padding:8px">'
+          + '<div style="position:relative;width:100px;height:100px;margin-bottom:14px">'
+          + '<div style="width:100px;height:100px;border-radius:50%;border:2px solid #c8c8cc;background:transparent;overflow:hidden;box-sizing:border-box">'+avInner+'</div>'
+          + '<div style="position:absolute;right:-8px;top:-6px;min-width:36px;height:28px;padding:0 10px;border-radius:14px;background:#c8c8cc;display:flex;align-items:center;justify-content:center">'
+          + '<span style="font-size:11px;color:#fff;max-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(bub || '')+'</span>'
+          + '<div style="position:absolute;left:10px;bottom:-5px;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid #c8c8cc"></div></div></div>'
+          + '<div style="width:92%;height:36px;border-radius:18px;background:rgba(200,200,205,.45);display:flex;align-items:center;padding:0 12px;box-sizing:border-box;gap:8px">'
+          + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8e8e93" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>'
+          + '<span style="flex:1;font-size:14px;color:#1c1c1e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+txt+'</span>'
+          + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8e8e93" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6M9 9l6 6"/></svg>'
+          + '</div></div>';
+        return '<div class="home-widget" data-widx="'+wi+'" data-wtype="about_me" style="'+base+'overflow:visible;background:transparent;box-shadow:none;border:none">'+inner+del+'</div>';
+      }
+if (t === 'clock_sm') {
         var now = new Date();
         var hm = String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
         inner = '<div style="width:100%;height:100%;border-radius:18px;background:rgba(255,255,255,.55);backdrop-filter:blur(12px);display:flex;flex-direction:column;align-items:center;justify-content:center;border:0.5px solid rgba(126,200,200,.35)">'
@@ -26978,6 +27286,10 @@ if (t === 'badge3d') {
         ? '<img src="'+w.img+'" draggable="false" style="width:100%;height:100%;object-fit:cover">'
         : '<div class="w-empty" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#8aa;font-size:12px">点击上传</div>');
       return '<div class="home-widget" data-widx="'+wi+'" style="'+base+'border-radius:18px;overflow:hidden;box-shadow:0 4px 18px rgba(80,140,160,.12);background:rgba(255,255,255,.35)">'+inner+del+'</div>';
+      } catch (werr) {
+        console.warn('widget render fail', w && w.type, werr);
+        return '';
+      }
     }).join('');
 
     var pages = state.home.pages || 2;
@@ -27235,7 +27547,7 @@ if (t === 'badge3d') {
         } else {
           // 点到删除键：不上传
           var tgt = ev && ev.target;
-          if (tgt && (tgt.classList && tgt.classList.contains('home-w-del') || (tgt.closest && tgt.closest('.home-w-del')))) return;
+          if (tgt && (tgt.classList && tgt.classList.contains('home-w-del') || tgt.classList.contains('home-w-move') || (tgt.closest && (tgt.closest('.home-w-del') || tgt.closest('.home-w-move'))))) return;
           // 点击上传
           var list = state.home.pageWidgets[page] || [];
           var ww = list[wi];
@@ -27246,7 +27558,7 @@ if (t === 'badge3d') {
               '<button class="btn btn-secondary" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="(function(){var L=state.home.pageWidgets['+page+'];if(L&&L['+wi+']){L['+wi+'].content=document.getElementById(\'bannerTxt\').value;}save();closeModal();renderHome();})()">保存</button>');
             return;
           }
-          if (ww.type === 'badge3d') {
+          if (ww.type === 'badge3d' || ww.type === 'heart_badge') {
             if (ww.img && !editMode) {
               ww.rot = ((ww.rot||0) + 45) % 360;
               save(); renderHome();
@@ -27257,6 +27569,43 @@ if (t === 'badge3d') {
             state.fileTarget = 'homeWidget_'+page+'_'+wi;
             var fiB = document.getElementById('fileInput');
             if (fiB) { fiB.accept = 'image/*'; fiB.value = ''; fiB.click(); }
+            return;
+          }
+          if (ww.type === 'about_me' && !editMode) {
+            openModal('关于我',
+              '<div style="text-align:center;margin-bottom:12px">'
+              + (ww.img ? '<img src="'+ww.img+'" style="width:72px;height:72px;border-radius:50%;object-fit:cover">' : '<div style="width:72px;height:72px;border-radius:50%;border:2px solid #ccc;margin:0 auto"></div>')
+              + '</div>'
+              + '<button type="button" class="btn btn-secondary" style="width:100%;margin-bottom:10px" onclick="state._widgetUploadPage='+page+';state._widgetFixedSize=true;state.fileTarget=\'homeWidget_'+page+'_'+wi+'\';var fi=document.getElementById(\'fileInput\');fi.accept=\'image/*\';fi.value=\'\';fi.click()">更换头像</button>'
+              + '<div class="form-group"><label>搜索条文案</label><input id="amText" value="'+escapeHtml(ww.text||'about me')+'"></div>'
+              + '<div class="form-group"><label>气泡短字（可空）</label><input id="amBub" value="'+escapeHtml(ww.bubble||'')+'" placeholder="可选"></div>',
+              '<button class="btn btn-secondary" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="(function(){var L=state.home.pageWidgets['+page+'];if(L&&L['+wi+']){L['+wi+'].text=document.getElementById(\'amText\').value;L['+wi+'].bubble=document.getElementById(\'amBub\').value;}save();closeModal();renderHome();})()">保存</button>');
+            return;
+          }
+          if (ww.type === 'dual_orbit' && !editMode) {
+            openModal('双人星轨',
+              '<div style="display:flex;gap:16px;justify-content:center;margin-bottom:14px">'
+              + '<div style="text-align:center"><div style="width:64px;height:64px;border-radius:50%;overflow:hidden;margin:0 auto 6px;background:#eee">'
+              + (ww.img ? '<img src="'+ww.img+'" style="width:100%;height:100%;object-fit:cover">' : '')
+              + '</div><button type="button" class="btn btn-secondary" style="font-size:12px;padding:4px 10px" onclick="state._widgetUploadPage='+page+';state._widgetFixedSize=true;state.fileTarget=\'homeWidget_'+page+'_'+wi+'\';var fi=document.getElementById(\'fileInput\');fi.accept=\'image/*\';fi.value=\'\';fi.click()">头像A</button></div>'
+              + '<div style="text-align:center"><div style="width:64px;height:64px;border-radius:50%;overflow:hidden;margin:0 auto 6px;background:#eee">'
+              + (ww.img2 ? '<img src="'+ww.img2+'" style="width:100%;height:100%;object-fit:cover">' : '')
+              + '</div><button type="button" class="btn btn-secondary" style="font-size:12px;padding:4px 10px" onclick="state._widgetUploadPage='+page+';state._widgetFixedSize=true;state.fileTarget=\'homeWidget2_'+page+'_'+wi+'\';var fi=document.getElementById(\'fileInput\');fi.accept=\'image/*\';fi.value=\'\';fi.click()">头像B</button></div>'
+              + '</div>'
+              + '<div class="form-group"><label>主文案</label><input id="doCap" value="'+escapeHtml(ww.caption||'')+'"></div>'
+              + '<div class="form-group"><label>副文案</label><input id="doSub" value="'+escapeHtml(ww.sub||'')+'" placeholder="可选"></div>',
+              '<button class="btn btn-secondary" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="(function(){var L=state.home.pageWidgets['+page+'];if(L&&L['+wi+']){L['+wi+'].caption=document.getElementById(\'doCap\').value;L['+wi+'].sub=document.getElementById(\'doSub\').value;}save();closeModal();renderHome();})()">保存</button>');
+            return;
+          }
+          if (ww.type === 'music_player' && !editMode) {
+            openModal('音乐播放器',
+              '<div style="text-align:center;margin-bottom:12px">'
+              + (ww.img ? '<img src="'+ww.img+'" style="width:72px;height:72px;border-radius:50%;object-fit:cover">' : '<div style="width:72px;height:72px;border-radius:50%;background:#ddd;margin:0 auto;line-height:72px;color:#fff">头像</div>')
+              + '</div>'
+              + '<button type="button" class="btn btn-secondary" style="width:100%;margin-bottom:10px" onclick="state._widgetUploadPage='+page+';state._widgetFixedSize=true;state.fileTarget=\'homeWidget_'+page+'_'+wi+'\';var fi=document.getElementById(\'fileInput\');fi.accept=\'image/*\';fi.value=\'\';fi.click()">更换头像</button>'
+              + '<div class="form-group"><label>昵称</label><input id="mpNick" value="'+escapeHtml(ww.nick||'')+'"></div>'
+              + '<div class="form-group"><label>ID</label><input id="mpUid" value="'+escapeHtml(ww.uid||'')+'" placeholder="@id"></div>',
+              '<button class="btn btn-secondary" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="(function(){var L=state.home.pageWidgets['+page+'];if(L&&L['+wi+']){L['+wi+'].nick=document.getElementById(\'mpNick\').value;L['+wi+'].uid=document.getElementById(\'mpUid\').value;}save();closeModal();renderHome();})()">保存</button>');
             return;
           }
           if ((ww.type === 'polaroid_l' || ww.type === 'polaroid_m' || ww.type === 'polaroid') && !editMode) {
@@ -27273,6 +27622,13 @@ if (t === 'badge3d') {
           if (fi) { fi.accept = 'image/*'; fi.value = ''; fi.click(); }
         }
       });
+    });
+        inner.querySelectorAll('.home-w-move').forEach(function(el) {
+      el.onclick = function(e) {
+        e.stopPropagation();
+        var wi = +el.dataset.widx;
+        if (typeof openMoveWidgetSheet === 'function') openMoveWidgetSheet(page, wi);
+      };
     });
     inner.querySelectorAll('.home-w-del').forEach(function(el) {
       el.onclick = function(e) {
@@ -27320,6 +27676,8 @@ if (t === 'badge3d') {
       var p = state.home.pages || 2;
       if (p >= 8) { showToast('最多 8 个界面'); return; }
       state.home.pages = p + 1;
+      if (!state.home.pageWidgets) state.home.pageWidgets = {};
+      if (!state.home.pageWidgets[p]) state.home.pageWidgets[p] = [];
       if (!state.home.pageWidgets) state.home.pageWidgets = {};
       var ni = p;
       if (!state.home.pageWidgets[ni]) state.home.pageWidgets[ni] = [];
@@ -27560,14 +27918,20 @@ if (t === 'badge3d') {
       var catalog = [
         {id:'polaroid_l',name:'大拍立得',size:'大型 · 可换图可编辑',img:'',w:160,h:200,page:0,type:'polaroid_l'},
         {id:'polaroid_m',name:'小拍立得',size:'中型 · 可换图可编辑',img:'',w:120,h:150,page:0,type:'polaroid_m'},
-        {id:'badge3d',name:'立体吧唧',size:'中型 · 点击旋转',img:'',w:110,h:110,page:0,type:'badge3d'},
+        {id:'badge3d',name:'立体吧唧',size:'中型 · 圆形 · 点击旋转',img:'',w:110,h:110,page:0,type:'badge3d'},
+        {id:'heart_badge',name:'爱心吧唧',size:'大型 · 爱心形 · 可换图',img:'',w:108,h:100,page:0,type:'heart_badge'},
         {id:'standee',name:'立体立牌',size:'中型 · 可换图',img:'',w:100,h:160,page:0,type:'standee'},
         {id:'standee_l',name:'大型立体立牌',size:'大型 · 可换图 · 透明底',img:'',w:140,h:220,page:0,type:'standee_l'},
+        {id:'heart_standee',name:'立体爱心摆件',size:'大型 · 默认爱心图 · 可换图',img:'https://nos.netease.com/ysf/45a6a753afa717d8cf7da2002d14cc33.png',w:130,h:150,page:0,type:'heart_standee'},
+        {id:'airdrop_card',name:'分享卡片',size:'中型 · 仿 AirDrop · 点图换图',img:'',w:200,h:260,page:0,type:'airdrop_card'},
+        {id:'music_player',name:'音乐播放器',size:'中型 · 换头像 · 可改昵称/ID',img:'',w:200,h:230,page:0,type:'music_player'},
+        {id:'dual_orbit',name:'双人星轨',size:'中型 · 双头像 · 星轨环绕',img:'',w:200,h:180,page:0,type:'dual_orbit'},
+        {id:'about_me',name:'关于我',size:'中型 · 透明底 · 头像+搜索条',img:'',w:220,h:200,page:0,type:'about_me'},
         {id:'clock_sm',name:'时间小组件',size:'小型 · 显示当前时间',img:'',w:150,h:80,page:0,type:'clock_sm'},
         {id:'photowall3',name:'三宫格照片墙',size:'中型 · 三格',img:'',w:200,h:140,page:0,type:'photowall3'},
-        {id:'pw_s',name:'空白照片墙·小',size:'小型',img:'',w:100,h:100,page:0,type:'pw_blank',sizeKey:'s'},
-        {id:'pw_v',name:'空白照片墙·竖',size:'竖形',img:'',w:110,h:160,page:0,type:'pw_blank',sizeKey:'v'},
-        {id:'pw_l',name:'空白照片墙·大',size:'大型',img:'',w:220,h:160,page:0,type:'pw_blank',sizeKey:'l'},
+        {id:'pw_s',name:'空白照片墙·小',size:'小型 · 点框换图',img:'',w:100,h:100,page:0,type:'pw_blank',sizeKey:'s'},
+        {id:'pw_v',name:'空白照片墙·竖',size:'竖形 · 点框换图',img:'',w:110,h:160,page:0,type:'pw_blank',sizeKey:'v'},
+        {id:'pw_l',name:'空白照片墙·大',size:'大型 · 点框换图',img:'',w:220,h:160,page:0,type:'pw_blank',sizeKey:'l'},
         {id:'text_banner',name:'横屏文案',size:'横幅',img:'',w:280,h:56,page:0,type:'text_banner'}
       ];
       main = '<div style="padding:16px"><div style="font-size:12px;color:#8e8e93;margin-bottom:12px">添加后可在桌面拖动；点空白卡片可上传图片</div>'
@@ -27675,14 +28039,20 @@ if (t === 'badge3d') {
       var catalog = [
         {id:'polaroid_l',name:'大拍立得',size:'大型 · 可换图可编辑',img:'',w:160,h:200,page:0,type:'polaroid_l'},
         {id:'polaroid_m',name:'小拍立得',size:'中型 · 可换图可编辑',img:'',w:120,h:150,page:0,type:'polaroid_m'},
-        {id:'badge3d',name:'立体吧唧',size:'中型 · 点击旋转',img:'',w:110,h:110,page:0,type:'badge3d'},
+        {id:'badge3d',name:'立体吧唧',size:'中型 · 圆形 · 点击旋转',img:'',w:110,h:110,page:0,type:'badge3d'},
+        {id:'heart_badge',name:'爱心吧唧',size:'大型 · 爱心形 · 可换图',img:'',w:108,h:100,page:0,type:'heart_badge'},
         {id:'standee',name:'立体立牌',size:'中型 · 可换图',img:'',w:100,h:160,page:0,type:'standee'},
         {id:'standee_l',name:'大型立体立牌',size:'大型 · 可换图 · 透明底',img:'',w:140,h:220,page:0,type:'standee_l'},
+        {id:'heart_standee',name:'立体爱心摆件',size:'大型 · 默认爱心图 · 可换图',img:'https://nos.netease.com/ysf/45a6a753afa717d8cf7da2002d14cc33.png',w:130,h:150,page:0,type:'heart_standee'},
+        {id:'airdrop_card',name:'分享卡片',size:'中型 · 仿 AirDrop · 点图换图',img:'',w:200,h:260,page:0,type:'airdrop_card'},
+        {id:'music_player',name:'音乐播放器',size:'中型 · 换头像 · 可改昵称/ID',img:'',w:200,h:230,page:0,type:'music_player'},
+        {id:'dual_orbit',name:'双人星轨',size:'中型 · 双头像 · 星轨环绕',img:'',w:200,h:180,page:0,type:'dual_orbit'},
+        {id:'about_me',name:'关于我',size:'中型 · 透明底 · 头像+搜索条',img:'',w:220,h:200,page:0,type:'about_me'},
         {id:'clock_sm',name:'时间小组件',size:'小型 · 显示当前时间',img:'',w:150,h:80,page:0,type:'clock_sm'},
         {id:'photowall3',name:'三宫格照片墙',size:'中型 · 三格',img:'',w:200,h:140,page:0,type:'photowall3'},
-        {id:'pw_s',name:'空白照片墙·小',size:'小型',img:'',w:100,h:100,page:0,type:'pw_blank',sizeKey:'s'},
-        {id:'pw_v',name:'空白照片墙·竖',size:'竖形',img:'',w:110,h:160,page:0,type:'pw_blank',sizeKey:'v'},
-        {id:'pw_l',name:'空白照片墙·大',size:'大型',img:'',w:220,h:160,page:0,type:'pw_blank',sizeKey:'l'},
+        {id:'pw_s',name:'空白照片墙·小',size:'小型 · 点框换图',img:'',w:100,h:100,page:0,type:'pw_blank',sizeKey:'s'},
+        {id:'pw_v',name:'空白照片墙·竖',size:'竖形 · 点框换图',img:'',w:110,h:160,page:0,type:'pw_blank',sizeKey:'v'},
+        {id:'pw_l',name:'空白照片墙·大',size:'大型 · 点框换图',img:'',w:220,h:160,page:0,type:'pw_blank',sizeKey:'l'},
         {id:'text_banner',name:'横屏文案',size:'横幅',img:'',w:280,h:56,page:0,type:'text_banner'}
       ];
       document.querySelectorAll('[data-wadd]').forEach(function(btn){
@@ -27691,18 +28061,27 @@ if (t === 'badge3d') {
           if (!item) return;
           // 弹出选页：第1页 / 第2页
           var pages = state.home.pages || 2;
-          if (pages < 2) { item.page = 0; addHomeWidget(item); return; }
+          var cur = (state.home.page != null ? state.home.page : 0) | 0;
+          // 单页直接加到当前页；多页弹出全部页面选择
+          if (pages <= 1) { item.page = 0; addHomeWidget(item); return; }
+          var btns = '';
+          for (var pi = 0; pi < pages; pi++) {
+            var label = '第 ' + (pi+1) + ' 页' + (pi === cur ? '（当前）' : '');
+            btns += '<button type="button" class="btn '+(pi===cur?'btn-primary':'btn-secondary')+'" style="flex:1;min-width:30%;margin:4px 0" data-wadd-page="'+pi+'">'+label+'</button>';
+          }
           openModal('添加到哪一页？',
-            '<div style="display:flex;gap:10px;margin-top:8px">'
-            + '<button class="btn btn-primary" style="flex:1" id="waddP0">第 1 页</button>'
-            + '<button class="btn btn-primary" style="flex:1" id="waddP1">第 2 页</button>'
-            + '</div>',
+            '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">'+btns+'</div>'
+            + '<div style="font-size:12px;color:#8e8e93;margin-top:10px">也可在编辑模式把小组件拖到屏幕边缘移到相邻页</div>',
             '<button class="btn btn-secondary" onclick="closeModal()">取消</button>');
           setTimeout(function(){
-            var b0 = document.getElementById('waddP0');
-            var b1 = document.getElementById('waddP1');
-            if (b0) b0.onclick = function(){ var it=Object.assign({}, item, {page:0}); closeModal(); addHomeWidget(it); };
-            if (b1) b1.onclick = function(){ var it=Object.assign({}, item, {page:1}); closeModal(); addHomeWidget(it); };
+            document.querySelectorAll('[data-wadd-page]').forEach(function(btn){
+              btn.onclick = function(){
+                var pg = parseInt(btn.getAttribute('data-wadd-page'), 10) || 0;
+                var it = Object.assign({}, item, { page: pg });
+                closeModal();
+                addHomeWidget(it);
+              };
+            });
           }, 30);
         };
       });
