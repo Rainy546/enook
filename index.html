@@ -2470,7 +2470,7 @@ body.night .loc-addr { color: #a1a1a6 !important; }
 
 // ===== IndexedDB 扩容存储 =====
 const IDB_NAME = 'graychat_idb';
-const EENOK_BUILD = '2026-08-22I';
+const EENOK_BUILD = '2026-08-22K';
 /** 检测版本变化；进入主界面后弹出「已更新」提醒 */
 function checkAppUpdate() {
   try {
@@ -3879,6 +3879,16 @@ function openChat(id, isGroup) {
   try { bindChatKeyboardFix(); } catch(e) {}
   state.currentChatId = id;
   state.currentIsGroup = !!isGroup;
+  // 进入私聊时静默同步一次跨App线索（每角色 10 分钟内最多一次）
+  try {
+    if (!isGroup && id) {
+      if (!state._crossSyncAt) state._crossSyncAt = {};
+      if (!state._crossSyncAt[id] || Date.now() - state._crossSyncAt[id] > 600000) {
+        state._crossSyncAt[id] = Date.now();
+        if (typeof syncCrossAppToShortMemory === 'function') syncCrossAppToShortMemory(id);
+      }
+    }
+  } catch(e) {}
   state._official = null;
   state._officialIdx = null;
   if (!state.chats[id]) {
@@ -7181,11 +7191,21 @@ function onFileSelected(e) {
       data = await compressDataUrl(data, state.fileTarget === 'emojiUpload' ? 200 : 900, state.fileTarget === 'emojiUpload' ? 0.6 : 0.72);
     }
     if (state.fileTarget === 'callBg') {
-      if (state._callCtx) state._callCtx.bg = data;
+      if (!state.phoneApp) state.phoneApp = { contacts: [], calls: [], favorites: [], voicemails: [], callBg: '', videoBg: '' };
+      if (state._callCtx) {
+        state._callCtx.bg = data;
+        // 按语音/视频分别持久化，下次通话自动用
+        if (state._callCtx.video) state.phoneApp.videoBg = data;
+        else state.phoneApp.callBg = data;
+      } else {
+        state.phoneApp.callBg = data;
+      }
+      try { save(); } catch(e) {}
       try {
         var el = document.getElementById('callScreenBg');
         if (el) el.style.background = 'url('+data+') center/cover';
       } catch(e) {}
+      showToast('通话壁纸已保存');
       return;
     }
     if (state.fileTarget === 'meloCover') {
@@ -8443,26 +8463,96 @@ function openSocialAccounts() {
 function collectSocialMemory(charId, limit) {
   limit = limit || 8;
   const lines = [];
+  if (!charId) return '';
   try {
-    const chat = state.chats[charId];
-    if (chat && chat.socialApps && chat.socialApps.linkMem) {
-      // IG DMs
-      if (chat.socialApps.ig && state.forumIG && state.forumIG.dms && state.forumIG.dms[charId]) {
-        (state.forumIG.dms[charId].messages||[]).slice(-limit).forEach(m => {
-          lines.push('[Instagram]' + (m.from==='user'?'我':'对方') + ':' + (m.content||''));
-        });
-      }
-      // SMS
-      if (chat.socialApps.sms && state.sms && state.sms.threads) {
-        const t = state.sms.threads[charId] || Object.values(state.sms.threads).find(x=>x.charId===charId);
-        if (t) (t.messages||[]).slice(-limit).forEach(m => {
-          lines.push('[短信]' + (m.from==='user'?'我':'对方') + ':' + (m.content||''));
-        });
-      }
+    const chat = state.chats[charId] || state.chats[(state.chars||[]).find(function(c){return c&&c.id===charId;}) && charId];
+    const link = !(chat && chat.socialApps) || chat.socialApps.linkMem !== false; // 默认互通
+    // IG DMs
+    if (link && state.forumIG && state.forumIG.dms && state.forumIG.dms[charId]) {
+      (state.forumIG.dms[charId].messages||[]).slice(-limit).forEach(function(m) {
+        if (m && (m.content||'').trim()) lines.push('[Instagram]' + (m.from==='user'?'我':'对方') + ':' + String(m.content).slice(0,80));
+      });
     }
+    // SMS
+    if (link && state.sms && state.sms.threads) {
+      var t = state.sms.threads[charId] || Object.values(state.sms.threads).find(function(x){ return x && x.charId===charId; });
+      if (t) (t.messages||[]).slice(-limit).forEach(function(m) {
+        if (m && (m.content||'').trim()) lines.push('[短信]' + (m.from==='user'?'我':'对方') + ':' + String(m.content).slice(0,80));
+      });
+    }
+    // 电话 / 语音留言
+    try {
+      var calls = (state.phoneCalls || []).concat((state.phoneApp && state.phoneApp.calls) || []);
+      calls.filter(function(x){ return x && x.charId===charId; }).slice(0, 3).forEach(function(x) {
+        lines.push('[电话]' + (x.missed?'未接·':'') + String(x.summary||x.name||'').replace(/\n/g,'；').slice(0,100));
+      });
+      ((state.phoneApp && state.phoneApp.voicemails) || []).filter(function(v){ return v && (v.charId===charId || v.name); }).slice(0, 2).forEach(function(v) {
+        if (v.charId && v.charId!==charId) return;
+        lines.push('[语音留言]' + String(v.text||'').slice(0,80));
+      });
+    } catch(e1) {}
+    // 线下见面摘要
+    try {
+      var hist = state.offline && state.offline.meetHistory && state.offline.meetHistory[charId];
+      if (hist && hist.length) {
+        var last = hist[hist.length-1];
+        if (last && last.summary) lines.push('[线下]' + String(last.summary).slice(0,120));
+      }
+    } catch(e2) {}
+    // 世界·生活随笔
+    try {
+      if (typeof ensureCharWorld === 'function') {
+        var w = ensureCharWorld(charId);
+        if (w && w.life && w.life.length) {
+          w.life.slice(-3).forEach(function(L) {
+            if (L && L.text) lines.push('[日常]' + String(L.text).slice(0,80));
+          });
+        }
+      }
+    } catch(e3) {}
+    // 记忆 App 卡片
+    try {
+      var items = (state.memoryApp && state.memoryApp.items) || [];
+      items.filter(function(it){ return it && it.charId===charId; }).slice(0, 4).forEach(function(it) {
+        var tx = it.text || it.content || it.title || '';
+        if (tx) lines.push('[珍藏]' + String(tx).slice(0,80));
+      });
+    } catch(e4) {}
+    // 信件
+    try {
+      var love = (state.loveApp && state.loveApp.letters) || [];
+      love.filter(function(L){ return L && L.charId===charId; }).slice(0, 2).forEach(function(L) {
+        lines.push('[信件]' + String(L.body||L.content||L.title||'').slice(0,80));
+      });
+    } catch(e5) {}
   } catch(e) {}
-  return lines.join('\n');
+  return lines.slice(0, limit + 6).join('\n');
 }
+/** 把跨 App 线索写入该角色微信短期记忆（去重，不刷屏） */
+function syncCrossAppToShortMemory(charId) {
+  try {
+    if (!charId) charId = state.currentChatId;
+    if (!charId) return 0;
+    if (!state.chats[charId]) state.chats[charId] = { messages: [], shortMemory: [], longMemory: [] };
+    var chat = state.chats[charId];
+    if (!chat.shortMemory) chat.shortMemory = [];
+    var raw = collectSocialMemory(charId, 10) || '';
+    var lines = raw.split('\n').filter(Boolean);
+    var added = 0;
+    var existing = chat.shortMemory.map(function(m){ return String(m.content||m.text||''); }).join('|');
+    lines.forEach(function(line) {
+      var key = line.slice(0, 36);
+      if (existing.indexOf(key) >= 0) return;
+      chat.shortMemory.push({ content: line.slice(0, 160), ts: Date.now(), from: 'crossApp' });
+      existing += '|' + key;
+      added++;
+    });
+    if (chat.shortMemory.length > 40) chat.shortMemory = chat.shortMemory.slice(-40);
+    if (added) save();
+    return added;
+  } catch(e) { return 0; }
+}
+
 function openMemMount() {
   const chat = state.chats[state.currentChatId];
   if (!chat) return;
@@ -16539,12 +16629,39 @@ function ensureHomeState() {
   if (!state.gal.chars) state.gal.chars = {};
   if (!state.gal.styles) state.gal.styles = [];
   if (!state.gal.personas) state.gal.personas = [];
-  if (!state.phoneApp || typeof state.phoneApp !== 'object') state.phoneApp = { contacts: [], calls: [], favorites: [] };
+  if (!state.phoneApp || typeof state.phoneApp !== 'object') state.phoneApp = { contacts: [], calls: [], favorites: [], voicemails: [], callBg: '', videoBg: '' };
   if (!state.sms || typeof state.sms !== 'object') state.sms = { threads: {} };
   if (!state.offline) state.offline = { meets: [] };
 }
+function checkDueCountdowns() {
+  try {
+    if (state._cdToastAt && Date.now() - state._cdToastAt < 120000) return;
+    var list = (state.countdown && state.countdown.items) || state.countdowns || [];
+    if (!list.length && state.countdownApp && state.countdownApp.items) list = state.countdownApp.items;
+    var now = Date.now();
+    var due = [];
+    (list || []).forEach(function(it) {
+      if (!it) return;
+      var t = it.ts || it.date || it.target;
+      if (!t) return;
+      var ts = typeof t === 'number' ? t : Date.parse(t);
+      if (isNaN(ts)) return;
+      var diff = ts - now;
+      if (diff >= 0 && diff < 36 * 3600 * 1000) {
+        due.push((it.title || it.name || '倒数日') + ' · 还剩' + Math.max(1, Math.ceil(diff/3600000)) + '小时');
+      } else if (diff < 0 && diff > -12 * 3600 * 1000) {
+        due.push((it.title || it.name || '倒数日') + ' · 已到');
+      }
+    });
+    if (due.length) {
+      state._cdToastAt = Date.now();
+      showToast(due[0] + (due.length > 1 ? (' 等'+due.length+'项') : ''));
+    }
+  } catch(e) {}
+}
 function goHome() {
   ensureHomeState();
+  try { checkDueCountdowns(); } catch(e) {}
   armClickGuard(700);
   state._navLock = false;
   state.inWechat = false;
@@ -23073,6 +23190,7 @@ function openPhonePad(tab) {
             <div style="font-size:12px;color:#888;margin-top:2px">${c.missed?'未接来电 · ':''}手机</div>
           </div>
           <div style="font-size:13px;color:#888">${c.ts?new Date(c.ts).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}):''}</div>
+          ${editing?'':`<button type="button" onclick="event.stopPropagation();redialCall('${c.charId||''}','${escapeHtml(c.name||'')}',false)" style="border:none;background:transparent;color:#007aff;padding:6px;cursor:pointer;flex-shrink:0" title="回拨"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#007aff" stroke-width="1.8"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg></button>`}
         </div>`).join('') || '<div class="empty">暂无通话记录</div>'}
     </div>`;
   } else if (tab === 'fav') {
@@ -23095,7 +23213,13 @@ function openPhonePad(tab) {
       </div>
       ${(state.phoneApp.voicemails||[]).map((v,i)=>`
         <div style="padding:12px;border-bottom:0.5px solid #eee">
-          <div style="font-weight:600">${escapeHtml(v.name||'未知')}</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <div style="font-weight:600;flex:1">${escapeHtml(v.name||'未知')}</div>
+            <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+              <button type="button" onclick="playVoicemail(${i})" style="border:none;background:#f2f2f7;color:#007aff;border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer">播放</button>
+              <button type="button" onclick="deleteVoicemail(${i})" title="删除" style="border:none;background:transparent;color:#c7c7cc;width:22px;height:22px;border-radius:50%;font-size:16px;line-height:20px;padding:0;cursor:pointer;font-weight:300">×</button>
+            </div>
+          </div>
           <div style="font-size:14px;color:#333;margin-top:6px;line-height:1.5">${escapeHtml(v.text||'')}</div>
           <div style="font-size:11px;color:#999;margin-top:4px">${v.ts?new Date(v.ts).toLocaleString():''}</div>
         </div>`).join('')||'<div class="empty">暂无留言，点右上角 ○ 生成</div>'}
@@ -23175,7 +23299,71 @@ async function doGenVoicemail() {
   }
   save(); openPhonePad('voicemail');
 }
+function clearCallWallpaper() {
+  try {
+    if (!state.phoneApp) return;
+    if (state._callCtx && state._callCtx.video) state.phoneApp.videoBg = '';
+    else state.phoneApp.callBg = '';
+    if (state._callCtx) state._callCtx.bg = '';
+    save();
+    var el = document.getElementById('callScreenBg');
+    if (el) {
+      var isVideo = state._callCtx && state._callCtx.video;
+      el.style.background = isVideo ? 'linear-gradient(180deg,#2a2a3a,#12121a)' : 'linear-gradient(180deg,#4a4a68,#222236)';
+    }
+    showToast('已恢复默认壁纸');
+  } catch(e) {}
+}
+function redialCall(charId, name, video) {
+  try {
+    if (video) startVideoCall(charId, name);
+    else startCall(charId, name);
+  } catch(e) { showToast('无法重拨'); }
+}
+/** 角色此刻在干嘛：轻量趣味，不额外强制 API 时用本地模板 */
+async function charNowDoing(charId) {
+  try {
+    var c = (state.chars||[]).find(function(x){ return x && x.id===charId; });
+    if (!c) { showToast('找不到角色'); return; }
+    if (!hasChatApi()) {
+      var local = ['好像在发呆','在听歌','在走路','在看手机','刚喝了口水','在想你的事'];
+      showToast((c.nick||c.realName||'对方')+'：'+local[Math.floor(Math.random()*local.length)]);
+      return;
+    }
+    showToast('看看TA在干嘛…');
+    var raw = await apiChat([
+      { role:'system', content: '你是'+((c.nick||c.realName)||'角色')+'。人设：'+(c.persona||'')+'。用一句很短的话描述你此刻在做什么（10字内，口语，不要解释）。只输出这一句。' },
+      { role:'user', content: '你现在在干嘛？' }
+    ], { max_tokens: 40, temperature: 0.95 });
+    var t = (typeof normalizeApiText==='function' ? normalizeApiText(raw) : String(raw||'')).trim().slice(0, 40);
+    showToast((c.nick||c.realName||'TA')+'：'+(t||'没有理你'));
+  } catch(e) { showToast('失败：'+(e.message||e)); }
+}
+function deleteVoicemail(i) {
+  try {
+    if (!state.phoneApp || !state.phoneApp.voicemails) return;
+    if (i < 0 || i >= state.phoneApp.voicemails.length) return;
+    if (!confirm('删除这条语音留言？')) return;
+    state.phoneApp.voicemails.splice(i, 1);
+    save();
+    openPhonePad('voicemail');
+    showToast('已删除');
+  } catch(e) { showToast('删除失败'); }
+}
+async function playVoicemail(i) {
+  try {
+    if (!hasVoiceApi()) { showToast('未连接语音 API，无法生成声音'); return; }
+    var list = (state.phoneApp && state.phoneApp.voicemails) || [];
+    var v = list[i];
+    if (!v || !(v.text||'').trim()) { showToast('没有可播放的内容'); return; }
+    showToast('语音生成中…');
+    await apiSpeak(String(v.text).trim());
+  } catch(e) {
+    showToast('播放失败：'+(e.message||e));
+  }
+}
 function filterPhoneContacts(q) {}
+
 function toggleCallSel(id) {
   if (!state._phoneRecentSel) state._phoneRecentSel = [];
   const i = state._phoneRecentSel.indexOf(id);
@@ -23237,6 +23425,10 @@ function openPhoneContactDetail(charId, name, phone, idx) {
         <div onclick="startVideoCall('${charId||''}','${escapeHtml(display)}')" style="flex:1;max-width:72px;text-align:center">
           <div style="background:#fff;border-radius:12px;padding:12px 0;color:#007aff;display:flex;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#007aff" stroke-width="1.6"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div>
           <div style="font-size:11px;color:#007aff;margin-top:4px">视频</div>
+        </div>
+        <div onclick="charNowDoing('${charId||''}')" style="flex:1;max-width:72px;text-align:center">
+          <div style="background:#fff;border-radius:12px;padding:12px 0;color:#007aff;display:flex;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#007aff" stroke-width="1.6"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
+          <div style="font-size:11px;color:#007aff;margin-top:4px">此刻</div>
         </div>
         <div style="flex:1;max-width:72px;text-align:center;opacity:.35">
           <div style="background:#fff;border-radius:12px;padding:12px 0;display:flex;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#8e8e93" stroke-width="1.6"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><path d="M22 6l-10 7L2 6"/></svg></div>
@@ -23322,7 +23514,10 @@ async function startCall(charId, name, opts) {
   const c = charId ? state.chars.find(x=>x.id===charId) : null;
   const display = name || (c && (c.nick||c.realName)) || '未知';
   const av = c ? avatarUrl(c) : '';
-  state._callCtx = { charId: charId||'', name: display, logs: [], answered: false, started: Date.now(), video: isVideo, bg: '' };
+  try { if (!state.phoneApp) state.phoneApp = { contacts: [], calls: [], favorites: [], voicemails: [], callBg: '', videoBg: '' }; } catch(e) {}
+  var savedBg = '';
+  try { savedBg = isVideo ? (state.phoneApp.videoBg || state.phoneApp.callBg || '') : (state.phoneApp.callBg || ''); } catch(e) {}
+  state._callCtx = { charId: charId||'', name: display, logs: [], answered: false, started: Date.now(), video: isVideo, bg: savedBg || '' };
   openSubPage('', `
     <div style="position:absolute;inset:0;background:linear-gradient(180deg,#3d3d55,#1e1e2e);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 24px;box-sizing:border-box">
       <div style="font-size:13px;opacity:.7;margin-bottom:8px" id="callStatusLabel">正在${isVideo?'视频':''}呼叫…</div>
@@ -23421,6 +23616,7 @@ async function answerCallAuto() {
           </div>
           <div style="flex-shrink:0;padding:8px 16px max(18px,env(safe-area-inset-bottom));display:flex;justify-content:center;gap:36px;align-items:flex-end;background:rgba(0,0,0,.2)">
             <div style="text-align:center"><button type="button" onclick="state.fileTarget='callBg';document.getElementById('fileInput').accept='image/*';document.getElementById('fileInput').click()" style="width:52px;height:52px;border-radius:50%;border:none;background:rgba(255,255,255,.2);color:#fff;cursor:pointer;font-size:12px">背景</button><div style="font-size:11px;margin-top:6px;opacity:.85">上传</div></div>
+            <div style="text-align:center"><button type="button" onclick="clearCallWallpaper()" style="width:52px;height:52px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:#fff;cursor:pointer;font-size:11px">默认</button><div style="font-size:11px;margin-top:6px;opacity:.85">恢复</div></div>
             <div style="text-align:center"><button type="button" onclick="endCall(true)" style="width:64px;height:64px;border-radius:50%;border:none;background:#ff3b30;color:#fff;cursor:pointer"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button><div style="font-size:11px;margin-top:6px;opacity:.85">挂断</div></div>
           </div>
         </div>
@@ -23433,6 +23629,7 @@ async function answerCallAuto() {
         <div style="position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;width:100%;height:100%;box-sizing:border-box;padding:36px 16px 0">
           <div style="position:absolute;top:12px;right:12px;z-index:2">
             <button type="button" onclick="state.fileTarget='callBg';document.getElementById('fileInput').accept='image/*';document.getElementById('fileInput').click()" style="border:none;background:rgba(0,0,0,.3);color:#fff;border-radius:12px;padding:6px 12px;font-size:12px;cursor:pointer">壁纸</button>
+            <button type="button" onclick="clearCallWallpaper()" style="border:none;background:rgba(0,0,0,.25);color:#fff;border-radius:12px;padding:6px 12px;font-size:12px;cursor:pointer;margin-left:6px">默认</button>
           </div>
           <div style="font-size:13px;opacity:.75;flex-shrink:0" id="callTimer">00:00</div>
           <div style="font-size:24px;font-weight:600;margin:6px 0 16px;flex-shrink:0">${escapeHtml(display)}</div>
